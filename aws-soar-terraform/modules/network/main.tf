@@ -151,6 +151,13 @@ resource "aws_route_table_association" "private_app" {
 ############################################
 
 locals {
+  # SSM Session Manager 접속용 3종만 둡니다.
+  #
+  # user_data 는 apt / PyPI / download.docker.com 을 쓰므로 엔드포인트로는
+  # 못 덮습니다. 실습 중에는 enable_nat_gateway = true 로 두세요.
+  # NAT 를 끈 채로 CloudWatch Agent 로그 수집(SEC-06 알람)과 Secrets Manager
+  # 조회까지 살리려면 "secretsmanager", "logs", "monitoring" 을 추가하세요.
+  # 엔드포인트당 시간당 과금이라 개수를 늘리면 NAT 1개보다 비싸집니다.
   interface_endpoints = var.enable_vpc_endpoints ? toset(["ssm", "ssmmessages", "ec2messages"]) : toset([])
 }
 

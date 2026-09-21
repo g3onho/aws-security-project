@@ -51,7 +51,6 @@ module "network" {
   enable_vpc_endpoints     = var.enable_vpc_endpoints
   enable_alb               = var.enable_alb
   enable_flow_logs         = var.enable_flow_logs
-  enable_dvwa_instance     = var.enable_dvwa_instance
   enable_attacker_instance = var.enable_attacker_instance
 
   tags = local.common_tags
@@ -72,7 +71,6 @@ module "security" {
   enable_security_hub            = var.enable_security_hub
   enable_access_analyzer         = var.enable_access_analyzer
   enable_cloudtrail              = var.enable_cloudtrail
-  log_retention_days             = var.log_retention_days
 
   tags = local.common_tags
 }
@@ -87,7 +85,6 @@ module "soar" {
 
   log_group_nginx    = local.log_group_nginx
   log_group_mysql    = local.log_group_mysql
-  log_group_flowlogs = local.log_group_flowlogs
   log_retention_days = var.log_retention_days
 
   correlated_findings_table = local.correlated_findings_table
@@ -100,16 +97,12 @@ module "soar" {
 
   enable_guardduty    = var.enable_guardduty
   enable_security_hub = var.enable_security_hub
-  enable_config       = var.enable_config
-  enable_flow_logs    = var.enable_flow_logs
 
   cpu_alarm_threshold       = var.cpu_alarm_threshold
   memory_alarm_threshold    = var.memory_alarm_threshold
   mysql_auth_fail_threshold = var.mysql_auth_fail_threshold
 
-  monitored_instances  = module.compute.monitored_instances
-  db_security_group_id = module.network.sg_db_manual_id
-  public_nacl_id       = module.network.private_nacl_id
+  monitored_instances = module.compute.monitored_instances
 
   tags = local.common_tags
 }

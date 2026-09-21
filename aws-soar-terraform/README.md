@@ -159,4 +159,3 @@ terraform output cleanup_checklist
 - 리전의 실제 AZ 이름(`az_primary`/`az_secondary`) — 기본 `ap-northeast-2a/2c`
 - AWS Config·Security Hub·GuardDuty가 계정에 이미 활성화돼 있으면 중복 활성화 충돌 가능
 - ECR 이미지(`app-1.0.0`)를 push하기 전에는 docker-host의 compose가 web 컨테이너를 못 올림 — 서비스 이미지는 팀이 빌드·push
-

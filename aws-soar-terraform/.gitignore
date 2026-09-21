@@ -23,3 +23,12 @@ terraform.rc
 
 # Lambda 빌드 산출물
 modules/soar/build/*.zip
+
+# plan 산출물 (계정ID/공인IP 포함)
+tfplan
+tfplan.*
+plan.txt
+
+# Python 바이트코드 (Lambda zip 에 섞여 들어감)
+__pycache__/
+*.pyc

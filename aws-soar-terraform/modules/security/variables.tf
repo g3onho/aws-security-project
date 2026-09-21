@@ -11,8 +11,6 @@ variable "enable_security_hub" { type = bool }
 variable "enable_access_analyzer" { type = bool }
 variable "enable_cloudtrail" { type = bool }
 
-variable "log_retention_days" { type = number }
-
 variable "tags" {
   type    = map(string)
   default = {}

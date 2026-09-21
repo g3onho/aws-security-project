@@ -1,8 +1,6 @@
 output "vpc_id" { value = aws_vpc.this.id }
-output "vpc_cidr" { value = aws_vpc.this.cidr_block }
 
 output "public_web_subnet_id" { value = aws_subnet.public_web.id }
-output "public_web_subnet_b_id" { value = aws_subnet.public_web_b.id }
 output "public_subnet_ids" { value = [aws_subnet.public_web.id, aws_subnet.public_web_b.id] }
 output "private_app_subnet_id" { value = aws_subnet.private_app.id }
 output "private_db_subnet_id" { value = aws_subnet.private_db.id }
@@ -18,9 +16,5 @@ output "sg_attacker_id" {
   value = var.enable_attacker_instance ? aws_security_group.attacker[0].id : ""
 }
 
-output "public_nacl_id" { value = aws_network_acl.public.id }
 output "private_nacl_id" { value = aws_network_acl.private.id }
 
-output "nat_gateway_id" {
-  value = var.enable_nat_gateway ? aws_nat_gateway.this[0].id : ""
-}

@@ -19,7 +19,6 @@ variable "enable_nat_gateway" { type = bool }
 variable "enable_vpc_endpoints" { type = bool }
 variable "enable_alb" { type = bool }
 variable "enable_flow_logs" { type = bool }
-variable "enable_dvwa_instance" { type = bool }
 variable "enable_attacker_instance" { type = bool }
 variable "log_retention_days" { type = number }
 

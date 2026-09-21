@@ -3,9 +3,6 @@ output "remediation_actions_table_name" { value = aws_dynamodb_table.actions.nam
 output "scan_results_bucket" { value = aws_s3_bucket.scan.id }
 output "sns_topic_arn" { value = aws_sns_topic.alerts.arn }
 
-output "ssm_automation_role_name" { value = aws_iam_role.ssm_automation.name }
-output "ssm_automation_role_arn" { value = aws_iam_role.ssm_automation.arn }
-
 output "correlator_function_name" { value = aws_lambda_function.correlator.function_name }
 output "asr_trigger_function_name" { value = aws_lambda_function.asr_trigger.function_name }
 

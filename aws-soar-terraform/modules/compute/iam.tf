@@ -278,6 +278,16 @@ data "aws_iam_policy_document" "dashboard_execute" {
     actions   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
     resources = ["arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}"]
   }
+
+  # user_data 가 SNS_TOPIC_ARN 을 넘겨주는데 권한이 없어 발행이 실패하던 것을 보완합니다.
+  dynamic "statement" {
+    for_each = var.sns_topic_arn != "" ? [1] : []
+    content {
+      sid       = "NotifyOnManualAction"
+      actions   = ["sns:Publish"]
+      resources = [var.sns_topic_arn]
+    }
+  }
 }
 
 resource "aws_iam_policy" "dashboard_execute" {
