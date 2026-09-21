@@ -7,7 +7,7 @@
 resource "aws_cloudwatch_log_group" "nginx" {
   name              = var.log_group_nginx
   retention_in_days = var.log_retention_days
-  tags              = merge(var.tags, { Scenario = "SEC-02,SEC-09" })
+  tags              = merge(var.tags, { Scenario = "SEC-02/SEC-09" })
 }
 
 resource "aws_cloudwatch_log_group" "mysql" {

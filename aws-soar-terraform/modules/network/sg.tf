@@ -213,7 +213,7 @@ resource "aws_security_group" "db_manual" {
   # AutoRemediation 태그를 일부러 붙이지 않습니다. 이것이 대조군입니다.
   tags = merge(var.tags, {
     Name             = "${var.name_prefix}-db-manual-sg"
-    Scenario         = "SEC-03,SEC-06"
+    Scenario         = "SEC-03/SEC-06"
     RemediationGroup = "manual"
   })
 }

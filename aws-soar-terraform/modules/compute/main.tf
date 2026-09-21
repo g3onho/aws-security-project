@@ -53,7 +53,7 @@ resource "aws_instance" "docker_host" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-docker-host"
     Role     = "service-3tier"
-    Scenario = "SEC-02,SEC-04,SEC-07"
+    Scenario = "SEC-02/SEC-04/SEC-07"
   })
 }
 
@@ -94,7 +94,7 @@ resource "aws_instance" "db" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-db"
     Role     = "database"
-    Scenario = "SEC-03,SEC-06"
+    Scenario = "SEC-03/SEC-06"
   })
 
   depends_on = [aws_secretsmanager_secret_version.db]
