@@ -34,6 +34,15 @@ variable "github_apply_branch" {
 
 locals {
   oidc_enabled = var.github_repo != ""
+
+  # GitHub 저장소에 "고유 ID 사용"(immutable repository id)이 켜져 있으면
+  # sub 가 repo:owner@<숫자>/repo@<숫자>:... 형태로 옵니다.
+  # 설정을 켜든 끄든 동작하도록 두 형태를 모두 허용합니다.
+  # `@*` 앞에 소유자/저장소 이름이 그대로 붙어야 하므로 다른 계정과 겹치지 않습니다.
+  repo_prefixes = local.oidc_enabled ? [
+    "repo:${var.github_repo}",
+    "repo:${split("/", var.github_repo)[0]}@*/${split("/", var.github_repo)[1]}@*",
+  ] : []
 }
 
 # GitHub 의 OIDC 공급자. 계정에 이미 있으면 이 리소스를 빼고 data 로 참조하세요.
@@ -71,10 +80,12 @@ data "aws_iam_policy_document" "plan_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values = concat(
-        [for b in var.github_plan_branches : "repo:${var.github_repo}:${b}"],
-        ["repo:${var.github_repo}:ref:refs/heads/${var.github_apply_branch}"]
-      )
+      values = flatten([
+        for p in local.repo_prefixes : concat(
+          [for b in var.github_plan_branches : "${p}:${b}"],
+          ["${p}:ref:refs/heads/${var.github_apply_branch}"]
+        )
+      ])
     }
   }
 }
@@ -151,9 +162,9 @@ data "aws_iam_policy_document" "apply_assume" {
 
     # PR 에서는 이 역할을 빌릴 수 없습니다. main 브랜치 전용.
     condition {
-      test     = "StringEquals"
+      test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/${var.github_apply_branch}"]
+      values   = [for p in local.repo_prefixes : "${p}:ref:refs/heads/${var.github_apply_branch}"]
     }
   }
 }
