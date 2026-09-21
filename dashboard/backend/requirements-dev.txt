@@ -1,0 +1,6 @@
+-r requirements.txt
+
+pytest>=8.0
+# 실 AWS 어댑터(B2~) 단위 테스트용. AWS 계정 없이 돈다.
+moto[dynamodb,cloudwatch]>=5.0
+openapi-spec-validator>=0.7
