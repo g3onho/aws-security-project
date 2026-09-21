@@ -61,7 +61,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           # 역할 ARN 은 비밀값이 아닙니다. 신뢰 정책이 이 저장소로 제한하고 있습니다.
-          role-to-assume: arn:aws:iam::112232725243:role/github-actions-terraform-plan
+          role-to-assume: arn:aws:iam::455958489281:role/github-actions-terraform-plan
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3

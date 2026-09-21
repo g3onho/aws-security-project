@@ -11,9 +11,13 @@
 ############################################
 
 variable "github_repo" {
-  description = "OIDC 를 허용할 GitHub 리포지토리 (owner/repo). 비우면 생성하지 않습니다."
+  description = <<-EOT
+    OIDC 를 허용할 GitHub 리포지토리 (owner/repo 형식).
+    OIDC 토큰의 sub 클레임과 문자 그대로 비교하므로 대소문자까지 정확해야 합니다.
+    비우면 OIDC 관련 자원을 만들지 않습니다.
+  EOT
   type        = string
-  default     = ""
+  default     = "juhyeop/aws-security-project"
 }
 
 variable "github_plan_branches" {

@@ -2,7 +2,7 @@
 # 로컬에서 처음 전환할 때만: terraform init -migrate-state
 terraform {
   backend "s3" {
-    bucket         = "soar-sec-tfstate-112232725243"
+    bucket         = "soar-sec-tfstate-455958489281"
     key            = "soar-sec/terraform.tfstate"
     region         = "ap-northeast-2"
     dynamodb_table = "soar-sec-tflock"
