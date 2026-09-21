@@ -131,6 +131,11 @@ async function eventDialog(id,ask=false){
  try{const e=await api.detail(id);if(serial!==detailSerial||activeId!==id)return;drawDetail(e,ask);if(e.activeExecutionId)pollJob(id,e.activeExecutionId);}
  catch(error){if(serial===detailSerial){$('#dialog-content').innerHTML=`<div class="dialog-body"><p>${esc(error.message)}</p><button data-action="retry-detail">재시도</button><button data-action="close">닫기</button></div>`;}}
 }
+function applyModeLabels(){const live=config.mode==='live';
+ $('#data-mode').textContent=live?'실 AWS 데이터':'데모 데이터';
+ $('#aws-state').textContent=live?'AWS 연동됨':'AWS 미연동';
+ $('#env-label').textContent=live?'실 AWS 환경':'로컬 데모 환경';
+ $('#env-sub').textContent=live?config.mode+' · 읽기 전용':'실제 AWS 연결 없음';}
 function drawDetail(e,ask=false){
  const canWrite=config.writeEnabled&&config.role==='operator'&&e.actionable;
  const running=['EXECUTING','VERIFYING'].includes(e.rawStatus);
@@ -166,13 +171,13 @@ async function dialogAction(action){
  }
 }
 async function refresh(){
- const box=$('#load-state');box.hidden=false;box.className='load-state';box.textContent='데모 데이터를 불러오는 중…';$('#refresh').disabled=true;$('#content').setAttribute('aria-busy','true');
- try{const [loaded]=await Promise.all([api.load(),mapReady?Promise.resolve():loadMap()]);if(loaded===false)return;render();box.hidden=true;$('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;$('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');$('#worker-state').textContent=summary.health.checks.worker==='ok'?'로컬 작업 처리기 정상':'작업 처리기 중지 · 실행 대기 작업은 재시작 후 처리';}catch(e){if(e.name==='AbortError')return;box.classList.add('error');box.innerHTML=`${esc(e.message)} <button id="retry">다시 시도</button>`;}finally{$('#refresh').disabled=false;$('#content').removeAttribute('aria-busy');}
+ const box=$('#load-state');box.hidden=false;box.className='load-state';box.textContent='불러오는 중…';$('#refresh').disabled=true;$('#content').setAttribute('aria-busy','true');
+ try{const [loaded]=await Promise.all([api.load(),mapReady?Promise.resolve():loadMap()]);if(loaded===false)return;render();box.hidden=true;$('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;$('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');applyModeLabels();$('#worker-state').textContent=summary.health.checks.worker==='ok'?'로컬 작업 처리기 정상':'작업 처리기 중지 · 실행 대기 작업은 재시작 후 처리';}catch(e){if(e.name==='AbortError')return;box.classList.add('error');box.innerHTML=`${esc(e.message)} <button id="retry">다시 시도</button>`;}finally{$('#refresh').disabled=false;$('#content').removeAttribute('aria-busy');}
 }
 $('#region').innerHTML='<option value="all">전체 리전</option>'+regions.map(r=>`<option value="${r.id}">${r.name}${r.id==='global'?'':` · ${r.id}`}</option>`).join('');$('#region').value=state.region;
 let searchTimer;
 $('#status').insertAdjacentHTML('beforeend',[...statuses,'승인됨','실행 실패'].map(s=>`<option>${s}</option>`).join(''));$('#source').insertAdjacentHTML('beforeend',sources.map(s=>`<option>${s}</option>`).join(''));
-['environment','severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{state[key]=e.target.value;state.page=1;refresh();}));
+['severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{state[key]=e.target.value;state.page=1;refresh();}));
 $('#region').addEventListener('change',e=>chooseRegion(e.target.value));
 $('#search').addEventListener('input',e=>{state.search=e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,220);});
 $('#time-range').addEventListener('input',e=>{state.endOffset=+e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,120);});

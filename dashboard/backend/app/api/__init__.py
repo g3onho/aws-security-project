@@ -249,14 +249,11 @@ def cancel(event_id):
 
 @bp.get('/snapshot')
 def snapshot():
-    if adapter().mode != 'demo':
-        raise ApiProblem(501,'실데이터 집계 미연동',code='NOT_IMPLEMENTED')
     return adapter().snapshot(query())
 
 
 @bp.get('/summary')
 def summary():
-    if adapter().mode!='demo':raise ApiProblem(501,'실데이터 집계 미연동',code='NOT_IMPLEMENTED')
     data=adapter().snapshot(query())
     return {**data['summary'],'asOf':data['asOf'],'snapshot':data['snapshot']}
 
@@ -266,7 +263,7 @@ def config():
     from ..adapters.demo import DEMO_NOW,REGIONS
     return dict(mode=adapter().mode,asOf=DEMO_NOW if adapter().mode=='demo' else _now_ms(),
                 writeEnabled=current_app.config['WRITE_ENABLED'],role=g.role,regions=REGIONS,
-                statuses=enums.STATUS_TO_KO,sources=enums.SOURCES,awsConnected=False)
+                statuses=enums.STATUS_TO_KO,sources=enums.SOURCES,awsConnected=adapter().mode=='live')
 
 
 @bp.get('/audit')

@@ -51,6 +51,94 @@ DECISION_TEXT = {
     "dry-run": "dry-run 판정 · 실행하지 않음",
 }
 
+# 상류가 영어로 주는 제목의 한글 표기.
+# 카탈로그(SEC-xx)에 분류된 건 카탈로그 제목이 우선이고, 분류가 안 된 것만 여기서 덮는다.
+# 부분 일치라 컨트롤 이름이 조금 바뀌어도 계속 맞는다. 못 찾으면 원문을 그대로 둔다.
+TITLE_KO = (
+    ("interface endpoint for Systems Manager", "VPC에 Systems Manager 인터페이스 엔드포인트 없음"),
+    ("interface endpoint for Docker Registry", "VPC에 Docker Registry(ECR) 인터페이스 엔드포인트 없음"),
+    ("interface endpoint", "VPC에 필요한 인터페이스 엔드포인트 없음"),
+    ("EKS Runtime Monitoring", "GuardDuty EKS 런타임 모니터링 미사용"),
+    ("ECS Runtime Monitoring", "GuardDuty ECS 런타임 모니터링 미사용"),
+    ("Config should be enabled", "AWS Config 미활성 또는 서비스 연결 역할 미사용"),
+    ("RootCredentialUsage", "루트 계정 자격증명 사용 탐지"),
+    ("invoked using root credentials", "루트 계정으로 API 호출 탐지"),
+    ("restricted-common-ports", "보안 그룹에 위험 포트 공개 (Config 규칙 위반)"),
+    ("restricted-ssh", "보안 그룹에 SSH(22) 전체 공개 (Config 규칙 위반)"),
+)
+
+
+import re as _re  # noqa: E402
+
+CVE_RE = _re.compile(r"CVE-\d{4}-\d+")
+
+# 소스별 근거 문장. 상류 영어 원문은 evidenceOriginal 로 따로 보관한다.
+SOURCE_KO = {
+    "Inspector": "Inspector 취약점 점검",
+    "Trivy": "Trivy 이미지 점검",
+    "GuardDuty": "GuardDuty 위협 탐지",
+    "Config": "AWS Config 규칙 평가",
+    "Security Hub": "Security Hub 보안 표준 점검",
+    "CloudWatch": "CloudWatch 지표 임계치",
+}
+
+
+def _short(resource: str) -> str:
+    """ARN 에서 사람이 읽는 부분만 남긴다."""
+    text = resource or ""
+    if text.startswith("arn:"):
+        tail = text.split(":")[-1]
+        return tail.split("/")[-1] or tail
+    return text
+
+
+def _evidence_ko(source: str, title: str, resource: str, original: str, cves) -> str:
+    """상류 영어 설명 대신 구조화된 사실로 한국어 근거를 만든다.
+
+    상류 Description 은 CVE 해설처럼 길고 제각각인 영어 산문이라 번역 대상이 아니다.
+    화면에 필요한 건 "무엇이 · 어디서 · 무슨 근거로" 세 가지다.
+    """
+    parts = [SOURCE_KO.get(source, source)]
+    found = CVE_RE.findall(original or "") or CVE_RE.findall(title or "")
+    if cves:
+        found = list(cves) + [c for c in found if c not in cves]
+    if found:
+        parts.append("취약점 " + ", ".join(found[:3]) + ("  외 %d건" % (len(found) - 3) if len(found) > 3 else ""))
+    if resource and resource != "n/a":
+        parts.append("대상 " + _short(resource))
+    return " · ".join(parts)
+
+
+# 상류가 주는 권장 조치의 한글 표기. 카탈로그 note 가 없는 미분류 항목에 쓴다.
+RECOMMENDATION_KO = (
+    ("interface VPC endpoint", "해당 서비스용 인터페이스 VPC 엔드포인트를 생성해 프라이빗 경로를 확보하세요."),
+    ("EKS Runtime Monitoring", "GuardDuty EKS 런타임 모니터링을 켜고 에이전트 자동 관리를 사용하세요. EKS 를 쓰지 않으면 해당 없음."),
+    ("ECS-Fargate", "GuardDuty ECS/Fargate 런타임 모니터링용 보안 에이전트를 활성화하세요. ECS 를 쓰지 않으면 해당 없음."),
+    ("Runtime Monitoring", "GuardDuty 런타임 모니터링을 활성화하세요."),
+)
+
+
+def _recommendation_ko(scenario: str, original: str) -> str:
+    """권장 조치. 카탈로그의 한글 note 가 정본이고, 없으면 상류 원문을 쓴다."""
+    item = loader.get(scenario) if scenario else None
+    note = ((item or {}).get("remediation") or {}).get("note")
+    if note:
+        return note.strip()
+    if not original or original.strip().lower() in ("none provided", "none", ""):
+        return "권장 조치가 제공되지 않았습니다. 담당자 검토가 필요합니다."
+    for needle, korean in RECOMMENDATION_KO:
+        if needle in original:
+            return korean
+    return original
+
+
+def _title_ko(text: str) -> str:
+    for needle, korean in TITLE_KO:
+        if needle in text:
+            return korean
+    return text
+
+
 WRITE_PLAN = {
     "approve": "dynamodb:PutItem(actions, decision=approved)",
     "execute": "게이트 판정 → ssm:StartAutomationExecution + iam:PassRole → dynamodb:PutItem",
@@ -191,9 +279,16 @@ class LiveAdapter:
     def _build_events(self) -> list[dict]:
         correlated = self._correlated()
         actions = self._actions()
+        # INFORMATIONAL 은 "평가할 리소스가 없음"(Compliance=WARNING)이다.
+        # 표준을 켜면 이 계정에 없는 서비스(Redshift·SageMaker 등)까지 전부 올라와
+        # 화면이 빈 결과로 뒤덮인다. 실제 탐지만 남긴다.
         page = self._call(
             "securityhub", "get_findings",
-            Filters={"RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}]},
+            Filters={
+                "RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}],
+                "SeverityLabel": [{"Value": v, "Comparison": "EQUALS"}
+                                  for v in ("LOW", "MEDIUM", "HIGH", "CRITICAL")],
+            },
             MaxResults=MAX_ITEMS,
         )
 
@@ -262,6 +357,13 @@ class LiveAdapter:
         extra = extra or {}
         wired = loader.is_wired(scenario) if scenario else False
         mode = "AUTO" if wired else "MANUAL"
+        # 화면은 한국어다. 카탈로그 제목이 정본, 없으면 표기표, 그것도 없으면 원문.
+        # CVE 번호가 들어간 제목은 원문이 더 구체적이다(카탈로그 제목으로 덮으면
+        # 88건이 전부 같은 이름이 되어 구분이 사라진다). 그 외에는 한국어를 쓴다.
+        if CVE_RE.search(title or ""):
+            display_title = title
+        else:
+            display_title = ((loader.get(scenario) or {}).get("title") if scenario else None)                 or _title_ko(title)
 
         # 조치 이력을 탐지 항목 뒤에 이어 붙이고, 마지막 판정으로 상태를 정한다.
         history = [{"at": at, "text": "탐지 근거 수집", "actor": None, "decision": None}]
@@ -284,7 +386,8 @@ class LiveAdapter:
         return {
             "id": event_id,
             "scenario": scenario or "UNCLASSIFIED",
-            "title": title,
+            "title": display_title,
+            "titleOriginal": title,
             "severity": severity if severity in enums.SEVERITY_ORDER else "LOW",
             "source": source,
             "mode": mode,
@@ -302,8 +405,10 @@ class LiveAdapter:
             "beforeAt": at,
             "afterAt": after_at,
             "afterValue": after_value,
-            "evidence": evidence,
-            "recommendation": recommendation,
+            "evidence": _evidence_ko(source, title, resource, evidence,
+                                     extra.get("cveIds") or []),
+            "evidenceOriginal": evidence,
+            "recommendation": _recommendation_ko(scenario, recommendation),
             # 위치 정보는 데모 전용이다. 실모드는 GeoIP 를 호출하지 않는다.
             "sourceIp": None,
             "sourceLocation": None,
@@ -322,13 +427,19 @@ class LiveAdapter:
 
     # ── 조회 ────────────────────────────────────────────
     def list_events(self, q: dict) -> dict:
-        from ..services.filters import apply_filters, paginate
-        return paginate(apply_filters(self._events(), q), q)
+        import hashlib
+
+        from ..storage import encode
+        from ..services.filters import apply_filters, paginate, view_rows
+        rows = view_rows(apply_filters(self._events(), q), q)
+        result = paginate(rows, q)
+        result["snapshot"] = hashlib.sha256(encode(rows).encode()).hexdigest()[:20]
+        return result
 
     def snapshot(self, q: dict) -> dict:
-        """CSV 내보내기용 — 페이지네이션 없이 필터 결과 전부."""
-        from ..services.filters import apply_filters
-        return {"items": apply_filters(self._events(), q)}
+        """지역 합계·차트·표가 한 판을 보도록 집계까지 같이 준다. demo 와 같은 모양."""
+        from ..services.filters import build_snapshot
+        return build_snapshot(self._events(), q, "live")
 
     def get_event(self, event_id: str):
         return next((e for e in self._events() if e["id"] == event_id), None)

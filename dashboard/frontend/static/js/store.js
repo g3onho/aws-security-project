@@ -15,7 +15,7 @@ export async function request(url,options={}){
  if(res.status===401){location.assign('/login');throw Error('로그인이 필요합니다.');}
  const data=await res.json();if(!res.ok)throw Error(data.title||'서버 요청에 실패했습니다.');return data;
 }
-export function query(){const to=DEMO_NOW-state.endOffset*3600000;return new URLSearchParams({from:to-state.hours*3600000,to,region:state.region,environment:state.environment,severity:state.severity.toUpperCase(),status:Object.keys(statuses).find(k=>statuses[k]===state.status)||'',source:state.source,q:state.search,view:state.view});}
+export function query(){const to=DEMO_NOW-state.endOffset*3600000;return new URLSearchParams({from:to-state.hours*3600000,to,region:state.region,severity:state.severity.toUpperCase(),status:Object.keys(statuses).find(k=>statuses[k]===state.status)||'',source:state.source,q:state.search,view:state.view});}
 export const api={
  async init(){const me=await request('/api/auth/session');if(!me.user){location.assign('/login');throw Error('로그인이 필요합니다.');}csrf=me.csrfToken;config=await request('/api/config');config.user=me.user;DEMO_NOW=config.asOf;},
  async load(){if(!DEMO_NOW)await this.init();const seq=++generation;controller?.abort();controller=new AbortController();const options={signal:controller.signal};const q=query();

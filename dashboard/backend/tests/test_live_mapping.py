@@ -73,11 +73,11 @@ def test_epoch_ms_only(monkeypatch):
 
 
 def test_field_set_matches_demo(monkeypatch):
-    """live 이벤트가 demo 의 필드를 전부 갖는다. historyNote 만 실모드 전용."""
+    """live 이벤트가 demo 의 필드를 전부 갖는다. 아래 둘만 실모드 전용."""
     demo_fields = set(demo_events()[0])
     for event in adapter(monkeypatch)._events():
         assert demo_fields <= set(event), demo_fields - set(event)
-        assert set(event) - demo_fields == {"historyNote"}
+        assert set(event) - demo_fields <= {"historyNote", "titleOriginal", "evidenceOriginal"}
 
 
 def test_classification_and_correlation(monkeypatch):
