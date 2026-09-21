@@ -158,7 +158,9 @@ locals {
   # NAT 를 끈 채로 CloudWatch Agent 로그 수집(SEC-06 알람)과 Secrets Manager
   # 조회까지 살리려면 "secretsmanager", "logs", "monitoring" 을 추가하세요.
   # 엔드포인트당 시간당 과금이라 개수를 늘리면 NAT 1개보다 비싸집니다.
-  interface_endpoints = var.enable_vpc_endpoints ? toset(["ssm", "ssmmessages", "ec2messages"]) : toset([])
+  # monitoring: CloudWatch Agent 가 PutMetricData 를 보낼 경로. 없으면 에이전트가
+  # 정상 기동해도 메모리 지표(SEC-10)가 영원히 올라오지 않는다. NAT 1개보다 싸다.
+  interface_endpoints = var.enable_vpc_endpoints ? toset(["ssm", "ssmmessages", "ec2messages", "monitoring"]) : toset([])
 }
 
 resource "aws_vpc_endpoint" "interface" {

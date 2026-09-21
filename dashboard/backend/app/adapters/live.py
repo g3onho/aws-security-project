@@ -36,7 +36,8 @@ from ..catalog import loader
 
 # ponytail: correlated 테이블에 시간 GSI 가 없어 Scan 한다.
 # 발표용 계정 규모에서 넉넉하고, 넘치면 GSI 를 파고 Query 로 바꾼다.
-MAX_ITEMS = 200
+# 100 인 이유: securityhub:GetFindings 와 inspector2:ListFindings 의 상한이 100 이다.
+MAX_ITEMS = 100
 
 NO_ACTIONS_TABLE_NOTE = (
     "REMEDIATION_ACTIONS_TABLE 이 설정되지 않아 조치 이력을 붙이지 못했습니다. "
@@ -357,7 +358,7 @@ class LiveAdapter:
             "cloudwatch", "get_metric_data",
             MetricDataQueries=[
                 _metric_query("cpu", "AWS/EC2", "CPUUtilization", instance, period),
-                _metric_query("mem", "CWAgent", "mem_used_percent", instance, period),
+                _metric_query("mem", *self._memory_metric(), instance, period),
             ],
             StartTime=datetime.fromtimestamp(q["from"] / 1000, tz=timezone.utc),
             EndTime=datetime.fromtimestamp(q["to"] / 1000, tz=timezone.utc),
@@ -380,14 +381,36 @@ class LiveAdapter:
             "note": None if points else "선택한 기간에 지표 데이터가 없습니다.",
         }
 
+    def _memory_metric(self) -> tuple[str, str]:
+        """메모리 지표의 (네임스페이스, 지표명).
+
+        이 프로젝트는 CloudWatch Agent 를 "<name_prefix>/host" 네임스페이스에
+        MemoryUsedPercent 로 쏜다(soar/cloudwatch.tf:55-56). NAME_PREFIX 가 없으면
+        Agent 기본값으로 떨어진다.
+        """
+        prefix = getattr(self.config, "NAME_PREFIX", "")
+        if prefix:
+            return f"{prefix}/host", "MemoryUsedPercent"
+        return "CWAgent", "mem_used_percent"
+
     def _first_instance(self) -> str | None:
-        for e in self._events():
-            resource = e.get("resource") or ""
-            if resource.startswith("i-"):
-                return resource
-            if ":instance/" in resource:
-                return resource.split(":instance/")[-1]
-        return None
+        """지표를 볼 EC2 를 고른다.
+
+        finding 에서 찾지 않는다 — Security Hub 는 EC2 와 무관한 컨트롤 결과를
+        대부분 올려서 EC2 가 한 건도 없을 수 있다. EC2 에 직접 묻는다.
+        """
+        def build():
+            resp = self._call(
+                "ec2", "describe_instances",
+                Filters=[{"Name": "instance-state-name", "Values": ["running"]}],
+                MaxResults=MAX_ITEMS,
+            )
+            for reservation in resp.get("Reservations", []):
+                for instance in reservation.get("Instances", []):
+                    return instance.get("InstanceId")
+            return None
+
+        return self._cached("instance", self.config.CACHE_TTL["metrics"], build)
 
     def vulnerabilities(self, q: dict) -> dict:
         def build():

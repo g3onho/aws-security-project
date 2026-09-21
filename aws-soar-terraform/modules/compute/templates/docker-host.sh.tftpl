@@ -21,8 +21,10 @@ apt-get update -y
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 systemctl enable --now docker
 
-# CloudWatch Agent - Nginx access/error 로그 분리 수집 (Docker 체크리스트 #25~27, SEC-09)
-curl -fsSL https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/cwagent.deb
+# CloudWatch Agent
+# 리전 버킷을 쓴다 — 글로벌 엔드포인트(amazoncloudwatch-agent.s3.amazonaws.com)는
+# S3 게이트웨이 엔드포인트로 라우팅되지 않아 NAT 없는 프라이빗 서브넷에서 실패한다. - Nginx access/error 로그 분리 수집 (Docker 체크리스트 #25~27, SEC-09)
+curl -fsSL https://amazoncloudwatch-agent-${region}.s3.${region}.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/cwagent.deb
 dpkg -i -E /tmp/cwagent.deb || true
 
 cat > /opt/aws/amazon-cloudwatch-agent/etc/cw.json <<CWJSON

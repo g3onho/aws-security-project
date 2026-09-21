@@ -44,6 +44,9 @@ class Config:
     REMEDIATION_ACTIONS_TABLE = os.getenv("REMEDIATION_ACTIONS_TABLE", "")
     SCAN_RESULTS_BUCKET = os.getenv("SCAN_RESULTS_BUCKET", "")
     SNS_TOPIC_ARN = os.getenv("SNS_TOPIC_ARN", "")
+    # 메모리는 CloudWatch Agent 커스텀 지표다 — 네임스페이스가 배포마다 다르다
+    # (soar/cloudwatch.tf:56 의 "${name_prefix}/host"). 비면 표준 CWAgent 로 본다.
+    NAME_PREFIX = os.getenv("NAME_PREFIX", "")
 
     VERSION = read_version()
 
