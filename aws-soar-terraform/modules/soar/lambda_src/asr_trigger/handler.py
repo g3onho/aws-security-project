@@ -61,6 +61,8 @@ def _record(action_id, decision, detail, before=None, after=None, exec_id=None):
     dynamodb.Table(ACTIONS_TABLE).put_item(Item={
         "action_id": action_id,
         "created_at": _now(),
+        # 어느 finding 때문에 이 조치가 났는지. 대시보드가 이 값으로 조인합니다.
+        "finding_id": detail.get("finding_id", "unknown"),
         "decision": decision,          # auto-executed / manual-notified / dry-run
         "finding_type": detail.get("finding_type", "unknown"),
         "resource_id": detail.get("resource_id", "n/a"),
@@ -93,6 +95,8 @@ def _parse_finding(event):
             elif not resource_id:
                 resource_id = r.get("Id", "")
         return {
+            # finding 원본 ID. 조치 이력(remediation_actions)과 finding 을 잇는 유일한 키입니다.
+            "finding_id": f.get("Id") or "unknown",
             "finding_type": f.get("Title", ftype),
             "generator": gen,
             "match_text": " ".join([f.get("Title", ""), ftype, gen]),
@@ -105,6 +109,7 @@ def _parse_finding(event):
     res = detail.get("resource", {})
     access_key = res.get("accessKeyDetails", {}).get("accessKeyId", "")
     return {
+        "finding_id": detail.get("id") or event.get("id") or "unknown",
         "finding_type": gd_type,
         "generator": "guardduty",
         "match_text": gd_type,

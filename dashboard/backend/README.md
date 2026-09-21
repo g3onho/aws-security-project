@@ -2,15 +2,9 @@
 
 Flask API. 화면 자산은 옆 폴더 `../frontend/`(templates · static)를 그대로 쓴다.
 
-설계 문서는 저장소 루트 `docs/backend/` 에 있다.
-
-| 문서 | 내용 |
-|---|---|
-| `01-frontend-as-is.md` | 프론트 실측 분석, 이벤트 26개 필드의 원천 판정 |
-| `02-frontend-redesign.md` | Gap 분석, To-Be 구조, 변경 규모 A/B/C |
-| `03-api-spec.yaml` | OpenAPI 3.1 — **이 서버의 계약** |
-| `04-backend-design.md` | 데이터 매핑, DynamoDB 재설계, 게이트, 보안 |
-| `05-implementation-plan.md` | 마일스톤과 테스트 전략 |
+계약(응답 필드·타입)의 정본은 코드다 — `app/adapters/demo.py` 의 이벤트 필드와
+`tests/test_live_mapping.py` 의 검사가 그 역할을 한다. 설계 문서 `docs/backend/`
+는 이 저장소에 없다.
 
 ---
 
@@ -78,4 +72,4 @@ AWS 계정이 필요한 테스트는 하나도 없다.
 - **응답 시각은 전부 epoch ms 정수다.** 프론트가 `new Date(ms)` 와 산술 비교를 직접 하므로 ISO 문자열을 주면 필터가 깨진다.
 - **상태·위험도·대응 방식은 영문 enum.** 화면 국문 변환은 프론트가 한다. 단 CSV 는 국문이 계약이다.
 - **SEC-02 는 실행이 422 로 막힌다.** `ASR-HardenNginx` 는 SSM 문서와 Lambda 환경변수는 있으나 `asr_trigger` 에 호출 분기가 없다(README:303). 막는 게 정확한 동작이다.
-- **실 AWS 연동 전에 DynamoDB 스키마를 바꿔야 한다.** 지금 `remediation_actions_table` 에는 `finding_id` 가 없어 이벤트와 조치 이력을 조인할 수 없다. `terraform apply` 이후에는 마이그레이션이 필요하다. `04-backend-design.md` §2.
+- **조치 이력은 `finding_id` 로 조인한다.** `asr_trigger` 가 판정할 때마다 `remediation_actions` 에 `finding_id` 를 함께 기록하므로, live 어댑터가 이 값으로 이벤트에 이력을 붙인다. DynamoDB 는 스키마리스라 `aws_dynamodb_table` 정의는 바꾸지 않았다 — 키가 아닌 속성이기 때문이다. 조회량이 늘면 그때 GSI 를 판다.

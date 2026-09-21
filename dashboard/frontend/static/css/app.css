@@ -50,3 +50,19 @@ dialog{margin:auto}
 @media(max-width:720px){.search-wrap{flex-basis:calc(100% - 64px);min-width:200px}.filters select{min-width:140px}.map-legend{font-size:10px;flex-wrap:wrap;right:10px}.map-legend a{font-size:9px}.top-controls .demo-dot{display:none}.top-controls select{display:block;width:100px;font-size:11px;min-width:0}.brand{white-space:nowrap;font-size:11px}.brand svg{width:17px}.topbar{gap:8px}.top-controls{gap:5px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
+
+/* 로그인 화면 (templates/login.html) */
+.login-body{min-height:100vh;display:grid;place-items:center;background:var(--bg);padding:24px}
+.login-card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:32px 28px;display:flex;flex-direction:column;gap:14px}
+.login-card .brand{margin-bottom:4px}
+.login-card h1{font-size:18px;font-weight:600;margin:0}
+.login-hint{font-size:12px;opacity:.72;margin:0}
+.login-hint code{font-size:11px}
+#login-form{display:flex;flex-direction:column;gap:6px}
+#login-form label{font-size:12px;opacity:.8;margin-top:8px}
+#login-form input{background:var(--bg);border:1px solid var(--line);border-radius:6px;color:inherit;padding:9px 11px;font:inherit}
+#login-form input:focus-visible{outline:2px solid #6fd8c4;outline-offset:1px}
+#login-form button{margin-top:16px;background:#2f6f61;border:1px solid #3d8878;border-radius:6px;color:#eaf5f2;padding:10px;font:inherit;font-weight:600;cursor:pointer}
+#login-form button:hover:not(:disabled){background:#38816f}
+#login-form button:disabled{opacity:.6;cursor:progress}
+.login-error{background:#3a2422;border:1px solid #7a3b36;border-radius:6px;color:#f0bcb8;font-size:12px;margin:10px 0 0;padding:9px 11px}

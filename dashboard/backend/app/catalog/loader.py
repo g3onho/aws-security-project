@@ -82,3 +82,32 @@ def needs_send_command(scenario_id: str) -> bool:
     """
     item = get(scenario_id)
     return bool((item.get("verify") or {}).get("needs_send_command")) if item else False
+
+
+def classify(source: str = "", generator: str = "", gd_type: str = "",
+             config_rule: str = "", alarm: str = "") -> str | None:
+    """실 AWS finding 을 SEC-xx 로 분류한다.
+
+    카탈로그의 `match:` 블록이 정본이다. 우선순위는 좁은 것부터 —
+    GuardDuty 유형 > Config 규칙 > Security Hub generator > 소스.
+    어디에도 걸리지 않으면 None 이고, 호출부가 미분류로 처리한다.
+    """
+    items = load()["scenarios"]
+
+    def matched(key, test):
+        for sid, item in items.items():
+            if item.get("demo_only"):
+                continue
+            for value in (item.get("match") or {}).get(key, []):
+                if test(value):
+                    return sid
+        return None
+
+    return (
+        (gd_type and matched("guardduty_type_prefix", lambda v: gd_type.startswith(v)))
+        or (config_rule and matched("config_rules", lambda v: v == config_rule))
+        or (generator and matched("securityhub_generator_contains", lambda v: v in generator))
+        or (alarm and matched("cloudwatch_alarm_suffix", lambda v: alarm.endswith(v)))
+        or (source and matched("sources", lambda v: v == source))
+        or None
+    )
