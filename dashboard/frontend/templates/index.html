@@ -6,15 +6,16 @@
  <title>AWS Security Operations · 통합 관제</title>
  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
  <link rel="stylesheet" href="/static/css/tailwind.css">
- <link rel="stylesheet" href="/static/css/app.css?v=2.2.2">
+ <link rel="stylesheet" href="/static/css/app.css?v=local-1">
  <script defer src="/static/vendor/chart.umd.js"></script>
- <script type="module" src="/static/js/app.js?v=2.2.2"></script>
+ <script type="module" src="/static/js/app.js?v=local-1"></script>
+ <link rel="stylesheet" href="/static/css/local.css?v=local-1">
 </head>
 <body>
 <a class="skip-link" href="#main">본문으로 이동</a>
 <header class="topbar flex items-center justify-between">
  <a class="brand flex items-center gap-3" href="/"><svg width="24" height="28" viewBox="0 0 24 28" fill="none" aria-hidden="true"><path d="M12 2 22 6v8c0 6-10 12-10 12S2 20 2 14V6Z" stroke="currentColor" stroke-width="1.5"/><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.5"/></svg><span>AWS <strong>Security Operations</strong></span></a>
- <div class="top-controls flex items-center gap-3"><span class="demo-dot">데모 데이터</span><label class="sr-only" for="environment">환경</label><select id="environment"><option value="production">Production</option><option value="staging">Staging</option></select><span class="connection">AWS 미연동</span><button id="notifications" class="icon-button" aria-label="알림 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="notification-count" class="notification-dot"></span></button><span class="avatar" aria-label="관제 담당자">OP</span></div>
+ <div class="top-controls flex items-center gap-3"><span class="demo-dot">데모 데이터</span><label class="sr-only" for="environment">환경</label><select id="environment"><option value="production">Production</option><option value="staging">Staging</option></select><span class="connection">AWS 미연동</span><button id="notifications" class="icon-button" aria-label="알림 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="notification-count" class="notification-dot"></span></button><span id="session-user" class="session-user"></span><button id="logout" class="subtle-button">로그아웃</button></div>
 </header>
 <aside class="sidebar">
  <div class="workspace-label">WORKSPACE <span>01</span></div>
@@ -25,7 +26,7 @@
   <button data-view="infrastructure"><span>▥</span>인프라 모니터링</button>
   <button data-view="responses"><span>↻</span>대응 이력</button>
  </nav>
- <div class="sidebar-bottom"><span class="status-dot"></span>데모 환경 정상<div>실제 AWS 연결 없음</div><small>SECURITY CONSOLE / v2.2</small></div>
+ <div class="sidebar-bottom"><span class="status-dot"></span>로컬 데모 환경<div>실제 AWS 연결 없음</div><small>LOCAL BACKEND / v0.1</small></div>
 </aside>
 <main id="main" tabindex="-1">
  <section class="page-heading flex items-center justify-between gap-3"><div><div class="eyebrow">SECURITY OPERATIONS CENTER</div><h1 id="page-title">통합 관제 <span>Overview</span></h1></div><div class="refresh-group"><span id="updated">갱신 대기</span><button id="refresh" class="subtle-button">↻ 새로고침</button></div></section>
@@ -54,7 +55,7 @@
   <div class="range-wrap"><label for="time-range" class="sr-only">종료 시각을 과거로 이동 (시간 전)</label><input id="time-range" type="range" min="0" max="144" step="1" value="0" dir="rtl"><div class="range-labels"><span>6일 전</span><span>3일 전</span><span>데모 기준 시각</span></div></div>
   <div id="time-label" class="time-label"></div>
  </section>
- <div id="content"></div>
+ <div id="worker-state" class="local-context" role="status"></div><div id="content"></div>
  <footer class="main-footer"><span><span class="status-dot"></span> DEMO MODE <span class="footer-divider">/</span> 모든 조치는 시뮬레이션입니다.</span><span>기준 데이터 2026.09.18 15:00 KST</span></footer>
 </main>
 <dialog id="event-dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>

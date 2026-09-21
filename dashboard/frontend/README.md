@@ -19,14 +19,20 @@
 
 ## 실행
 
+> **서버 코드는 `../backend/` 로 옮겼습니다.** 이 폴더에는 화면 자산(templates / static / tests)만 남습니다.
+> `start-dashboard.cmd` 와 `requirements.txt` 는 기존 절차를 깨지 않도록 backend 쪽으로 위임하는 포인터로 남겨두었습니다.
+
 이 Windows PC에서는 **`start-dashboard.cmd`를 더블클릭**하면 설치된 Codex Python 실행 환경을 찾아 로컬 서버를 시작합니다. 실행 창을 닫으면 서버가 종료됩니다. 이미 미리보기가 실행 중이면 아래 브라우저 주소로 바로 접속하세요.
 
-Python 3.10 이상에서 이 폴더로 이동한 뒤 실행합니다.
+Python 3.10 이상에서 실행합니다.
 
 ```powershell
+cd ..\backend
 python -m pip install -r requirements.txt
 python run.py
 ```
+
+이 폴더에서 `python -m pip install -r requirements.txt` 를 실행해도 backend 의 의존성이 설치됩니다.
 
 브라우저: http://127.0.0.1:5000
 
@@ -63,7 +69,9 @@ CPU·메모리는 보안 이벤트 개수가 아닌 자원 시계열이므로, �
 
 | 파일 | 역할 |
 |---|---|
-| `run.py` | Flask 앱 팩토리, HTML 라우트, 데모 health, 로컬 미리보기 fallback |
+| `../backend/run.py` | Flask 앱 팩토리, HTML 라우트, health, 로컬 미리보기 fallback |
+| `../backend/app/` | API 블루프린트, 시나리오 카탈로그, 데모·실 AWS 어댑터, 게이트 |
+| `start-dashboard.cmd` | `../backend/start-dashboard.cmd` 로 위임하는 런처 |
 | `templates/index.html` | 공통 페이지와 접근성 레이블 |
 | `static/css/app.css` | 반응형 스타일과 지도·패널 모션 |
 | `static/css/tailwind.css` | 미리 생성한 Tailwind CSS |
@@ -78,9 +86,13 @@ CPU·메모리는 보안 이벤트 개수가 아닌 자원 시계열이므로, �
 
 ## 실제 API 연결 지점
 
-`static/js/store.js`의 `api.load`, `api.execute`, `api.verify`가 교체 지점입니다. 아직 실제 API 요청은 없습니다. 백엔드가 제공하는 데이터를 `data.js` 이벤트 스키마로 정규화하고, `load`에서 현재 `events`를 대체하면 공통 필터와 집계를 유지할 수 있습니다. 자원 시계열은 `metricsFor`를 비동기 조회 계층으로 교체해야 합니다.
+`static/js/store.js`의 `api.load`, `api.execute`, `api.verify`가 교체 지점입니다. **프론트엔드는 아직 실제 API 요청을 하지 않습니다.**
 
-연결 시 권장 인터페이스 예시이며 **현재 구현된 API가 아닙니다**:
+다만 백엔드는 이미 붙어 있습니다. `../backend/` 가 `/api/*` 를 제공하고, 데모 모드에서는 `data.js` 와 **이벤트 단위로 동일한 데이터**를 냅니다(`backend/tests/test_demo_parity.py` 가 Node 로 대조). 명세는 `docs/backend/03-api-spec.yaml`, 필드 대응은 `docs/backend/01-frontend-as-is.md` §3 에 있습니다.
+
+주의: API 는 상태·위험도·대응 방식을 **영문 enum**으로 내려줍니다(`NEW`, `CRITICAL`, `AUTO` …). 화면 국문 문자열로의 변환은 프론트 어댑터가 맡습니다. CSV 는 국문 그대로입니다.
+
+아래는 프론트가 소비해야 할 엔드포인트입니다:
 
 v2.0 추가 데이터 필드: `sourceIp`(문자열 또는 null), `sourceLocation`({city, lon, lat, provenance} 또는 null), `geoStatus`. 위치 데이터는 백엔드에서 정규화해 전달해야 하며, 프론트엔드는 실제 GeoIP 서비스를 호출하지 않습니다. 국가 경계·리전·연결선의 좌표 변환은 `map.js`의 `project`를 공통 사용합니다.
 
