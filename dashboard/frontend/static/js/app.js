@@ -11,7 +11,9 @@ let charts=[],mapReady=false,zoom=DEFAULT_ZOOM,rotation=[...DEFAULT_ROTATION],pa
 let worldFeatures=[],cachedAll=[],cachedMapped=[],rafPending=false,selectedCountryIndex=-1;
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,3500);}
-function badge(e){return `<span class="badge" style="color:${severityColors[e.severity]}">${e.severity}</span>`;}
+// severityBumped: correlator 가 "위협+CVE 동시 존재"로 한 단계 올린 건. 올렸다는 사실이
+// 화면에 없으면 자동 모니터링 2번이 동작한 증거가 남지 않는다.
+function badge(e){return `<span class="badge" style="color:${severityColors[e.severity]}">${e.severity}</span>`+(e.severityBumped?` <span class="badge bumped" title="GuardDuty 위협과 Inspector CVE가 같은 자원에 있어 심각도를 한 단계 올렸습니다">↑상향</span>`:'');}
 function statusBadge(status){return `<span class="status-badge" style="color:${status==='해결'?'#32d4be':status==='재검증 실패'?'#ef777f':status==='승인 대기'?'#d8ca78':'#a9bcb1'}">${esc(status)}</span>`;}
 function empty(message='선택한 조건에 맞는 이벤트가 없습니다.'){return `<div class="empty"><strong>데이터 없음</strong>${message}</div>`;}
 function header(title,meta=''){return `<div class="panel-heading"><h2>${title}</h2><span class="meta">${meta}</span></div>`;}

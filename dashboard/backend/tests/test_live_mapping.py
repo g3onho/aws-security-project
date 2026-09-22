@@ -56,6 +56,8 @@ def adapter(monkeypatch):
             return {"correlated": CORRELATED, "actions": ACTIONS}[kwargs["TableName"]]
         if (service, op) == ("securityhub", "get_findings"):
             return {"Findings": [FINDING]}
+        if (service, op) == ("cloudwatch", "describe_alarms"):
+            return {"MetricAlarms": []}
         raise AssertionError(f"예상하지 못한 호출: {service}.{op}")
 
     monkeypatch.setattr(live, "_call", fake_call)
@@ -152,12 +154,125 @@ def test_ms_handles_every_shape():
     assert _ms("깨진 값") is None
 
 
-def test_writes_are_blocked():
-    """쓰기는 아직 501 이다. run.py 가 실모드에서 WRITE_ENABLED 를 끈다."""
+def test_writes_blocked_when_disabled():
+    """WRITE_ENABLED 가 꺼져 있으면 쓰기는 409 다. run.py 의 기본값이 꺼짐이다."""
     import pytest
     from app.api.errors import ApiProblem
     live = LiveAdapter(Config)
     for name in ("approve", "execute", "verify", "cancel"):
         with pytest.raises(ApiProblem) as caught:
             getattr(live, name)("e", {}, "actor", "key")
-        assert caught.value.status == 501
+        assert caught.value.status == 409
+        assert caught.value.code == "WRITE_DISABLED"
+
+
+
+# ── 신규 소스 4종 (AWS 검증 불가 — 가짜 응답으로 매핑만 확인) ──────────
+
+GD_FINDING = {
+    "Id": "gd-sh-1",
+    "GeneratorId": "aws/guardduty",
+    "Title": "UnauthorizedAccess:IAMUser/MaliciousIPCaller",
+    "Types": ["UnauthorizedAccess:IAMUser/MaliciousIPCaller"],
+    "Severity": {"Label": "HIGH"},
+    "UpdatedAt": "2026-09-21T03:00:00Z",
+    "Resources": [{"Id": "arn:aws:ec2:ap-northeast-2:1:instance/i-0abc"}],
+    "ProductFields": {
+        "aws/securityhub/ProductName": "GuardDuty",
+        "service.action.awsApiCallAction.remoteIpDetails.ipAddressV4": "203.0.113.9",
+        "service.action.awsApiCallAction.remoteIpDetails.country.countryName": "China",
+        "service.action.awsApiCallAction.remoteIpDetails.city.cityName": "Shanghai",
+    },
+}
+
+ALARMS = {"MetricAlarms": [{
+    "AlarmName": "soar-sec-dev-mysql-bruteforce",
+    "StateReason": "Threshold Crossed",
+    "StateUpdatedTimestamp": "2026-09-21T03:10:00Z",
+    "Dimensions": [{"Name": "InstanceId", "Value": "i-0db"}],
+}]}
+
+
+def adapter_v2(monkeypatch, extra=None):
+    extra = extra or {}
+    live = LiveAdapter(Config)
+    monkeypatch.setattr(Config, "CORRELATED_FINDINGS_TABLE", "", raising=False)
+    monkeypatch.setattr(Config, "REMEDIATION_ACTIONS_TABLE", "", raising=False)
+
+    def fake_call(service, op, **kwargs):
+        key = (service, op)
+        if key in extra:
+            return extra[key]
+        if key == ("securityhub", "get_findings"):
+            return {"Findings": [GD_FINDING]}
+        if key == ("cloudwatch", "describe_alarms"):
+            return ALARMS
+        raise AssertionError(f"예상하지 못한 호출: {service}.{op}")
+
+    monkeypatch.setattr(live, "_call", fake_call)
+    return live
+
+
+def test_guardduty_source_ip(monkeypatch):
+    """공격자 IP 는 채우되 좌표는 만들어내지 않는다."""
+    event = next(e for e in adapter_v2(monkeypatch)._events() if e["id"] == "gd-sh-1")
+    assert event["sourceIp"] == "203.0.113.9"
+    assert event["sourceLocation"]["country"] == "China"
+    # AWS 는 좌표를 주지 않는다. 데모의 모의 좌표를 쓰면 안 된다.
+    assert event["sourceLocation"]["lon"] is None
+    assert event["sourceLocation"]["lat"] is None
+    assert event["geoStatus"] == "국가만 확인"
+
+
+def test_cloudwatch_alarm_becomes_event(monkeypatch):
+    """ALARM 상태 알람이 이벤트로 올라오고 SEC-06 으로 분류된다."""
+    event = next(e for e in adapter_v2(monkeypatch)._events()
+                 if e["source"] == "CloudWatch")
+    assert event["scenario"] == "SEC-06"          # cloudwatch_alarm_suffix 매칭
+    # 분류되면 카탈로그 제목이 우선이다(TITLE_KO 는 미분류 항목용).
+    assert event["title"] == "DB 무차별 대입 로그인"
+    assert isinstance(event["at"], int)
+
+
+def test_alarm_failure_does_not_break_list(monkeypatch):
+    """선택적 소스가 죽어도 전체 목록은 살아 있어야 한다."""
+    from app.api.errors import ApiProblem
+    live = adapter_v2(monkeypatch)
+    original = live._call
+
+    def flaky(service, op, **kwargs):
+        if service == "cloudwatch":
+            raise ApiProblem(502, "cloudwatch 조회에 실패했습니다.")
+        return original(service, op, **kwargs)
+
+    monkeypatch.setattr(live, "_call", flaky)
+    live._cache.clear()
+    events = live._events()
+    assert len(events) == 1                        # Security Hub 것은 남는다
+    assert all(e["source"] != "CloudWatch" for e in events)
+
+
+def test_trivy_report_key(monkeypatch):
+    """최신 리포트 키가 취약점 응답에 실린다."""
+    monkeypatch.setattr(Config, "SCAN_RESULTS_BUCKET", "scan-bucket", raising=False)
+    live = adapter_v2(
+        monkeypatch,
+        {("s3", "list_objects_v2"): {"Contents": [
+            {"Key": "trivy/2026-09-20.txt", "LastModified": 1},
+            {"Key": "trivy/2026-09-21.txt", "LastModified": 2},
+        ]},
+           ("inspector2", "list_findings"): {"findings": [{
+               "findingArn": "arn:x", "severity": "HIGH",
+               "packageVulnerabilityDetails": {"vulnerabilityId": "CVE-2026-1"},
+               "resources": [{"id": "i-0abc"}],
+           }]}},
+    )
+    items = live.vulnerabilities({"to": 0})["items"]
+    assert items[0]["reportKey"] == "trivy/2026-09-21.txt"
+
+
+def test_trivy_skipped_without_bucket(monkeypatch):
+    """버킷 미설정이면 S3 를 부르지 않고 조용히 건너뛴다."""
+    monkeypatch.setattr(Config, "SCAN_RESULTS_BUCKET", "", raising=False)
+    live = adapter_v2(monkeypatch, {("inspector2", "list_findings"): {"findings": []}})
+    assert live.vulnerabilities({"to": 0})["items"] == []

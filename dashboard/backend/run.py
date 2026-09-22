@@ -40,7 +40,10 @@ def create_app(overrides=None):
     else:
         from app.adapters.live import LiveAdapter
         adapter=LiveAdapter(Config)
-        app.config['WRITE_ENABLED']=False
+        # 실모드 쓰기는 기본 꺼짐. 실제 AWS 리소스를 바꾸므로 명시적으로 켜야 한다.
+        # 데모 모드와 달리 기본값이 false 인 것이 핵심이다.
+        app.config['WRITE_ENABLED']=os.environ.get('WRITE_ENABLED','false').lower()=='true'
+        Config.WRITE_ENABLED=app.config['WRITE_ENABLED']
     app.extensions['dashboard_adapter']=adapter
     register(app);install(app);app.register_blueprint(bp)
 

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 from .. import enums
@@ -65,6 +66,9 @@ TITLE_KO = (
     ("invoked using root credentials", "루트 계정으로 API 호출 탐지"),
     ("restricted-common-ports", "보안 그룹에 위험 포트 공개 (Config 규칙 위반)"),
     ("restricted-ssh", "보안 그룹에 SSH(22) 전체 공개 (Config 규칙 위반)"),
+    ("-cpu-high", "CPU 사용률 임계치 초과"),
+    ("-mem-high", "메모리 사용률 임계치 초과"),
+    ("-mysql-bruteforce", "MySQL 인증 실패 급증 (무차별 대입 의심)"),
 )
 
 
@@ -90,6 +94,42 @@ def _short(resource: str) -> str:
         tail = text.split(":")[-1]
         return tail.split("/")[-1] or tail
     return text
+
+
+def _remote_ip(product_fields: dict) -> dict:
+    """GuardDuty finding 의 공격 출발지.
+
+    Security Hub 는 GuardDuty 상세를 ProductFields 에 평평한 키로 넣는다.
+        service.action.networkConnectionAction.remoteIpDetails.ipAddressV4
+        service.action.awsApiCallAction.remoteIpDetails.country.countryName
+    액션 종류가 여러 가지라 키 이름을 고정하지 않고 꼬리만 보고 찾는다.
+
+    **좌표는 AWS 가 주지 않는다.** GeoIP 를 호출하지 않으므로 위치는 "미상"이다.
+    데모 데이터의 모의 좌표를 실모드에 쓰면 안 된다.
+    """
+    ip = country = city = ""
+    for key, value in (product_fields or {}).items():
+        if "remoteIpDetails" not in key or not value:
+            continue
+        if key.endswith(".ipAddressV4"):
+            ip = str(value)
+        elif key.endswith(".country.countryName"):
+            country = str(value)
+        elif key.endswith(".city.cityName"):
+            city = str(value)
+    if not ip:
+        return {}
+    location = None
+    if country or city:
+        location = {
+            "city": city or country,
+            "lon": None, "lat": None,          # 좌표 없음 — 지도에 점을 찍지 않는다
+            "provenance": "GuardDuty 제공 · 좌표 없음",
+            "actorId": None,
+            "country": country or None,
+        }
+    return {"sourceIp": ip, "sourceLocation": location,
+            "geoStatus": "위치 미상" if location is None else "국가만 확인"}
 
 
 def _evidence_ko(source: str, title: str, resource: str, original: str, cves) -> str:
@@ -187,6 +227,7 @@ class LiveAdapter:
         self._lock = threading.Lock()
         self._clients: dict[str, object] = {}
         self._cache: dict[str, tuple[float, object]] = {}
+        self._idempotency: dict[str, object] = {}
 
     # ── 상류 호출 ───────────────────────────────────────
     def _client(self, name: str):
@@ -225,6 +266,17 @@ class LiveAdapter:
         value = build()
         self._cache[key] = (time.time(), value)
         return value
+
+    def _require_write(self, action: str) -> None:
+        """쓰기 차단.
+
+        run.py 가 app.config 로도 막지만, 어댑터를 직접 쓰는 경로가 있으므로 여기서도 본다.
+        """
+        if not getattr(self.config, "WRITE_ENABLED", False):
+            raise ApiProblem(
+                409, "쓰기가 비활성화되어 있습니다.", code="WRITE_DISABLED",
+                detail=action + ": WRITE_ENABLED=true 로 기동해야 합니다.",
+            )
 
     # ── 이벤트 조립 ─────────────────────────────────────
     def _correlated(self) -> dict[str, dict]:
@@ -276,6 +328,38 @@ class LiveAdapter:
             rows.sort(key=lambda r: r["at"] or 0)
         return out
 
+    def _alarm_events(self) -> list[dict]:
+        """ALARM 상태인 CloudWatch 알람을 이벤트로 만든다.
+
+        CPU·메모리 임계치(SEC-10)와 MySQL 무차별 대입(SEC-06)이 이 경로로 화면에 뜬다.
+        알람은 상류 finding 이 아니라 지표 판정이라 Security Hub 를 거치지 않는다.
+        선택적 소스라 조회에 실패해도 전체 목록을 깨뜨리지 않는다.
+        """
+        try:
+            page = self._call("cloudwatch", "describe_alarms",
+                              StateValue="ALARM", MaxRecords=MAX_ITEMS)
+        except ApiProblem:
+            return []
+
+        events = []
+        for alarm in page.get("MetricAlarms", []):
+            name = alarm.get("AlarmName") or ""
+            dimension = (alarm.get("Dimensions") or [{}])[0].get("Value") or "n/a"
+            events.append(self._event(
+                event_id="alarm:" + name,
+                scenario=loader.classify(alarm=name),
+                title=name,
+                severity="MEDIUM",
+                source="CloudWatch",
+                region=self.config.AWS_REGION,
+                resource=dimension,
+                at=_ms(alarm.get("StateUpdatedTimestamp")) or _now_ms(),
+                evidence=alarm.get("StateReason") or "",
+                recommendation="",
+                extra=None,
+            ))
+        return events
+
     def _build_events(self) -> list[dict]:
         correlated = self._correlated()
         actions = self._actions()
@@ -307,6 +391,7 @@ class LiveAdapter:
                 events.append(self._from_correlated(finding_id, extra,
                                                     actions.get(finding_id)))
 
+        events.extend(self._alarm_events())
         events.sort(key=lambda e: e["at"] or 0, reverse=True)
         return events
 
@@ -317,7 +402,9 @@ class LiveAdapter:
         generator = str(f.get("GeneratorId") or "")
         gd_type = (extra or {}).get("guarddutyType") or (f.get("Types") or [""])[0]
         resource = (f.get("Resources") or [{}])[0].get("Id") or "n/a"
+        origin = _remote_ip(f.get("ProductFields") or {})
         return self._event(
+            origin=origin,
             event_id=str(f.get("Id")),
             scenario=loader.classify(source=source, generator=generator, gd_type=gd_type),
             title=f.get("Title") or generator or "미분류 finding",
@@ -352,7 +439,8 @@ class LiveAdapter:
         )
 
     def _event(self, *, event_id, scenario, title, severity, source, region,
-               resource, at, evidence, recommendation, extra, actions=None) -> dict:
+               resource, at, evidence, recommendation, extra, actions=None,
+               origin=None) -> dict:
         """demo.py `_build_events()` 와 같은 필드 집합을 채운다."""
         extra = extra or {}
         wired = loader.is_wired(scenario) if scenario else False
@@ -409,10 +497,10 @@ class LiveAdapter:
                                      extra.get("cveIds") or []),
             "evidenceOriginal": evidence,
             "recommendation": _recommendation_ko(scenario, recommendation),
-            # 위치 정보는 데모 전용이다. 실모드는 GeoIP 를 호출하지 않는다.
-            "sourceIp": None,
-            "sourceLocation": None,
-            "geoStatus": "해당 없음",
+            # GuardDuty 가 준 값만 쓴다. GeoIP 는 호출하지 않는다(_remote_ip).
+            "sourceIp": (origin or {}).get("sourceIp"),
+            "sourceLocation": (origin or {}).get("sourceLocation"),
+            "geoStatus": (origin or {}).get("geoStatus", "해당 없음"),
             "history": history,
             "historyNote": None if self.config.REMEDIATION_ACTIONS_TABLE else NO_ACTIONS_TABLE_NOTE,
             "playbook": loader.playbook(scenario) if scenario else None,
@@ -523,8 +611,30 @@ class LiveAdapter:
 
         return self._cached("instance", self.config.CACHE_TTL["metrics"], build)
 
+    def _trivy_report_key(self) -> str | None:
+        """수동 점검(Trivy)의 최신 리포트 S3 키.
+
+        본문은 파싱하지 않는다 — Trivy 출력은 형식이 고정돼 있지 않고,
+        화면이 필요한 건 "언제 돌렸고 어디서 받나" 뿐이다.
+        버킷 미설정이거나 조회 실패면 조용히 건너뛴다.
+        """
+        bucket = getattr(self.config, "SCAN_RESULTS_BUCKET", "")
+        if not bucket:
+            return None
+        try:
+            page = self._call("s3", "list_objects_v2", Bucket=bucket,
+                              Prefix="trivy/", MaxKeys=MAX_ITEMS)
+        except ApiProblem:
+            return None
+        objects = page.get("Contents") or []
+        if not objects:
+            return None
+        latest = max(objects, key=lambda o: o.get("LastModified") or 0)
+        return latest.get("Key")
+
     def vulnerabilities(self, q: dict) -> dict:
         def build():
+            report_key = self._trivy_report_key()
             resp = self._call(
                 "inspector2", "list_findings",
                 filterCriteria={"findingType": [
@@ -549,7 +659,7 @@ class LiveAdapter:
                     "resource": resource,
                     "region": _region_of(resource, self.config.AWS_REGION),
                     "foundAt": _ms(f.get("firstObservedAt")),
-                    "reportKey": None,
+                    "reportKey": report_key,
                 })
             return {"items": items, "nextCursor": None}
 
@@ -581,24 +691,251 @@ class LiveAdapter:
         event["execution"] = status
         return {"execution": execution, "event": event}
 
-    # ── 쓰기 — 아직 스텁 ────────────────────────────────
-    def _todo(self, name: str):
-        raise ApiProblem(
-            501, "실 AWS 쓰기가 아직 구현되지 않았습니다.", code="NOT_IMPLEMENTED",
-            detail=f"{name}: {WRITE_PLAN.get(name, '')}",
-        )
+    # ── 쓰기 ────────────────────────────────────────────
+    def _require(self, event_id: str) -> dict:
+        event = self.get_event(event_id)
+        if not event:
+            raise ApiProblem(404, "이벤트를 찾을 수 없습니다.", code="EVENT_NOT_FOUND")
+        return event
+
+    def _automation_role_arn(self) -> str:
+        """SSM Automation 이 떠맡을 역할.
+
+        terraform 이 "<name_prefix>-ssm-automation-role" 로 고정 생성한다(main.tf:25).
+        계정 번호만 알면 조립되므로 환경변수를 새로 만들지 않는다.
+        """
+        prefix = getattr(self.config, "NAME_PREFIX", "")
+        if not prefix:
+            raise ApiProblem(
+                409, "NAME_PREFIX 가 설정되지 않았습니다.", code="CONFIG_MISSING",
+                detail="dashboard.env 의 NAME_PREFIX 가 있어야 Automation 역할을 찾습니다.",
+            )
+        account = self._cached(
+            "account", 3600,
+            lambda: self._call("sts", "get_caller_identity")["Account"])
+        return "arn:aws:iam::" + account + ":role/" + prefix + "-ssm-automation-role"
+
+    def _parameters(self, event: dict, playbook: str) -> dict:
+        """플레이북별 입력. 문서의 parameters 블록과 이름이 정확히 같아야 한다."""
+        target = _short(event.get("resource") or "")
+        if playbook == "ASR-BlockIpWithNacl":
+            # 출발지 IP 가 있어야 차단할 대상이 정해진다.
+            ip = event.get("sourceIp")
+            if not ip:
+                raise ApiProblem(
+                    422, "차단할 출발지 IP 를 찾지 못했습니다.", code="NO_SOURCE_IP",
+                    detail="GuardDuty finding 에 remoteIpDetails 가 없습니다.",
+                )
+            return {"NetworkAclId": [target], "AttackerCidr": [ip + "/32"],
+                    "RuleNumber": ["50"]}
+        table = {
+            "ASR-RevokeSecurityGroupIngress": {"SecurityGroupId": [target]},
+            "ASR-DisableExposedAccessKey": {"AccessKeyId": [target]},
+            "ASR-RotateDbSecret": {"SecretId": [target]},
+        }
+        if playbook not in table:
+            raise ApiProblem(
+                501, "이 플레이북의 입력 매핑이 없습니다.", code="NOT_IMPLEMENTED",
+                detail=playbook + ": documents/ 의 parameters 블록을 확인하세요.",
+            )
+        return table[playbook]
+
+    def _record(self, event: dict, decision: str, actor: str,
+                exec_id: str = "", before: str = "n/a", after: str = "pending") -> None:
+        """asr_trigger _record() 와 같은 모양으로 남긴다(handler.py:61-70).
+
+        finding_id 를 함께 넣어야 이벤트와 조인된다.
+        """
+        table = self.config.REMEDIATION_ACTIONS_TABLE
+        if not table:
+            return
+        self._call("dynamodb", "put_item", TableName=table, Item={
+            "action_id": {"S": "dash-" + uuid.uuid4().hex[:12]},
+            "created_at": {"S": datetime.now(timezone.utc).isoformat()},
+            "finding_id": {"S": event["id"]},
+            "decision": {"S": decision},
+            "finding_type": {"S": event.get("scenario") or "unknown"},
+            "resource_id": {"S": event.get("resource") or "n/a"},
+            "before_state": {"S": before},
+            "after_state": {"S": after},
+            "ssm_execution_id": {"S": exec_id or "n/a"},
+            "actor": {"S": actor},
+        })
+
+    def _replay(self, key: str):
+        """멱등성 — 같은 Idempotency-Key 는 같은 응답을 돌려준다.
+
+        ponytail: 프로세스 메모리에만 둔다. 대시보드가 1대라 충분하고,
+        여러 대로 늘리면 DynamoDB 조건부 쓰기로 옮긴다.
+        """
+        return self._idempotency.get(key)
 
     def approve(self, event_id, body, actor, key):
-        self._todo("approve")
+        self._require_write("approve")
+        with self._lock:
+            replay = self._replay(key)
+            if replay:
+                return replay
+            event = self._require(event_id)
+            self._record(event, "approved", actor)
+            event["approver"] = actor
+            event["approvedAt"] = _now_ms()
+            event["history"].append({"at": _now_ms(), "text": "승인 (" + actor + ")",
+                                     "actor": actor, "decision": "approved"})
+            if event["status"] == "PENDING_APPROVAL":
+                event["status"] = "APPROVED"
+            self._idempotency[key] = event
+            return event
 
     def execute(self, event_id, body, actor, key):
-        self._todo("execute")
+        self._require_write("execute")
+        with self._lock:
+            replay = self._replay(key)
+            if replay:
+                return replay
+            event = self._require(event_id)
+
+            from ..services.gates import evaluate
+            dry_run = bool(body.get("dry_run"))
+            decision = evaluate(event, dry_run=dry_run,
+                                sg_has_auto_tag=self._sg_has_auto_tag)
+            if not decision.allowed and self.config.ENFORCE_GATES:
+                raise ApiProblem(422, decision.title, code=decision.code,
+                                 detail=decision.detail)
+
+            playbook = loader.playbook(event.get("scenario") or "")
+            if dry_run or not playbook:
+                # 게이트만 판정. SSM 을 부르지 않는다.
+                kind = "dry-run" if dry_run else "manual-notified"
+                text = ("dry-run 판정 통과" if dry_run
+                        else "사람이 수행하는 조치 · 승인 기록됨")
+                self._record(event, kind, actor)
+                event["history"].append({"at": _now_ms(), "text": text,
+                                         "actor": actor, "decision": kind})
+                return {"execution": None, "event": event}
+
+            exec_id = self._call(
+                "ssm", "start_automation_execution",
+                DocumentName=playbook,
+                Parameters=dict(self._parameters(event, playbook),
+                                AutomationAssumeRole=[self._automation_role_arn()]),
+            )["AutomationExecutionId"]
+
+            self._record(event, "auto-executed", actor, exec_id=exec_id,
+                         before=str(event.get("before") or "n/a"))
+            event["status"] = "EXECUTING"
+            event["execution"] = "RUNNING"
+            event["history"].append({"at": _now_ms(),
+                                     "text": "조치 실행 요청 (" + playbook + ")",
+                                     "actor": actor, "decision": "auto-executed"})
+            result = {"execution": {
+                "executionId": exec_id, "eventId": event_id, "kind": "REMEDIATION",
+                "document": playbook, "status": "RUNNING", "startedAt": _now_ms(),
+                "endedAt": None, "failureMessage": None,
+                "progress": {"step": "실행 요청", "completed": 0, "total": 3},
+            }, "event": event}
+            self._idempotency[key] = result
+            return result
+
+    def _sg_has_auto_tag(self, group_id: str) -> bool:
+        """게이트 ② — asr_trigger 와 같은 판정을 대시보드에서도 한다."""
+        resp = self._call("ec2", "describe_security_groups", GroupIds=[group_id])
+        return any(t.get("Key") == "AutoRemediation" and t.get("Value") == "true"
+                   for g in resp.get("SecurityGroups", []) for t in g.get("Tags", []))
 
     def verify(self, event_id, body, actor, key):
-        self._todo("verify")
+        self._require_write("verify")
+        with self._lock:
+            replay = self._replay(key)
+            if replay:
+                return replay
+            event = self._require(event_id)
+            scenario = event.get("scenario") or ""
+
+            if loader.needs_send_command(scenario):
+                raise ApiProblem(
+                    501, "이 재검증은 실행할 수 없습니다.", code="NOT_IMPLEMENTED",
+                    detail="대시보드 역할에 ssm:SendCommand 가 없습니다(compute/iam.tf:250).",
+                )
+
+            spec = (loader.get(scenario) or {}).get("verify") or {}
+            checker = {
+                "sg_ingress_count": self._verify_sg_ingress,
+                "inspector_cve_count": self._verify_cve_count,
+                "iam_key_status": self._verify_iam_key,
+            }.get(spec.get("type"))
+            if not checker:
+                raise ApiProblem(
+                    501, "이 재검증 유형은 아직 구현되지 않았습니다.", code="NOT_IMPLEMENTED",
+                    detail=str(spec.get("type") or "미지정") + ": 카탈로그 verify.type 확인",
+                )
+
+            value = checker(event, spec)
+            passed = value == 0
+            now = _now_ms()
+            event["afterValue"] = value
+            event["afterAt"] = now
+            event["verification"] = "PASSED" if passed else "FAILED"
+            event["status"] = "RESOLVED" if passed else "VERIFICATION_FAILED"
+            event["history"].append({
+                "at": now,
+                "text": ("재검증 " + ("통과" if passed else "실패") + " · "
+                         + str(spec.get("type")) + " = " + str(value)),
+                "actor": actor, "decision": "verified"})
+            self._record(event, "verified", actor,
+                         before=str(event.get("before") or "n/a"), after=str(value))
+
+            result = {"execution": {
+                "executionId": "verify-" + uuid.uuid4().hex[:12], "eventId": event_id,
+                "kind": "VERIFICATION", "document": None, "status": "SUCCEEDED",
+                "startedAt": now, "endedAt": now,
+                "failureMessage": None if passed else "미해결 항목이 남아 있습니다.",
+                "progress": {"step": "동일 기준 재검사", "completed": 1, "total": 1},
+            }, "event": event}
+            self._idempotency[key] = result
+            return result
+
+    def _verify_sg_ingress(self, event: dict, spec: dict) -> int:
+        """0.0.0.0/0 에 열린 해당 포트 규칙 수. 0 이면 통과."""
+        resp = self._call("ec2", "describe_security_groups",
+                          GroupIds=[_short(event.get("resource") or "")])
+        port, cidr = spec.get("port"), spec.get("cidr")
+        return sum(1
+                   for g in resp.get("SecurityGroups", [])
+                   for rule in g.get("IpPermissions", [])
+                   if rule.get("FromPort") == port
+                   for r in rule.get("IpRanges", []) if r.get("CidrIp") == cidr)
+
+    def _verify_cve_count(self, event: dict, spec: dict) -> int:
+        resp = self._call(
+            "inspector2", "list_findings",
+            filterCriteria={
+                "resourceId": [{"comparison": "EQUALS",
+                                "value": _short(event.get("resource") or "")}],
+                "findingType": [{"comparison": "EQUALS",
+                                 "value": "PACKAGE_VULNERABILITY"}],
+            },
+            maxResults=MAX_ITEMS,
+        )
+        return len(resp.get("findings", []))
+
+    def _verify_iam_key(self, event: dict, spec: dict) -> int:
+        """키가 아직 Active 면 1.
+
+        **대시보드 역할에 iam:ListAccessKeys 가 없다.** 권한을 넣기 전까지 502 가 난다.
+        조용히 0(통과)으로 떨어뜨리지 않는다 — 조치 안 됐는데 해결로 보이면 안 된다.
+        """
+        key_id = _short(event.get("resource") or "")
+        resp = self._call("iam", "list_access_keys")
+        return sum(1 for m in resp.get("AccessKeyMetadata", [])
+                   if m.get("AccessKeyId") == key_id and m.get("Status") == "Active")
 
     def cancel(self, event_id, body, actor, key):
-        self._todo("cancel")
+        self._require_write("cancel")
+        raise ApiProblem(
+            501, "실행 취소는 지원하지 않습니다.", code="NOT_IMPLEMENTED",
+            detail=WRITE_PLAN["cancel"],
+        )
 
     # ── 상태 점검 ───────────────────────────────────────
     def health_checks(self) -> dict:
