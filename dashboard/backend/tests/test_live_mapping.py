@@ -177,11 +177,20 @@ GD_FINDING = {
     "Severity": {"Label": "HIGH"},
     "UpdatedAt": "2026-09-21T03:00:00Z",
     "Resources": [{"Id": "arn:aws:ec2:ap-northeast-2:1:instance/i-0abc"}],
+    # 키 형식은 실제 응답 그대로다 — 슬래시 구분이다(2026-09-22 실측).
+    # 점(.) 으로 적어두면 통과하는 것처럼 보이지만 실제 AWS 에서는 한 건도 안 잡힌다.
     "ProductFields": {
         "aws/securityhub/ProductName": "GuardDuty",
-        "service.action.awsApiCallAction.remoteIpDetails.ipAddressV4": "203.0.113.9",
-        "service.action.awsApiCallAction.remoteIpDetails.country.countryName": "China",
-        "service.action.awsApiCallAction.remoteIpDetails.city.cityName": "Shanghai",
+        "aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/ipAddressV4":
+            "203.0.113.9",
+        "aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/country/countryName":
+            "China",
+        "aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/city/cityName":
+            "Shanghai",
+        "aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/geoLocation/lat":
+            "31.2222",
+        "aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/geoLocation/lon":
+            "121.4581",
     },
 }
 
@@ -214,14 +223,30 @@ def adapter_v2(monkeypatch, extra=None):
 
 
 def test_guardduty_source_ip(monkeypatch):
-    """공격자 IP 는 채우되 좌표는 만들어내지 않는다."""
+    """공격자 IP 와 좌표를 GuardDuty 가 준 값 그대로 싣는다.
+
+    좌표는 GuardDuty 의 geoLocation 이다. 데모의 모의 좌표를 만들어 넣지 않는다.
+    """
     event = next(e for e in adapter_v2(monkeypatch)._events() if e["id"] == "gd-sh-1")
     assert event["sourceIp"] == "203.0.113.9"
     assert event["sourceLocation"]["country"] == "China"
-    # AWS 는 좌표를 주지 않는다. 데모의 모의 좌표를 쓰면 안 된다.
-    assert event["sourceLocation"]["lon"] is None
-    assert event["sourceLocation"]["lat"] is None
-    assert event["geoStatus"] == "국가만 확인"
+    assert event["sourceLocation"]["lat"] == 31.2222
+    assert event["sourceLocation"]["lon"] == 121.4581
+    assert event["geoStatus"] == "위치 확인"
+
+
+def test_guardduty_without_coordinates(monkeypatch):
+    """좌표가 없는 finding 은 좌표를 지어내지 않고 '국가만 확인' 으로 둔다."""
+    from app.adapters.live import _remote_ip
+    origin = _remote_ip({
+        "aws/guardduty/service/action/networkConnectionAction"
+        "/remoteIpDetails/ipAddressV4": "198.51.100.7",
+        "aws/guardduty/service/action/networkConnectionAction"
+        "/remoteIpDetails/country/countryName": "Russia",
+    })
+    assert origin["sourceIp"] == "198.51.100.7"
+    assert origin["sourceLocation"]["lat"] is None
+    assert origin["geoStatus"] == "국가만 확인"
 
 
 def test_cloudwatch_alarm_becomes_event(monkeypatch):

@@ -99,37 +99,50 @@ def _short(resource: str) -> str:
 def _remote_ip(product_fields: dict) -> dict:
     """GuardDuty finding 의 공격 출발지.
 
-    Security Hub 는 GuardDuty 상세를 ProductFields 에 평평한 키로 넣는다.
-        service.action.networkConnectionAction.remoteIpDetails.ipAddressV4
-        service.action.awsApiCallAction.remoteIpDetails.country.countryName
-    액션 종류가 여러 가지라 키 이름을 고정하지 않고 꼬리만 보고 찾는다.
+    Security Hub 는 GuardDuty 상세를 ProductFields 에 **슬래시 구분** 평평한 키로 넣는다.
+    실측(2026-09-22, aws securityhub get-findings):
+        aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/ipAddressV4
+        aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/country/countryName
+        aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/city/cityName
+        aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/geoLocation/lat
+        aws/guardduty/service/action/awsApiCallAction/remoteIpDetails/geoLocation/lon
+    점(.) 이 아니라 슬래시(/) 다. 이전 버전은 점으로 찾아 **한 번도 매칭되지 않았다**.
+    액션 종류(awsApiCallAction/networkConnectionAction 등)가 여러 가지라 키 이름을
+    고정하지 않고 꼬리만 보고 찾는다.
 
-    **좌표는 AWS 가 주지 않는다.** GeoIP 를 호출하지 않으므로 위치는 "미상"이다.
-    데모 데이터의 모의 좌표를 실모드에 쓰면 안 된다.
+    **위경도(geoLocation)는 GuardDuty 가 실제로 준다.** 이전 버전은 "AWS 가 좌표를
+    안 준다"고 잘못 가정해 항상 None 으로 비웠다 — 실측으로 정정한다.
     """
-    ip = country = city = ""
+    ip = country = city = lat = lon = ""
     for key, value in (product_fields or {}).items():
         if "remoteIpDetails" not in key or not value:
             continue
-        if key.endswith(".ipAddressV4"):
+        if key.endswith("/ipAddressV4"):
             ip = str(value)
-        elif key.endswith(".country.countryName"):
+        elif key.endswith("/country/countryName"):
             country = str(value)
-        elif key.endswith(".city.cityName"):
+        elif key.endswith("/city/cityName"):
             city = str(value)
+        elif key.endswith("/geoLocation/lat"):
+            lat = str(value)
+        elif key.endswith("/geoLocation/lon"):
+            lon = str(value)
     if not ip:
         return {}
     location = None
     if country or city:
+        has_coords = bool(lat and lon)
         location = {
             "city": city or country,
-            "lon": None, "lat": None,          # 좌표 없음 — 지도에 점을 찍지 않는다
-            "provenance": "GuardDuty 제공 · 좌표 없음",
+            "lon": float(lon) if has_coords else None,
+            "lat": float(lat) if has_coords else None,
+            "provenance": "GuardDuty 제공 · 실제 위치",
             "actorId": None,
             "country": country or None,
         }
-    return {"sourceIp": ip, "sourceLocation": location,
-            "geoStatus": "위치 미상" if location is None else "국가만 확인"}
+    geo_status = ("위치 확인" if (location and location["lat"] is not None)
+                  else "국가만 확인" if location else "위치 미상")
+    return {"sourceIp": ip, "sourceLocation": location, "geoStatus": geo_status}
 
 
 def _evidence_ko(source: str, title: str, resource: str, original: str, cves) -> str:
