@@ -23,7 +23,13 @@ locals {
   secret_arn_prefix = "arn:${var.partition}:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}/*"
   scan_bucket_arn   = "arn:${var.partition}:s3:::${var.scan_results_bucket}"
 
-  asr_document_arn        = "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*"
+  # StartAutomationExecution 은 document/* (실행할 문서) + automation-execution/* (생성되는 실행 ID)
+  # 두 리소스 타입을 모두 요구합니다. automation-definition/* 은 유효한 리소스 타입이 아니라
+  # AccessDenied 가 났습니다. (2026-09-21 실계정 확인, tmp-policy.json)
+  asr_document_arns = [
+    "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-*",
+    "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-execution/*",
+  ]
   ssm_automation_role_arn = "arn:${var.partition}:iam::${var.account_id}:role/${var.ssm_automation_role_name}"
 
   dynamodb_table_arns = [
@@ -252,7 +258,7 @@ data "aws_iam_policy_document" "dashboard_execute" {
   statement {
     sid       = "RunApprovedPlaybooksOnly"
     actions   = ["ssm:StartAutomationExecution"]
-    resources = [local.asr_document_arn]
+    resources = local.asr_document_arns
   }
 
   statement {
