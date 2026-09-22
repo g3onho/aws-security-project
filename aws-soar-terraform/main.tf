@@ -37,15 +37,16 @@ locals {
 module "network" {
   source = "./modules/network"
 
-  name_prefix        = local.name_prefix
-  region             = local.region
-  vpc_cidr           = var.vpc_cidr
-  az_primary         = var.az_primary
-  az_secondary       = var.az_secondary
-  subnet_cidrs       = var.subnet_cidrs
-  admin_cidr         = local.admin_cidr
-  log_group_flowlogs = local.log_group_flowlogs
-  log_retention_days = var.log_retention_days
+  name_prefix            = local.name_prefix
+  region                 = local.region
+  vpc_cidr               = var.vpc_cidr
+  az_primary             = var.az_primary
+  az_secondary           = var.az_secondary
+  subnet_cidrs           = var.subnet_cidrs
+  admin_cidr             = local.admin_cidr
+  dashboard_ingress_cidr = var.dashboard_ingress_cidr
+  log_group_flowlogs     = local.log_group_flowlogs
+  log_retention_days     = var.log_retention_days
 
   enable_nat_gateway       = var.enable_nat_gateway
   enable_vpc_endpoints     = var.enable_vpc_endpoints

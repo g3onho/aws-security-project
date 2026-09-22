@@ -1,6 +1,9 @@
 #!/bin/bash
-# SOAR 보안 대시보드 (Flask) 배치용 호스트
+# SOAR 보안 대시보드 (Flask) — 코드 배포부터 서비스 기동까지 자동으로 끝낸다.
 # 로그: /var/log/user-data.log
+#
+# 전제: NAT 가 켜져 있어야 apt / PyPI 에 나갈 수 있다(enable_nat_gateway = true).
+# NAT 없이 쓰려면 휠을 미리 S3 에 올려두고 --no-index 로 설치하도록 바꿔야 한다.
 set -euxo pipefail
 exec > >(tee -a /var/log/user-data.log) 2>&1
 
@@ -11,8 +14,10 @@ apt-get install -y ca-certificates curl unzip jq python3-pip python3-venv
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
 unzip -oq /tmp/awscliv2.zip -d /tmp && /tmp/aws/install --update
 
-# 대시보드 코드가 참조할 리소스 이름을 환경파일로 남깁니다.
 mkdir -p /opt/dashboard
+
+# 대시보드 코드가 참조할 리소스 이름. 서비스가 EnvironmentFile 로 읽는다.
+# USE_DEMO_DATA=false 라 실 AWS 를 본다. 쓰기는 WRITE_ENABLED 를 안 줘서 꺼진 채다.
 cat > /opt/dashboard/dashboard.env <<ENVEOF
 AWS_REGION=${region}
 CORRELATED_FINDINGS_TABLE=${correlated_findings_table}
@@ -20,11 +25,73 @@ REMEDIATION_ACTIONS_TABLE=${remediation_actions_table}
 SCAN_RESULTS_BUCKET=${scan_results_bucket}
 SNS_TOPIC_ARN=${sns_topic_arn}
 NAME_PREFIX=${project}
+USE_DEMO_DATA=false
+DASHBOARD_INSTANCE=/opt/dashboard/instance
 ENVEOF
 
+############################################
+# 코드 내려받기
+# ${code_version} 은 zip 의 MD5 다. 코드가 바뀌면 이 값이 바뀌어 user_data 가
+# 갱신되고, user_data_replace_on_change 로 인스턴스가 새 코드로 다시 뜬다.
+############################################
+echo "deploying dashboard code (version ${code_version})"
+aws s3 cp "s3://${scan_results_bucket}/deploy/dashboard.zip" /tmp/dashboard.zip --region ${region}
+rm -rf /opt/dashboard/app-src
+mkdir -p /opt/dashboard/app-src
+unzip -oq /tmp/dashboard.zip -d /opt/dashboard/app-src
+
+APP=/opt/dashboard/app-src/backend
+test -f "$APP/run.py"   # 구조가 예상과 다르면 여기서 멈춘다
+
+############################################
+# 의존성 (NAT 필요)
+############################################
 python3 -m venv /opt/dashboard/venv
 /opt/dashboard/venv/bin/pip install --upgrade pip
-/opt/dashboard/venv/bin/pip install flask flask-login sqlalchemy boto3 gunicorn
+/opt/dashboard/venv/bin/pip install -r "$APP/requirements.txt"
 
-echo "dashboard host ready. 팀의 Flask 대시보드 코드를 /opt/dashboard 에 배포한 뒤"
-echo "gunicorn 으로 5000 포트에 기동하고, SSM 포트포워딩으로 접속합니다."
+############################################
+# 초기 계정 — 없을 때만 만든다. 암호는 instance/initial-login.txt 에 남는다.
+############################################
+mkdir -p /opt/dashboard/instance
+set -a; . /opt/dashboard/dashboard.env; set +a
+cd "$APP" && /opt/dashboard/venv/bin/python run.py --init-admin || true
+
+############################################
+# systemd 서비스 — 부팅 때 자동 시작, 죽으면 재시작
+# --lan 으로 0.0.0.0 에 열어야 ALB 헬스체크와 포워딩이 닿는다.
+# 외부 노출은 보안그룹이 막는다(ALB 와 관리자 CIDR 만 허용).
+############################################
+cat > /etc/systemd/system/dashboard.service <<'UNITEOF'
+[Unit]
+Description=SOAR Security Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dashboard/app-src/backend
+EnvironmentFile=/opt/dashboard/dashboard.env
+ExecStart=/opt/dashboard/venv/bin/python run.py --port 5000 --lan
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+
+systemctl daemon-reload
+systemctl enable --now dashboard.service
+
+# 기동 확인. 실패해도 user_data 를 멈추지 않고 상태만 로그에 남긴다.
+for i in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:5000/health >/dev/null 2>&1; then
+    echo "dashboard is up"
+    break
+  fi
+  sleep 2
+done
+systemctl status dashboard.service --no-pager || true
+
+echo "dashboard ready on :5000"

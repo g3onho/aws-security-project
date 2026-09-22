@@ -281,3 +281,12 @@ variable "log_retention_days" {
   type        = number
   default     = 14
 }
+
+variable "dashboard_ingress_cidr" {
+  description = <<-EOT
+    보안 대시보드(ALB 8080) 공개 범위.
+    실제 취약점 목록이 보이는 화면이다. 팀이 한 네트워크에 있으면 그 대역으로 좁히세요.
+  EOT
+  type        = string
+  default     = "0.0.0.0/0"
+}

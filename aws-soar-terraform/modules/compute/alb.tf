@@ -256,3 +256,59 @@ resource "aws_wafv2_web_acl_association" "main" {
   resource_arn = aws_lb.main[0].arn
   web_acl_arn  = aws_wafv2_web_acl.main[0].arn
 }
+
+############################################
+# 보안 대시보드 — ALB 경유 접속
+#
+# 대시보드는 프라이빗 서브넷에 있고 퍼블릭 IP 가 없다. ALB 가 유일한 공개 진입점이다.
+# 경로는 /dashboard 로 구분한다 — 기본 경로(/)는 3-Tier 서비스가 쓴다.
+############################################
+
+resource "aws_lb_target_group" "dashboard" {
+  count = var.enable_alb && var.enable_dashboard_deploy ? 1 : 0
+
+  name        = substr("${var.name_prefix}-dash-tg", 0, 32)
+  port        = 5000
+  protocol    = "HTTP"
+  vpc_id      = var.vpc_id
+  target_type = "instance"
+
+  health_check {
+    enabled = true
+    # 로그인 없이 접근 가능한 유일한 경로다. /  는 302 로 /login 을 준다.
+    path                = "/health"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-dash-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "dashboard" {
+  count = var.enable_alb && var.enable_dashboard_deploy ? 1 : 0
+
+  target_group_arn = aws_lb_target_group.dashboard[0].arn
+  target_id        = aws_instance.dashboard.id
+  port             = 5000
+}
+
+# 전용 리스너. 경로 규칙(/dashboard)을 쓰지 않는 이유는 ALB 가 경로를 떼어내지
+# 못하기 때문이다 — Flask 는 / · /login · /api 만 알아서 /dashboard 로 오면 404 다.
+# 포트를 나누면 애플리케이션을 건드리지 않아도 된다.
+resource "aws_lb_listener" "dashboard" {
+  count = var.enable_alb && var.enable_dashboard_deploy ? 1 : 0
+
+  load_balancer_arn = aws_lb.main[0].arn
+  port              = 8080
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.dashboard[0].arn
+  }
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-dash-listener" })
+}

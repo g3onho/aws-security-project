@@ -287,3 +287,18 @@ resource "aws_vpc_security_group_egress_rule" "vpce_all" {
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }
+
+# 대시보드 전용 포트.
+# ALB 는 경로 재작성을 못 한다. /dashboard 로 보내면 Flask 가 그 경로를 몰라 404 다.
+# 그래서 포트로 가른다 — 8080 은 통째로 대시보드 타겟 그룹이 받는다.
+# 공개 범위는 dashboard_ingress_cidr 로 조절한다(기본 전체 공개).
+resource "aws_vpc_security_group_ingress_rule" "alb_dashboard" {
+  count = var.enable_alb ? 1 : 0
+
+  security_group_id = aws_security_group.alb.id
+  description       = "Security dashboard via ALB"
+  ip_protocol       = "tcp"
+  from_port         = 8080
+  to_port           = 8080
+  cidr_ipv4         = var.dashboard_ingress_cidr
+}

@@ -26,3 +26,10 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+# 대시보드 공개 범위. 실제 취약점 목록이 보이는 화면이므로 좁힐 수 있게 뺐다.
+# 팀원이 여러 네트워크에 흩어져 있어 기본값은 전체 공개다.
+variable "dashboard_ingress_cidr" {
+  type    = string
+  default = "0.0.0.0/0"
+}

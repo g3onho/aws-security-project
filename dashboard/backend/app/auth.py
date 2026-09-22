@@ -9,11 +9,27 @@ from .api.errors import ApiProblem
 bp=Blueprint('auth',__name__,url_prefix='/api/auth')
 
 
+# 발표 시연용으로 낮춘 값이다. 로그인 시도 제한(5회/60초)이 무차별 대입을 막아주지만,
+# 같은 네트워크에 공개(--lan)하는 동안에는 이 값이 유일한 방어선이라는 점을 알고 쓴다.
+MIN_PASSWORD = 4
+
+
 def create_user(path,name,password,role='operator'):
-    if not name or len(name)>64 or len(password)<12 or role not in ('viewer','operator'):
-        raise ValueError('사용자 이름 1~64자, 암호 12자 이상, 역할 viewer/operator가 필요합니다.')
+    if not name or len(name)>64 or len(password)<MIN_PASSWORD or role not in ('viewer','operator'):
+        raise ValueError(f'사용자 이름 1~64자, 암호 {MIN_PASSWORD}자 이상, 역할 viewer/operator가 필요합니다.')
     with connect(path,True) as db:
         db.execute('INSERT INTO users VALUES(?,?,?)',(name,generate_password_hash(password),role))
+
+
+def set_password(path,name,password):
+    """기존 계정의 암호만 바꾼다. 역할은 건드리지 않는다."""
+    if len(password)<MIN_PASSWORD:
+        raise ValueError(f'암호는 {MIN_PASSWORD}자 이상이어야 합니다.')
+    with connect(path,True) as db:
+        changed=db.execute('UPDATE users SET password=? WHERE name=?',
+                           (generate_password_hash(password),name)).rowcount
+    if not changed:
+        raise ValueError(f'계정을 찾을 수 없습니다: {name}')
 
 
 def install(app):

@@ -127,7 +127,12 @@ resource "aws_instance" "dashboard" {
     remediation_actions_table = var.remediation_actions_table
     scan_results_bucket       = var.scan_results_bucket
     sns_topic_arn             = var.sns_topic_arn
+    # 코드 zip 의 MD5. 코드가 바뀌면 user_data 가 바뀌어 인스턴스가 새로 뜬다.
+    code_version = var.enable_dashboard_deploy ? data.archive_file.dashboard[0].output_md5 : "none"
   })
+
+  # 코드가 S3 에 올라간 뒤에 인스턴스가 떠야 한다. 순서가 바뀌면 부팅 때 zip 이 없다.
+  depends_on = [aws_s3_object.dashboard_code]
 
   user_data_replace_on_change = true
 

@@ -22,6 +22,13 @@ output "alb_dns_name" {
   value = module.compute.alb_dns_name
 }
 
+output "dashboard_url" {
+  description = "보안 대시보드 접속 주소. ALB 가 꺼져 있으면 SSM 포트포워딩만 가능하다."
+  value = var.enable_alb ? "http://${module.compute.alb_dns_name}:8080" : (
+    "ALB 미사용 — dashboard_ssm_port_forward 명령으로 접속하세요"
+  )
+}
+
 output "dashboard_ssm_port_forward" {
   description = "보안 대시보드 접속용 SSM 포트포워딩 명령"
   value       = "aws ssm start-session --target ${module.compute.dashboard_instance_id} --document-name AWS-StartPortForwardingSession --parameters '{\"portNumber\":[\"5000\"],\"localPortNumber\":[\"5000\"]}' --region ${var.region}"

@@ -91,9 +91,15 @@ if __name__=='__main__':
     parser.add_argument('--once',action='store_true')
     parser.add_argument('--init-admin',action='store_true')
     parser.add_argument('--add-user')
+    parser.add_argument('--set-password',metavar='USER',help='기존 계정의 암호 변경')
     parser.add_argument('--role',choices=['viewer','operator'],default='viewer')
     args=parser.parse_args();app=create_app()
-    if args.init_admin or args.add_user:
+    if args.set_password:
+        from app.auth import set_password
+        set_password(app.config['DATABASE'],args.set_password,
+                     getpass.getpass('새 암호: '))
+        print(f'{args.set_password} 암호를 변경했습니다.')
+    elif args.init_admin or args.add_user:
         from app.auth import create_user
         from app.storage import connect
         if args.init_admin:

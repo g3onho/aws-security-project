@@ -65,3 +65,10 @@ variable "sns_topic_arn" {
   type        = string
   default     = ""
 }
+
+# 대시보드 코드를 S3 로 배포하고 인스턴스가 자동 기동할지 여부.
+# false 면 호스트만 준비되고 서비스는 뜨지 않는다(기존 동작).
+variable "enable_dashboard_deploy" {
+  type    = bool
+  default = true
+}
