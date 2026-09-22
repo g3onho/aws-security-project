@@ -23,7 +23,19 @@ locals {
   secret_arn_prefix = "arn:${var.partition}:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}/*"
   scan_bucket_arn   = "arn:${var.partition}:s3:::${var.scan_results_bucket}"
 
-  asr_document_arn        = "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*"
+  # ssm:StartAutomationExecution 의 리소스. 세 가지를 모두 둔다.
+  #   automation-definition/ASR-*  문서의 실행 정의. AWS 문서상 이 액션의 필수 리소스 타입.
+  #   document/ASR-*               실행할 문서 자체.
+  #   automation-execution/*       실행할 때 생성되는 실행 ID.
+  # 2026-09-21 실계정에서 automation-definition 하나만으로는 AccessDenied 가 났고,
+  # 뒤의 두 개를 인라인 정책으로 **추가**해서 통과했다. 즉 검증된 것은 "두 개를 더하면
+  # 된다" 이지 "automation-definition 을 빼도 된다" 가 아니다. 빼면 다시 막힐 수 있어
+  # 셋 다 유지한다. 범위는 여전히 ASR-* 로 묶여 있어 최소권한을 해치지 않는다.
+  asr_document_arns = [
+    "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*",
+    "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-*",
+    "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-execution/*",
+  ]
   ssm_automation_role_arn = "arn:${var.partition}:iam::${var.account_id}:role/${var.ssm_automation_role_name}"
 
   dynamodb_table_arns = [
@@ -252,7 +264,7 @@ data "aws_iam_policy_document" "dashboard_execute" {
   statement {
     sid       = "RunApprovedPlaybooksOnly"
     actions   = ["ssm:StartAutomationExecution"]
-    resources = [local.asr_document_arn]
+    resources = local.asr_document_arns
   }
 
   statement {

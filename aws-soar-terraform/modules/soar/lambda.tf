@@ -76,9 +76,17 @@ data "aws_iam_policy_document" "asr_trigger" {
   }
 
   statement {
-    sid       = "StartApprovedPlaybooks"
-    actions   = ["ssm:StartAutomationExecution"]
-    resources = ["arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*"]
+    sid     = "StartApprovedPlaybooks"
+    actions = ["ssm:StartAutomationExecution"]
+    # 세 리소스 타입을 모두 둔다. 2026-09-21 실계정에서 automation-definition 하나로는
+    # AccessDenied 가 났고, 나머지 둘을 인라인 정책으로 **추가**해서 통과했다.
+    # 검증된 것은 "더하면 된다" 이지 "automation-definition 을 빼도 된다" 가 아니다.
+    # 대시보드 쪽(compute/iam.tf local.asr_document_arns)과 같은 조합을 유지한다.
+    resources = [
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-*",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-execution/*",
+    ]
   }
 
   statement {
