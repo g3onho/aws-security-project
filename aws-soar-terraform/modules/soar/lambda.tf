@@ -82,6 +82,8 @@ data "aws_iam_policy_document" "asr_trigger" {
     # AccessDenied 가 났고, 나머지 둘을 인라인 정책으로 **추가**해서 통과했다.
     # 검증된 것은 "더하면 된다" 이지 "automation-definition 을 빼도 된다" 가 아니다.
     # 대시보드 쪽(compute/iam.tf local.asr_document_arns)과 같은 조합을 유지한다.
+    # (fix/ssm-automation-arn 는 automation-definition 을 뺐지만, Allow 의 Resource 에
+    #  항목을 더하는 것은 권한을 넓힐 뿐 AccessDenied 를 만들 수 없어 오진으로 보고 유지한다.)
     resources = [
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*",
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-*",

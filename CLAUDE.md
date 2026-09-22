@@ -127,11 +127,10 @@ Claude Code가 매 세션 자동으로 읽는 지침. 저장소 루트에 두고
 
 ### 4-1. 버그 (PR 대상)
 
-- **SSM 실행 권한 ARN** — 두 곳 모두 `automation-definition/ASR-*` 하나뿐. 9/21 실계정에서 `ssm:StartAutomationExecution` AccessDenied.
-  - `modules/soar/lambda.tf` (asr_trigger `StartApprovedPlaybooks`)
-  - `modules/compute/iam.tf` `local.asr_document_arn` (대시보드 실행 정책 `RunApprovedPlaybooksOnly`) — **대시보드 수동 승인 실행도 같은 이유로 실패**
-  - 9/21 임시 인라인 정책(`document/ASR-*` + `automation-execution/*`)으로 동작 확인. 코드 수정 후 임시 정책 삭제.
-  - 같은 서술: `README.md` 5-2장·14장 (`automation-definition/ASR-*` 언급)
+- ~~**SSM 실행 권한 ARN**~~ — `document/ASR-*` + `automation-execution/*` 두 리소스로 수정 (`fix/ssm-automation-arn`, 코드 대조 2026-09-22).
+  - `modules/soar/lambda.tf` (asr_trigger `StartApprovedPlaybooks`) / `modules/compute/iam.tf` `local.asr_document_arns`(대시보드 실행 정책 `RunApprovedPlaybooksOnly`) 둘 다 반영.
+  - 9/21 임시 인라인 정책(`document/ASR-*` + `automation-execution/*`)과 동일 조합. **apply 및 임시 인라인 정책 삭제는 PR 머지 후 실행 필요.**
+  - `README.md` 5-2장·14장도 같은 PR에서 갱신.
 - **demo Windows 경로** — `demo/trigger-auto-remediation.sh` 가 `/tmp/sh-event.json` 을 `fileb:///tmp/...` 로 넘김. Windows `aws.exe` 가 MINGW 경로 인식 못 함. `cygpath -w` 분기 필요. `python3` 호출도 Windows에선 `python` 일 수 있음(확인 필요). 스크립트는 `terraform output` 에 의존 → state 연결된 폴더에서만 동작.
 - **demo 자동조치는 대시보드에 안 뜬다** — demo 가짜 finding에 `Id` 가 없어 `handler.py` 가 `finding_id="unknown"` 으로 기록. `dashboard/backend/app/adapters/live.py` `_actions()` 가 `unknown` 을 버린다. 화면 검증은 실 Security Hub finding 경로로.
 

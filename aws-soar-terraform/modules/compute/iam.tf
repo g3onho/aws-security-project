@@ -31,6 +31,8 @@ locals {
   # 뒤의 두 개를 인라인 정책으로 **추가**해서 통과했다. 즉 검증된 것은 "두 개를 더하면
   # 된다" 이지 "automation-definition 을 빼도 된다" 가 아니다. 빼면 다시 막힐 수 있어
   # 셋 다 유지한다. 범위는 여전히 ASR-* 로 묶여 있어 최소권한을 해치지 않는다.
+  # (fix/ssm-automation-arn 는 automation-definition 을 뺐지만, Allow 의 Resource 목록에
+  #  항목을 더하는 것은 권한을 넓힐 뿐 AccessDenied 를 만들 수 없어 오진으로 보고 유지한다.)
   asr_document_arns = [
     "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*",
     "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-*",
