@@ -4,3 +4,4 @@ node_modules/
 .env
 *.pyc
 .DS_Store
+tests/fixtures.json

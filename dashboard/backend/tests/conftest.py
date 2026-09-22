@@ -6,6 +6,12 @@ sys.path.insert(0,str(ROOT))
 from run import create_app
 from app.auth import create_user
 
+@pytest.fixture(autouse=True)
+def forbid_network(monkeypatch):
+    """The backend suite is offline, including live-mode integration tests."""
+    import socket
+    monkeypatch.setattr(socket.socket, 'connect', lambda *args: pytest.fail('Network access is forbidden in backend tests'))
+
 @pytest.fixture
 def demo_app(tmp_path):
     app=create_app({'DATABASE':str(tmp_path/'db.sqlite3'),'TESTING':True,'USE_DEMO_DATA':True,'WRITE_ENABLED':True})

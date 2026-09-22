@@ -42,7 +42,8 @@ backend/
 │   ├── catalog/
 │   │   ├── scenarios.yaml  SEC-01~10 + 데모 4종. criterion · playbook · wired · verify
 │   │   └── loader.py
-│   ├── api/                블루프린트 12개 엔드포인트 · RFC 9457 오류
+│   ├── api/                블루프린트 엔드포인트 · RFC 9457 오류
+│   │                       (v2.3: GET /api/services 신설, /api/resources 를 어댑터 위임)
 │   ├── adapters/
 │   │   ├── demo.py         data.js 생성기의 파이썬 포팅
 │   │   └── live.py         실 AWS (스텁 — 어떤 호출이 들어갈지 명시)
@@ -50,9 +51,11 @@ backend/
 │       ├── filters.py      store.js selectEvents() 재현 + 커서 페이지네이션
 │       ├── csv_export.py   store.js toCSV() 와 바이트 단위 동일
 │       ├── gates.py        asr_trigger 의 3중 게이트 + 가역성 게이트
+│       ├── tiers.py        3계층(Nginx→Flask→MySQL) 상태 판정
 │       ├── scenarios.py    SEC 커버리지 집계
 │       └── evidence.py     증적양식 12항목 조립
-└── tests/                  pytest 51개 + Node 대조 스크립트
+└── tests/                  pytest + Node 대조 스크립트
+    tools/dump_fixtures.py   화면 스모크(../frontend/tests/dom-check.mjs)용 API 픽스처 생성
 ```
 
 ## 테스트
@@ -73,3 +76,16 @@ AWS 계정이 필요한 테스트는 하나도 없다.
 - **상태·위험도·대응 방식은 영문 enum.** 화면 국문 변환은 프론트가 한다. 단 CSV 는 국문이 계약이다.
 - **SEC-02 는 실행이 422 로 막힌다.** `ASR-HardenNginx` 는 SSM 문서와 Lambda 환경변수는 있으나 `asr_trigger` 에 호출 분기가 없다(README:303). 막는 게 정확한 동작이다.
 - **조치 이력은 `finding_id` 로 조인한다.** `asr_trigger` 가 판정할 때마다 `remediation_actions` 에 `finding_id` 를 함께 기록하므로, live 어댑터가 이 값으로 이벤트에 이력을 붙인다. DynamoDB 는 스키마리스라 `aws_dynamodb_table` 정의는 바꾸지 않았다 — 키가 아닌 속성이기 때문이다. 조회량이 늘면 그때 GSI 를 판다.
+
+## v2.3 에서 바뀐 것
+
+- **`/api/metrics` 가 시각을 따라간다.** 곡선 인덱스를 `floor(endOffset)%12` 로 잡던 것을
+  표본의 절대 시각(KST)으로 바꿨다. 1시간 구간이 직선으로 나오던 회귀가 여기서 왔다.
+  응답에 `period`(표본 주기 초) · `window` · `summary` · `breaches`(임계치 초과 구간) 가 붙었다.
+  `resource` 파라미터로 리전 안의 EC2 를 골라 볼 수 있다.
+- **`/api/services` 신설.** Nginx → Flask → MySQL 계층 상태. 데모는 지표·미해결 이벤트로,
+  실모드는 ALB 대상 그룹과 CloudWatch 로 만든다. 화면에 `○ 미연동` 이 하드코딩돼 있던 자리다.
+- **`/api/resources` 가 어댑터 위임.** 데모도 서울 리전의 EC2 5대를 역할·타입과 함께 돌려준다.
+- **프론트엔드 파싱 검사 추가.** `tests/test_frontend_syntax.py` 가 `static/js/*.js` 를
+  `node --check` 로 돌린다. app.js 가 SyntaxError 로 죽어 있는데 파이썬 테스트가 전부
+  통과하던 상황을 막는다.

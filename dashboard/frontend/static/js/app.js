@@ -1,11 +1,13 @@
 import {project,globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './map.js?v=local-1';
 import {regions,sources,statuses,severityColors} from './data.js?v=local-1';
-import {state,selectEvents,api,config,summary,DEMO_NOW,metricsFor,request} from './store.js?v=local-1';
+import {state,selectEvents,api,config,summary,DEMO_NOW,metricsFor,servicesOf,request} from './store.js?v=local-1';
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const format=(time,short=false)=>time==null?'데이터 없음':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',...(short?{}:{month:'2-digit',day:'2-digit'}),hour:'2-digit',minute:'2-digit',hour12:false}).format(time);
-const titles={overview:['통합 관제','Overview'],events:['보안 이벤트','Security events'],vulnerabilities:['취약점 점검','Vulnerabilities'],infrastructure:['인프라 모니터링','Infrastructure'],responses:['대응 이력','Response history']};
+// 구간이 하루를 넘으면 시:분만 찍힌 x축은 읽을 수 없다. 창 길이를 보고 날짜를 붙인다.
+const formatAt=(time,span=0)=>time==null?'데이터 없음':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',...(span>24*3600000?{month:'2-digit',day:'2-digit'}:{}),hour:'2-digit',minute:'2-digit',hour12:false}).format(time);
+const titles={overview:['통합 관제','Overview'],events:['보안 이벤트','Security events'],vulnerabilities:['취약점 점검','Vulnerabilities'],incidents:['침해사례','Incident cases'],infrastructure:['인프라 모니터링','Infrastructure'],responses:['대응 이력','Response history']};
 let attackSelection='all';
 let charts=[],mapReady=false,zoom=DEFAULT_ZOOM,rotation=[...DEFAULT_ROTATION],panelOpen=true,activeId=null,approval=false,lastTrigger=null,toastTimer;
 let worldFeatures=[],cachedAll=[],cachedMapped=[],rafPending=false,selectedCountryIndex=-1;
@@ -87,7 +89,7 @@ function renderAttacks(rows){
  $('#attack-summary').textContent=`${cachedMapped.length}개 흐름 · 위치 미상 ${chosen.length-cachedMapped.length}건 · 모의 IP/좌표`;
 }
 
-function chooseRegion(id,move=true){state.region=id;$('#region').value=id;panelOpen=true;updateSelectedCountry(id);if(mapReady)renderCountries();if(move){const r=regions.find(r=>r.id===id);if(r?.lon!==undefined)animateTo([r.lon,clampPhi(r.lat)],REGION_ZOOM);else animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM);}state.page=1;refresh();}
+function chooseRegion(id,move=true){state.region=id;state.resource='';$('#region').value=id;panelOpen=true;updateSelectedCountry(id);if(mapReady)renderCountries();if(move){const r=regions.find(r=>r.id===id);if(r?.lon!==undefined)animateTo([r.lon,clampPhi(r.lat)],REGION_ZOOM);else animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM);}state.page=1;refresh();}
 function mapRender(rows){
  if(!mapReady)return;
  cachedAll=selectEvents({ignoreRegion:true});renderAttacks(rows);
@@ -106,28 +108,295 @@ function overviewCharts(rows){
  const counts=sources.map(source=>({source,count:rows.filter(e=>e.source===source).length}));const max=Math.max(1,...counts.map(s=>s.count));
  return `<div class="chart-grid"><section class="panel">${header('자원 및 대응 현황','RESOURCE HEALTH')}<div class="chart-body"><div class="gauges">${gauge(m?.cpu??null,'CPU 사용률')}${gauge(m?.memory??null,'메모리 사용률')}${gauge(rate,'대응 완료율')}</div><p class="gauge-note">${m?esc(m.resource):'EC2 데이터 없음'} · 해결 ${done} / ${rows.length}건</p></div></section><section class="panel">${header('탐지 소스별 이벤트','DETECTION SOURCES')}<div class="chart-body source-bars">${counts.map(s=>`<div><div class="bar-heading"><span>${s.source}</span><span>${s.count}건</span></div><div class="bar-track"><div class="bar-fill" style="width:${s.count/max*100}%"></div></div></div>`).join('')}</div></section><section class="panel">${header('위험도 분포',`${rows.length} EVENTS`)}<div class="chart-body donut-body"><div class="donut-wrap">${canvas('severity-chart','위험도별 건수는 오른쪽 범례에 표시됩니다.')}<div class="donut-center"><b>${rows.length}</b><span>전체 이벤트</span></div></div><div class="donut-legend">${Object.entries(severityColors).map(([s,c])=>`<div><i style="background:${c}"></i><span>${s}</span><b>${rows.filter(e=>e.severity===s).length}</b></div>`).join('')}</div></div></section></div>`;
 }
-function table(rows,full=false){const total=rows.length,pages=Math.max(1,Math.ceil(total/15));state.page=Math.min(state.page,pages);rows=rows.slice((state.page-1)*15,state.page*15);return `<section class="panel ${full?'full-panel':''}">${header(state.view==='responses'?'대응 이력':state.view==='vulnerabilities'?'취약점 점검 결과':'최근 보안 이벤트',`<button id="export" class="text-button">↓ CSV 내보내기</button>`)}${rows.length?`<div class="table-scroll"><table><caption class="sr-only">현재 필터에 해당하는 ${rows.length}개 이벤트</caption><thead><tr><th>위험도</th><th>이벤트 / 자원</th><th>탐지 소스</th><th>발생 시각 (KST)</th><th>상태</th>${full?'<th>대응</th><th>재검증</th>':''}</tr></thead><tbody>${rows.map(e=>`<tr><td>${badge(e)}</td><td><button class="event-link" data-event="${e.id}">${esc(e.title)}<small>${esc(e.scenario)} · ${esc(e.resource)}</small></button></td><td>${esc(e.source)}</td><td>${format(e.at,true)}</td><td>${statusBadge(e.status)}</td>${full?`<td>${esc(e.mode)} · ${esc(e.execution)}</td><td>${esc(e.verification)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:empty()}<div class="table-footer"><span>총 ${total}건 · 현재 필터 적용</span><span>${state.view==='overview'?'<button class="text-button" data-view="events">전체 이벤트 보기 →</button>':'이벤트를 선택해 근거와 조치 결과 확인'}</span></div><div class="table-pager"><button data-page="prev" ${state.page<=1?'disabled':''}>← 이전</button><span>${state.page} / ${pages}</span><button data-page="next" ${state.page>=pages?'disabled':''}>다음 →</button></div></section>`;}
+// ── 목록 표 ────────────────────────────────────────────────
+// v3 (보완설계 §3.2): 표 안에서 바로 조치할 수 있게 조치 열과 선택 열을 붙였다.
+// 이전에는 상세 창을 열어야만 승인/실행/재검증이 가능해, 취약점 점검 화면에서
+// 항목을 눈으로 확인하고도 아무것도 할 수 없었다.
+const selected=new Set();
+function canAct(){return config.writeEnabled&&config.role==='operator';}
+function rowAction(e){
+ if(!canAct())return '<span class="muted-mini">조회 전용</span>';
+ if(!e.actionable)return '<span class="muted-mini" title="자동 대응 경로이거나 등록된 수동 조치가 없습니다">자동 대응</span>';
+ const s=e.rawStatus;
+ if(['EXECUTING','VERIFYING'].includes(s))return '<button class="row-action" disabled>진행 중</button>';
+ if(s==='RESOLVED')return '<button class="row-action" disabled>완료</button>';
+ if(s==='APPROVED')return `<button class="row-action primary" data-row-action="execute" data-event="${e.id}">조치 실행</button>`;
+ if(['PENDING_VERIFICATION','VERIFICATION_FAILED'].includes(s))return `<button class="row-action primary" data-row-action="verify" data-event="${e.id}">재검증</button>`;
+ if(['NEW','PENDING_APPROVAL','EXECUTION_FAILED'].includes(s))return `<button class="row-action" data-row-action="approve" data-event="${e.id}">승인</button>`;
+ return '<span class="muted-mini">—</span>';
+}
+function approvable(e){return canAct()&&e.actionable&&['NEW','PENDING_APPROVAL','EXECUTION_FAILED'].includes(e.rawStatus);}
+function table(rows,full=false){
+ const total=rows.length,pages=Math.max(1,Math.ceil(total/15));state.page=Math.min(state.page,pages);
+ const page=rows.slice((state.page-1)*15,state.page*15);
+ const pick=full&&canAct();
+ const bulk=page.filter(approvable);
+ const title=state.view==='responses'?'대응 이력':state.view==='vulnerabilities'?'취약점 점검 결과':'최근 보안 이벤트';
+ const tools=`${pick&&bulk.length?`<button id="bulk-approve" class="text-button">☑ 선택 일괄 승인 (<span id="bulk-count">${bulk.filter(e=>selected.has(e.id)).length}</span>)</button>`:''}<button id="export" class="text-button">↓ CSV 내보내기</button>`;
+ return `<section class="panel ${full?'full-panel':''}">${header(title,tools)}${page.length?`<div class="table-scroll"><table><caption class="sr-only">현재 필터에 해당하는 ${total}개 이벤트</caption><thead><tr>${pick?`<th class="pick-col"><input type="checkbox" id="pick-all" aria-label="현재 페이지 전체 선택"></th>`:''}<th>위험도</th><th>이벤트 / 자원</th><th>탐지 소스</th><th>발생 시각 (KST)</th><th>상태</th>${full?'<th>대응</th><th>재검증</th><th>조치</th>':''}</tr></thead><tbody>${page.map(e=>`<tr>${pick?`<td class="pick-col">${approvable(e)?`<input type="checkbox" class="row-pick" data-pick="${e.id}" aria-label="${esc(e.title)} 선택"${selected.has(e.id)?' checked':''}>`:''}</td>`:''}<td>${badge(e)}</td><td><button class="event-link" data-event="${e.id}">${esc(e.title)}<small>${esc(e.scenario)} · ${esc(e.resource)}</small></button></td><td>${esc(e.source)}</td><td>${format(e.at,true)}</td><td>${statusBadge(e.status)}</td>${full?`<td>${esc(e.mode)} · ${esc(e.execution)}</td><td>${esc(e.verification)}</td><td>${rowAction(e)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:empty()}<div class="table-footer"><span>총 ${total}건 · 현재 필터 적용</span><span>${state.view==='overview'?'<button class="text-button" data-view="events">전체 이벤트 보기 →</button>':'표에서 바로 승인·실행·재검증하거나, 이벤트를 눌러 근거를 확인하세요.'}</span></div><div class="table-pager"><button data-page="prev" ${state.page<=1?'disabled':''}>← 이전</button><span>${state.page} / ${pages}</span><button data-page="next" ${state.page>=pages?'disabled':''}>다음 →</button></div></section>`;
+}
 function responseCard(rows){const pending=rows.filter(e=>e.status==='승인 대기');return `<section class="panel">${header('대응 관리',`${pending.length} APPROVALS`)}<div class="response-body"><div class="response-summary"><div>자동 대응<b>${rows.filter(e=>e.mode==='자동').length}</b></div><div>수동 대응<b>${rows.filter(e=>e.mode==='수동').length}</b></div><div>승인 대기<b style="color:#d8ca78">${pending.length}</b></div></div><div class="response-list">${pending.slice(0,4).map(e=>`<div class="response-item"><span class="response-icon">!</span><div><strong>${esc(e.title)}</strong><small>${esc(e.scenario)} · ${format(e.at,true)} KST</small></div><button data-event="${e.id}">검토</button></div>`).join('')||'<p class="muted">승인 대기 이벤트가 없습니다.</p>'}</div></div></section>`;}
-function infrastructure(){const r=regions.find(r=>r.id===state.region);const m=metricsFor(r,state.hours,state.endOffset,state.environment);return `<div class="view-intro"><span>CloudWatch · CPU / 메모리 · 5분 평균 · 데모 시계열</span><span>경보 임계치 <strong class="mint">80%</strong></span></div><div class="infrastructure-grid"><section class="panel">${header('EC2 자원 사용률',m?.resource||'EC2 미선택')}${m?`<div class="metric-large">${canvas('metrics-chart',`CPU ${m.cpu}%, 메모리 ${m.memory}%, 임계치 80%`)}</div><div class="context-note">CPU ${m.cpu}% · 메모리 ${m.memory}% · 임계치 80% — 선택 구간 종료 시점의 값입니다. 보안 이벤트 필터와 독립적인 자원 지표입니다.</div>`:empty('단일 AWS 리전을 선택하면 EC2 데모 지표를 볼 수 있습니다.')}</section><section class="panel">${header('3계층 서비스','DEMO HEALTH')}<div class="service-flow"><div class="service-node">Nginx<span>○ 미연동</span></div><span class="mint">→</span><div class="service-node">Flask<span>○ 미연동</span></div><span class="mint">→</span><div class="service-node">MySQL<span>○ 미연동</span></div></div><div class="context-note">데모 서비스 구성도 · 실제 상태 미연동<br>각 서비스의 실제 상태 점검: 미연동<br>실제 AWS 조회 및 조치: 미연동</div></section></div>`;}
+// ── 인프라 모니터링 ────────────────────────────────────────
+// v3 (보완설계 §3.1): 하드코딩된 `○ 미연동` 을 전부 걷어내고
+//   ① 서버가 준 표본 주기·표본 수·창(window)을 그대로 표시하고
+//   ② 임계치 초과 구간을 근거와 함께 보여주며
+//   ③ 3계층 상태는 /api/services 응답으로 그린다.
+const SERVICE_TEXT={UP:'정상',DEGRADED:'저하',DOWN:'장애',UNKNOWN:'확인 불가'};
+const SERVICE_COLOR={UP:'#32d4be',DEGRADED:'#d8ca78',DOWN:'#ef777f',UNKNOWN:'#8fa295'};
+const periodLabel=s=>s==null?'—':s>=3600?`${s/3600}시간`:`${s/60}분`;
+const metricKo=m=>m==='cpu'?'CPU':'메모리';
+function servicePill(status){return `<span class="service-pill" style="color:${SERVICE_COLOR[status]||SERVICE_COLOR.UNKNOWN}"><i style="background:${SERVICE_COLOR[status]||SERVICE_COLOR.UNKNOWN}"></i>${SERVICE_TEXT[status]||status}</span>`;}
+function hostPicker(m){
+ if(!m?.hosts?.length)return '';
+ return `<label class="host-picker"><span>대상 호스트</span><select id="host">${m.hosts.map(h=>`<option value="${esc(h.id)}"${h.id===m.resource?' selected':''}>${esc(h.name)} · ${esc(h.id)} (${esc(h.type)})</option>`).join('')}</select></label>`;
+}
+function breachPanel(m,span){
+ if(!m.breaches.length)return `<div class="context-note">선택 구간에 ${m.threshold.cpu}% 임계치를 넘은 표본이 없습니다. CPU 최대 ${m.summary.cpu.max}% · 메모리 최대 ${m.summary.memory.max}%.</div>`;
+ return `<ul class="breach-list">${m.breaches.map(b=>`<li><span class="breach-metric" style="color:${b.metric==='cpu'?'#e7a064':'#ef777f'}">${metricKo(b.metric)}</span><span>${formatAt(b.from,span)} — ${formatAt(b.to,span)} KST</span><b>최고 ${b.peak}%</b><small>표본 ${b.samples}개 · 임계치 ${m.threshold[b.metric]}%</small></li>`).join('')}</ul>`;
+}
+function serviceFlow(svc){
+ if(!svc)return `<div class="context-note">3계층 상태를 불러오지 못했습니다. 새로고침 후에도 같으면 백엔드 /api/services 응답을 확인하세요.</div>`;
+ if(!svc.items.length)return empty(svc.note||'이 리전에는 3계층 서비스를 올린 호스트가 없습니다.');
+ return `<div class="service-flow">${svc.items.map((item,i)=>`${i?'<span class="service-arrow" style="color:'+(SERVICE_COLOR[item.status]||SERVICE_COLOR.UNKNOWN)+'">→</span>':''}<div class="service-node ${item.status.toLowerCase()}"><strong>${esc(item.name)}</strong>${servicePill(item.status)}<small>${item.latencyMs==null?'응답 없음':esc(item.latencyMs)+'ms'}${item.errorRate==null?'':' · 오류 '+esc(item.errorRate)+'%'}</small></div>`).join('')}</div>
+ <table class="service-table"><caption class="sr-only">계층별 점검 결과</caption><thead><tr><th>계층</th><th>상태</th><th>응답</th><th>판정 근거</th></tr></thead><tbody>${svc.items.map(item=>`<tr><td>${esc(item.name)} <small>${esc(item.tier)}/${esc(item.port)}</small></td><td>${servicePill(item.status)}</td><td>${item.latencyMs==null?'—':esc(item.latencyMs)+'ms'}</td><td>${esc(item.detail)}${item.blockers.length?`<br>${item.blockers.map(b=>`<button class="link-button" data-event="${esc(b.id)}">${esc(b.scenario)} ${esc(b.title)}</button>`).join(' ')}`:''}<br><small class="muted">${esc(item.probe)} · ${esc(item.source)}</small></td></tr>`).join('')}</tbody></table>
+ <div class="context-note">점검 주기 ${svc.intervalSec}초 · 마지막 점검 ${formatAt(svc.checkedAt,0)} KST · 대상 ${esc(svc.target||'—')}${svc.note?'<br>'+esc(svc.note):''}</div>`;
+}
+function hostGrid(m,span){
+ if(!m.series?.length)return '';
+ return `<div class="host-grid">${m.series.map(h=>{
+  const over=h.breaches.length,sel=h.resource===m.resource;
+  const bar=(v,limit)=>`<div class="host-bar"><div class="host-bar-fill" style="width:${Math.min(100,v)}%;background:${v>limit?'#e7a064':'#32d4be'}"></div><i style="left:${limit}%"></i></div>`;
+  return `<button class="host-card ${sel?'selected':''} ${over?'over':''}" data-host="${esc(h.resource)}">
+   <div class="host-card-head"><strong>${esc(h.host.name)}</strong><small>${esc(h.host.type)}</small></div>
+   <div class="host-metric"><span>CPU</span><b>${h.cpu}%</b></div>${bar(h.cpu,h.threshold.cpu)}
+   <div class="host-metric"><span>메모리</span><b>${h.memory}%</b></div>${bar(h.memory,h.threshold.memory)}
+   <div class="host-card-foot">${over?`<span class="over-flag">임계 초과 ${over}구간</span>`:'<span>임계 초과 없음</span>'}<small>${esc(h.resource)}</small></div>
+  </button>`;}).join('')}</div>`;
+}
+function infrastructure(){
+ const m=metricsFor(),svc=servicesOf(),span=state.hours*3600000;
+ if(!m)return `<div class="view-intro"><span>CloudWatch · CPU / 메모리</span></div><section class="panel">${header('EC2 자원 사용률','대상 없음')}${empty('단일 AWS 리전을 선택하면 EC2 지표를 볼 수 있습니다.')}</section>`;
+ const overCpu=m.breaches.filter(b=>b.metric==='cpu').length,overMem=m.breaches.length-overCpu;
+ const hosts=m.series?.length||1;
+ return `<div class="view-intro"><span>운영 중인 서버 ${hosts}대 · ${periodLabel(m.period)} 평균 · 표본 ${m.summary.samples}개</span><span>${formatAt(m.window.from,span)} — ${formatAt(m.window.to,span)} KST · 경보 임계치 <strong class="mint">${m.threshold.cpu}%</strong></span></div>
+ <section class="panel">${header('운영 중인 서버',`${hosts}대 · 카드를 누르면 아래 상세 차트가 바뀝니다`)}${hostGrid(m,span)}
+  <div class="context-note">리전에서 실행 중인 EC2 전체입니다. 실모드에서는 ec2:DescribeInstances 로 목록을 만듭니다.</div></section>
+ <div class="infrastructure-grid">
+  <section class="panel">${header(`상세 · ${esc(m.host.name)}`,hostPicker(m))}<div class="metric-large">${canvas('metrics-chart',`CPU ${m.cpu}%, 메모리 ${m.memory}%, 임계치 ${m.threshold.cpu}%`)}</div>
+   <div class="metric-stats"><div><span>CPU 현재</span><b>${m.cpu}%</b></div><div><span>CPU 최대 / 평균</span><b>${m.summary.cpu.max}% / ${m.summary.cpu.avg}%</b></div><div><span>메모리 현재</span><b>${m.memory}%</b></div><div><span>메모리 최대 / 평균</span><b>${m.summary.memory.max}% / ${m.summary.memory.avg}%</b></div></div>
+   <div class="context-note">${esc(m.host.role)} · ${esc(m.resource)} — 선택 구간의 마지막 표본 기준입니다.</div></section>
+  <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(m,span)}
+   <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>
+  <section class="panel full-panel">${header('3계층 서비스',svc?`전체 ${SERVICE_TEXT[svc.overall]||svc.overall} · ${svc.mode==='live'?'ALB / CloudWatch':'데모 점검'}`:'조회 실패')}${serviceFlow(svc)}</section>
+ </div>`;
+}
 function visibleRows(){return selectEvents();}
+// ── 보완 화면 조각 ────────────────────────────────────────
+// 취약점 점검 상단의 SEC 커버리지 보드, 대응 이력 상단의 개선 효과 요약,
+// 하단의 감사 로그. 백엔드에는 이미 /api/scenarios · /api/audit 이 있었는데
+// 화면이 그 둘을 한 번도 부르지 않고 있었다(보완설계 §3.3).
+function improvementCard(rows){
+ const passed=rows.filter(e=>e.rawVerification==='PASSED');
+ const failed=rows.filter(e=>e.rawVerification==='FAILED');
+ const pending=rows.filter(e=>['PENDING_VERIFICATION','VERIFYING'].includes(e.rawStatus));
+ const counted=passed.filter(e=>typeof e.before==='number'&&typeof e.afterValue==='number');
+ const before=counted.reduce((a,e)=>a+e.before,0),after=counted.reduce((a,e)=>a+e.afterValue,0);
+ const rate=before?Math.round((before-after)/before*100):null;
+ return `<section class="panel">${header('Before / After 개선 효과','SAME-CRITERION RE-CHECK')}<div class="improve-grid">
+  <div><span>재검증 통과</span><b class="mint">${passed.length}건</b></div>
+  <div><span>재검증 실패</span><b style="color:#ef777f">${failed.length}건</b></div>
+  <div><span>재검증 대기</span><b style="color:#d8ca78">${pending.length}건</b></div>
+  <div><span>측정값 합계 Before → After</span><b>${counted.length?`${before} → ${after}`:'—'}</b></div>
+  <div><span>개선율</span><b class="mint">${rate==null?'—':rate+'%'}</b></div>
+ </div><div class="context-note">같은 대상·같은 검사 기준으로 다시 측정한 값만 집계합니다(측정 가능 ${counted.length}건). 실행 성공은 해결이 아니며, 재검증 통과만 해결로 봅니다.</div></section>`;
+}
+async function renderCoverage(){
+ const box=$('#coverage');if(!box)return;
+ try{
+  const data=await api.scenarios();
+  box.innerHTML=`<div class="coverage-grid">${data.items.map(i=>`<div class="coverage-item ${i.detection.observed?'':'idle'}"><div class="coverage-head"><strong>${esc(i.scenario)}</strong>${i.remediation.wired?'<span class="tag ok">배선됨</span>':'<span class="tag warn">미배선</span>'}</div><span>${esc(i.title)}</span><small>탐지 ${i.detection.count}건 · ${i.remediation.mode==='AUTO'?'자동':'수동'} · ${esc(i.remediation.playbook||'플레이북 없음')}</small><small class="coverage-verify ${i.verification.status.toLowerCase()}">재검증 ${i.verification.status==='PASSED'?'통과':i.verification.status==='FAILED'?'실패':'미실행'}</small></div>`).join('')}</div><div class="context-note">카탈로그 v${esc(data.catalogVersion)} 기준. '미배선'은 SSM 문서와 환경변수는 있으나 Lambda 에 호출 분기가 없는 항목입니다(README 5-1).</div>`;
+ }catch(error){box.innerHTML=`<p class="muted">커버리지를 불러오지 못했습니다: ${esc(error.message)}</p>`;}
+}
+async function renderAudit(){
+ const box=$('#audit-log');if(!box)return;
+ try{
+  const data=await api.audit();
+  box.innerHTML=data.items.length?`<div class="table-scroll"><table><caption class="sr-only">감사 로그</caption><thead><tr><th>시각 (KST)</th><th>수행자</th><th>이벤트</th><th>동작</th><th>세부</th></tr></thead><tbody>${data.items.slice(0,50).map(r=>`<tr><td>${format(r.at)}</td><td>${esc(r.actor)}</td><td>${r.event_id?`<button class="link-button" data-event="${esc(r.event_id)}">${esc(r.event_id)}</button>`:'—'}</td><td>${esc(r.action)}</td><td><small>${esc(r.detail)}</small></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">기록된 조치가 없습니다.</p>';
+ }catch(error){box.innerHTML=`<p class="muted">감사 로그를 불러오지 못했습니다: ${esc(error.message)}</p>`;}
+}
+function notificationItems(rows){
+ const groups=[
+  {key:'승인 대기',filter:e=>e.status==='승인 대기',view:'events',status:'승인 대기'},
+  {key:'재검증 실패',filter:e=>e.status==='재검증 실패',view:'responses',status:'재검증 실패'},
+  {key:'재검증 대기',filter:e=>e.status==='재검증 대기',view:'responses',status:'재검증 대기'},
+  {key:'임계치 경보 (CloudWatch)',filter:e=>e.source==='CloudWatch'&&e.status!=='해결',view:'infrastructure',status:''},
+ ].map(g=>({...g,count:rows.filter(g.filter).length}));
+ return groups;
+}
+function renderNotifications(rows){
+ const groups=notificationItems(rows);
+ const total=groups.reduce((a,g)=>a+g.count,0);
+ $('#notification-count').hidden=!total;
+ $('#notification-count').textContent=total>99?'99+':String(total||'');
+ $('#notification-panel').innerHTML=`<h3>알림 ${total}건</h3>${groups.map(g=>`<button class="notification-row" data-notify="${esc(g.key)}" ${g.count?'':'disabled'}><span>${esc(g.key)}</span><b>${g.count}</b></button>`).join('')}<small>현재 리전·기간 필터 기준입니다.</small>`;
+}
+// ── 침해사례 탭 ────────────────────────────────────────────
+// 설계안 12장의 대시보드 파트 책임 중 하나. 시나리오별로
+// "공격 → 탐지 → 승인 → 조치 → 재검증" 을 한 줄에 세운다.
+// 단계 완료 여부는 카탈로그 서술이 아니라 **실제 이벤트 값**으로만 켜진다.
+const STAGE_TONE={ok:'#32d4be',warn:'#d8ca78',info:'#8fa295'};
+function stageRail(stages){
+ return `<ol class="stage-rail">${stages.map(s=>`<li class="stage ${s.done?'done':''} tone-${s.tone}"><span class="stage-dot" style="--tone:${STAGE_TONE[s.tone]||STAGE_TONE.ok}"></span><b>${esc(s.label)}</b><small>${s.at?format(s.at,true)+' KST':'—'}</small><span class="stage-detail">${esc(s.detail)}</span></li>`).join('')}</ol>`;
+}
+function incidentCard(i){
+ const r=i.remediation;
+ const list=(title,rows)=>rows.length?`<div class="incident-block"><h4>${title}</h4><ul>${rows.map(v=>`<li>${esc(v)}</li>`).join('')}</ul></div>`:'';
+ const line=(title,value)=>value?`<div class="incident-block"><h4>${title}</h4><p>${esc(value)}</p></div>`:'';
+ return `<section class="panel incident-card">
+  <div class="incident-head">
+   <div><div class="eyebrow">${esc(i.scenario)}${i.severityHint?` · ${esc(i.severityHint)}`:''}</div><h3>${esc(i.title)}</h3><p class="incident-summary">${esc(i.summary||'')}</p></div>
+   <div class="incident-counts"><div><span>탐지</span><b>${i.counts.total}</b></div><div><span>미해결</span><b style="color:${i.counts.open?'#d8ca78':'#32d4be'}">${i.counts.open}</b></div><div><span>재검증 실패</span><b style="color:${i.counts.verifyFailed?'#ef777f':'#a9bcb1'}">${i.counts.verifyFailed}</b></div></div>
+  </div>
+  ${stageRail(i.stages)}
+  <div class="incident-tags">${r.mode?`<span class="tag ${r.mode==='AUTO'?'ok':''}">${r.mode==='AUTO'?'자동':'수동'} 개선</span>`:''}${r.playbook?`<span class="tag">${esc(r.playbook)}</span>`:''}<span class="tag ${r.wired?'ok':'warn'}">${r.wired?'배선됨':'미배선'}</span><span class="tag ${r.reversible?'ok':'warn'}">${r.reversible?'되돌릴 수 있음':'되돌릴 수 없음'}</span>${r.plannedMode&&r.plannedMode!==r.mode?`<span class="tag warn">기획서 분류: ${r.plannedMode==='AUTO'?'자동':'수동'}</span>`:''}</div>
+  <details class="incident-details"><summary>공격 재현 · 흔적 · 대응 보기</summary>
+   ${list('공격 · 재현 절차',i.attack)}
+   ${list('흔적이 남는 위치',i.trace)}
+   ${line('영향',i.impact)}
+   ${line('대응',i.control)}
+   ${line('판정 기준',i.criterion?`${i.criterion} (${i.unit||''})`:'')}
+   ${line('근거 문서',i.basis)}
+   ${i.note?`<div class="incident-block warn-block"><h4>주의</h4><p>${esc(i.note)}</p></div>`:''}
+   <p class="muted">공격 재현은 팀 소유의 격리된 계정·VPC 안에서만 실행합니다(설계안 2-1).</p>
+   ${i.latestEventId?`<button class="row-action primary" data-event="${esc(i.latestEventId)}">최근 이벤트 상세 · 증적 열기</button>`:'<p class="muted">이 구간에 해당 시나리오 이벤트가 없습니다.</p>'}
+  </details>
+ </section>`;
+}
+async function renderIncidents(){
+ const box=$('#incidents');if(!box)return;
+ try{
+  const data=await api.incidents();
+  const done=data.items.filter(i=>i.stages.find(s=>s.key==='verify').done).length;
+  box.innerHTML=`<div class="view-intro"><span>설계안 2장 SEC-01~10 · 공격에서 재검증까지 한 줄로</span><span class="view-summary">시나리오 <strong>${data.items.length}개</strong> 재검증 도달 <strong>${done}개</strong></span></div>${data.items.map(incidentCard).join('')}<div class="context-note">카탈로그 v${esc(data.incidentCatalogVersion)} · 단계 완료는 실제 이벤트 값으로만 켜집니다. 문서에 적혀 있다고 켜지지 않습니다.</div>`;
+ }catch(error){box.innerHTML=`<p class="muted">침해사례를 불러오지 못했습니다: ${esc(error.message)}</p>`;}
+}
+// ── 취약점 점검 ────────────────────────────────────────────
+// /api/vulnerabilities 를 화면에 연결한다. 이전에는 이 엔드포인트를 한 번도 부르지 않아
+// 취약점 탭이 이벤트 목록의 복사본이었다(CVE·패키지·CVSS 컬럼 자체가 없었다).
+let vulnTarget='',vulnPage=1,vulnSize=50,vulnFixable=false,vulnData=null;
+const SEV_COLOR={CRITICAL:'#EF777F',HIGH:'#E7A064',MEDIUM:'#D8CA78',LOW:'#32D4BE'};
+function sevChip(s){return `<span class="sev-chip" style="color:${SEV_COLOR[s]||'#a9bcb1'};border-color:${SEV_COLOR[s]||'#3a4a42'}">${esc(s)}</span>`;}
+function groupAction(g){
+ if(!canAct())return '<span class="muted-mini">조회 전용</span>';
+ if(!g.eventId)return '<span class="muted-mini">연결된 조치 이벤트 없음</span>';
+ if(!g.actionable)return '<span class="muted-mini">자동 대응 경로</span>';
+ const s=g.eventStatus;
+ if(['EXECUTING','VERIFYING'].includes(s))return '<button class="row-action" disabled>진행 중</button>';
+ if(s==='RESOLVED')return '<button class="row-action" disabled>완료</button>';
+ const action=s==='APPROVED'?'execute':['PENDING_VERIFICATION','VERIFICATION_FAILED'].includes(s)?'verify':'approve';
+ const label={approve:'조치 승인',execute:'조치 실행',verify:'재검증'}[action];
+ return `<button class="row-action primary" data-row-action="${action}" data-event="${esc(g.eventId)}">${label}</button>
+  <button class="link-button" data-event="${esc(g.eventId)}">${esc(g.eventId)} 상세</button>`;
+}
+function vulnGroups(data){
+ return `<div class="vuln-groups">${data.groups.map(g=>`<div class="vuln-group ${g.target===vulnTarget?'selected':''}">
+  <button class="vuln-group-head" data-vuln-target="${esc(g.target)}"><strong>${esc(g.target)}</strong><small>${esc(g.kind==='IMAGE'?'이미지':'인스턴스')} · ${esc(g.source)}${g.note?' · '+esc(g.note):''}</small></button>
+  <div class="vuln-group-counts">${['CRITICAL','HIGH','MEDIUM','LOW'].map(s=>g.bySeverity[s]?`<span style="color:${SEV_COLOR[s]}">${s[0]}${g.bySeverity[s]}</span>`:'').join('')}<b>${g.total}건</b></div>
+  <div class="vuln-group-meta">수정 버전 있음 ${g.fixable}건 · 스캔 ${g.scannedAt?format(g.scannedAt,true)+' KST':'—'}</div>
+  <div class="vuln-group-action">${groupAction(g)}</div>
+ </div>`).join('')}</div>`;
+}
+function vulnTable(data){
+ const rows=vulnTarget?data.items.filter(v=>v.target===vulnTarget):data.items;
+ const size=vulnSize===0?rows.length||1:vulnSize;
+ const pages=Math.max(1,Math.ceil(rows.length/size));
+ vulnPage=Math.min(vulnPage,pages);
+ const page=rows.slice((vulnPage-1)*size,vulnPage*size);
+ const sizes=[25,50,100,200,0].map(n=>`<option value="${n}"${n===vulnSize?' selected':''}>${n?n+'건씩':'전체'}</option>`).join('');
+ return `<section class="panel full-panel">${header(vulnTarget?`CVE 목록 · ${esc(vulnTarget)}`:'CVE 목록',
+  `<label class="page-size">표시 <select id="vuln-size">${sizes}</select></label><button id="export" class="text-button">↓ CSV 내보내기</button>`)}
+ ${page.length?`<div class="table-scroll"><table><caption class="sr-only">CVE ${rows.length}건</caption><thead><tr><th>심각도</th><th>CVSS</th><th>CVE</th><th>패키지</th><th>설치 → 수정</th><th>대상</th><th>계열</th></tr></thead><tbody>${page.map(v=>`<tr><td>${sevChip(v.severity)}</td><td class="num">${v.cvss??'—'}</td><td><a class="cve-link" href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(v.cveId)}" target="_blank" rel="noreferrer">${esc(v.cveId)}</a></td><td>${esc(v.package||'—')}</td><td><code>${esc(v.installedVersion||'?')}</code> → <code class="fixed">${esc(v.fixedVersion||'수정본 없음')}</code></td><td><button class="link-button" data-vuln-target="${esc(v.target)}">${esc(v.target)}</button></td><td><small>${esc(v.family||'—')}</small></td></tr>`).join('')}</tbody></table></div>`:empty('현재 필터에 맞는 CVE 가 없습니다.')}
+ <div class="table-footer"><span>${rows.length}건 표시 중 · 전체 ${data.total}건</span><span>CVE 번호를 누르면 NVD 원문이 열립니다.</span></div>
+ <div class="table-pager"><button data-vuln-page="prev" ${vulnPage<=1?'disabled':''}>← 이전</button><span>${vulnPage} / ${pages}</span><button data-vuln-page="next" ${vulnPage>=pages?'disabled':''}>다음 →</button></div></section>`;
+}
+async function renderVulnerabilities(){
+ const box=$('#vulns');if(!box)return;
+ try{
+  const data=await api.vulnerabilities({target:vulnTarget,fixableOnly:vulnFixable});
+  vulnData=data;
+  const sev=data.summary.bySeverity;
+  box.innerHTML=`<div class="view-intro"><span>Trivy(이미지) · Inspector(인스턴스) — 최신 스캔 기준이라 기간 필터를 적용하지 않습니다.</span>
+   <span class="view-summary">전체 <strong>${data.total}건</strong> · 고유 CVE <strong>${data.summary.uniqueCves}</strong> · 수정 버전 있음 <strong>${data.summary.fixable}</strong></span></div>
+  <section class="panel">${header('점검 대상 및 조치',`대상 ${data.summary.targets}개 · C${sev.CRITICAL} H${sev.HIGH} M${sev.MEDIUM} L${sev.LOW}`)}
+   <div class="vuln-toolbar">${vulnTarget?`<button class="text-button" data-vuln-target="">전체 대상 보기 ←</button>`:'<span class="muted-mini">대상을 누르면 해당 CVE 만 봅니다.</span>'}
+    <label class="vuln-check"><input type="checkbox" id="vuln-fixable"${vulnFixable?' checked':''}> 수정 버전이 있는 항목만</label></div>
+   ${vulnGroups(data)}
+   <div class="context-note">조치는 CVE 단위가 아니라 **대상 단위**입니다 — 이미지 교체 또는 패키지 업데이트. 버튼은 연결된 이벤트의 승인·실행·재검증 API 를 그대로 탑니다.${data.catalogVersion?` 데모 카탈로그 v${esc(data.catalogVersion)}.`:''}</div></section>
+  ${vulnTable(data)}`;
+ }catch(error){box.innerHTML=`<p class="muted">취약점 목록을 불러오지 못했습니다: ${esc(error.message)}</p>`;}
+}
 function render(){
  charts.forEach(c=>c.destroy());charts=[];
  const rows=selectEvents();const [title,en]=titles[state.view];$('#page-title').innerHTML=`${title} <span>${en}</span>`;document.title=`AWS Security Operations · ${title}`;
  $$('nav [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===state.view);b.setAttribute('aria-current',b.dataset.view===state.view?'page':'false');});
  $('#map-section').hidden=state.view!=='overview';
- const end=DEMO_NOW-state.endOffset*3600000;$('#time-label').innerHTML=`${format(end-state.hours*3600000)} — ${format(end)}<br>KST · 고정 데모 시각`;
+ const span=state.hours*3600000,end=clockNow()-state.endOffset*3600000;
+ $('#time-label').innerHTML=`${format(end-span)} — ${format(end)}<br>KST · ${config.mode==='live'?'실시간 기준':'데모 기준 시각'} · 되감기 ${state.endOffset}시간`;
  $$('[data-hours]').forEach(b=>{b.classList.toggle('active',+b.dataset.hours===state.hours);b.setAttribute('aria-pressed',String(+b.dataset.hours===state.hours));});
- $('#time-range').setAttribute('aria-valuetext',`${state.endOffset}시간 전까지, 최근 ${state.hours}시간`);
+ syncTimeRange();
  if(state.view==='overview'){$('#content').innerHTML=overviewCharts(rows)+`<div class="table-layout">${table(rows)}${responseCard(rows)}</div>`;mapRender(rows);drawChart('severity-chart','doughnut',{labels:Object.keys(severityColors),datasets:[{data:Object.keys(severityColors).map(s=>rows.filter(e=>e.severity===s).length),backgroundColor:Object.values(severityColors),borderWidth:0,hoverOffset:3}]},{cutout:'75%'});}
  else if(state.view==='infrastructure'){
-  $('#content').innerHTML=infrastructure();const m=metricsFor(regions.find(r=>r.id===state.region),state.hours,state.endOffset,state.environment);if(m)drawChart('metrics-chart','line',{labels:m.points.map(p=>format(p.at,true)),datasets:[{label:'CPU %',data:m.points.map(p=>p.cpu),borderColor:'#32d4be',pointRadius:2,tension:.3,borderWidth:2},{label:'메모리 %',data:m.points.map(p=>p.memory),borderColor:'#a3c7b7',pointRadius:2,tension:.3,borderWidth:2},{label:'80% 임계치',data:m.points.map(()=>80),borderColor:'#e7a064',borderDash:[5,5],pointRadius:0,borderWidth:1}]},{plugins:{legend:{display:true,labels:{color:'#b8cdbf',boxWidth:14,font:{size:11}}}},scales:{x:{ticks:{color:'#9eb5a5',maxTicksLimit:6,font:{size:10}},grid:{color:'#334737'}},y:{min:0,max:100,ticks:{color:'#9eb5a5',callback:v=>`${v}%`},grid:{color:'#334737'}}}});
- }else {const visible=visibleRows();$('#content').innerHTML=`<div class="view-intro"><span>${state.view==='vulnerabilities'?'Trivy / Inspector · 같은 자원과 검사 기준으로 결과 비교':state.view==='responses'?'실행 결과와 재검증 결과를 구분하여 확인합니다.':'탐지 근거에서 대응과 재검증까지 추적합니다.'}</span><span class="view-summary">전체 <strong>${visible.length}건</strong> 미해결 <strong>${visible.filter(e=>e.status!=='해결').length}건</strong></span></div>${table(visible,true)}`;}
- $('#notification-count').hidden=!rows.some(e=>e.status==='승인 대기');
+  $('#content').innerHTML=infrastructure();
+  const m=metricsFor();
+  if(m)drawChart('metrics-chart','line',{labels:m.points.map(p=>formatAt(p.at,span)),datasets:[
+   // 임계치를 넘은 표본만 점을 키우고 색을 바꾼다. 어느 시각에 넘었는지 눈으로 찾을 수 있어야 한다.
+   {label:'CPU %',data:m.points.map(p=>p.cpu),borderColor:'#32d4be',tension:.3,borderWidth:2,
+    pointRadius:m.points.map(p=>p.cpu>m.threshold.cpu?3.5:0),
+    pointBackgroundColor:m.points.map(p=>p.cpu>m.threshold.cpu?'#e7a064':'#32d4be')},
+   {label:'메모리 %',data:m.points.map(p=>p.memory),borderColor:'#a3c7b7',tension:.3,borderWidth:2,
+    pointRadius:m.points.map(p=>p.memory>m.threshold.memory?3.5:0),
+    pointBackgroundColor:m.points.map(p=>p.memory>m.threshold.memory?'#ef777f':'#a3c7b7')},
+   {label:`${m.threshold.cpu}% 임계치`,data:m.points.map(()=>m.threshold.cpu),borderColor:'#e7a064',borderDash:[5,5],pointRadius:0,borderWidth:1}]},
+   {plugins:{legend:{display:true,labels:{color:'#b8cdbf',boxWidth:14,font:{size:11}}}},
+    scales:{x:{ticks:{color:'#9eb5a5',maxTicksLimit:8,font:{size:10}},grid:{color:'#334737'}},
+            y:{min:0,max:100,ticks:{color:'#9eb5a5',callback:v=>`${v}%`},grid:{color:'#334737'}}}});
+ }else if(state.view==='vulnerabilities'){
+  $('#content').innerHTML=`<section class="panel">${header('SEC 시나리오 커버리지','COVERAGE BOARD')}<div id="coverage" class="load-state">불러오는 중…</div></section><div id="vulns" class="load-state">불러오는 중…</div>`;
+  renderCoverage();renderVulnerabilities();
+ }else if(state.view==='incidents'){
+  $('#content').innerHTML='<div id="incidents" class="load-state">불러오는 중…</div>';
+  renderIncidents();
+ }else {
+  const visible=visibleRows();
+  const intro=state.view==='responses'?'실행 결과와 재검증 결과를 구분하여 확인합니다.':'탐지 근거에서 대응과 재검증까지 추적합니다.';
+  const head=`<div class="view-intro"><span>${intro}</span><span class="view-summary">전체 <strong>${visible.length}건</strong> 미해결 <strong>${visible.filter(e=>e.status!=='해결').length}건</strong></span></div>`;
+  const before=state.view==='responses'?improvementCard(visible):'';
+  const after=state.view==='responses'
+   ?`<section class="panel full-panel">${header('감사 로그','AUDIT TRAIL')}<div id="audit-log" class="load-state">불러오는 중…</div></section>`:'';
+  $('#content').innerHTML=head+before+table(visible,true)+after;
+  if(state.view==='responses')renderAudit();
+ }
+ renderNotifications(rows);
+ $('#footer-asof').textContent=`기준 데이터 ${format(clockNow())} KST`;
+}
+// 되감기 슬라이더는 선택한 창 길이에 맞춰 움직여야 한다. 24시간 창에서 1시간 단위,
+// 7일 창에서 6시간 단위로 잡아 어느 기간에서도 끝까지 되감을 수 있게 한다.
+function clockNow(){return config.mode==='live'?(summary.asOf||Date.now()):DEMO_NOW;}
+function syncTimeRange(){
+ const input=$('#time-range');
+ const step=state.hours>=168?6:state.hours>=24?1:1;
+ const max=Math.max(state.hours*3,24);
+ input.step=step;input.max=max;
+ if(state.endOffset>max){state.endOffset=max;}
+ input.value=state.endOffset;
+ $('#range-max').textContent=`${Math.round(max/24*10)/10}일 전`;
+ $('#range-mid').textContent=`${Math.round(max/48*10)/10}일 전`;
+ input.setAttribute('aria-valuetext',`${state.endOffset}시간 전까지, 최근 ${state.hours}시간`);
 }
 
 let detailSerial=0,operationBusy=false,pollTimer;
 async function eventDialog(id,ask=false){
- const serial=++detailSerial;activeId=id;approval=ask;
+ const serial=++detailSerial;activeId=id;approval=ask;syncUrl(true);
  if(!$('#event-dialog').open){lastTrigger=document.activeElement;$('#event-dialog').showModal();}
  $('#dialog-content').textContent='상세 정보를 불러오는 중…';
  try{const e=await api.detail(id);if(serial!==detailSerial||activeId!==id)return;drawDetail(e,ask);if(e.activeExecutionId)pollJob(id,e.activeExecutionId);}
@@ -135,9 +404,22 @@ async function eventDialog(id,ask=false){
 }
 function applyModeLabels(){const live=config.mode==='live';
  $('#data-mode').textContent=live?'실 AWS 데이터':'데모 데이터';
- $('#aws-state').textContent=live?'AWS 연동됨':'AWS 미연동';
+ $('#aws-state').textContent=live?(summary.health?.aws_connected?'AWS 연동 정상':'AWS 연결 점검 필요'):'AWS 미연동';
  $('#env-label').textContent=live?'실 AWS 환경':'로컬 데모 환경';
- $('#env-sub').textContent=live?config.mode+' · 읽기 전용':'실제 AWS 연결 없음';}
+ $('#env-sub').textContent=live?config.mode+(config.writeEnabled?' · 조치 활성화':' · 읽기 전용'):'실제 AWS 연결 없음';}
+// 알림은 대시보드가 보내지 않는다. CloudWatch 알람의 alarm_actions 와 asr_trigger 의
+// sns.publish 가 보낸다(설계안 5-2·5-3). 화면은 "갔는지"만 보여준다.
+const NOTIFY_SOURCE={'cloudwatch-alarm':'CloudWatch 알람','asr_trigger':'asr_trigger(자동조치 판정)'};
+function notifyCell(e){
+ const n=e.notification;
+ if(!n)return '<span class="muted-mini">발송 기록 없음</span>';
+ return `<span class="notify-sent">✓ ${esc(n.channel)}</span> ${format(n.at,true)}${n.count>1?` · ${n.count}회`:''}`;
+}
+function notifySection(e){
+ const n=e.notification;
+ if(!n)return `<section class="detail-section"><h3>알림 발송</h3><p class="muted">이 이벤트에 대한 발송 기록이 없습니다. 알림은 대시보드가 아니라 CloudWatch 알람과 asr_trigger 가 직접 보냅니다.</p></section>`;
+ return `<section class="detail-section"><h3>알림 발송</h3><p>${esc(NOTIFY_SOURCE[n.source]||n.source)} → ${esc(n.channel)} · ${format(n.at)} KST${n.count>1?` · ${n.count}회`:''}</p><p class="muted">사유: ${esc(n.reason)}</p><p class="muted">대시보드에는 발송 버튼이 없습니다. 임계치 초과(alarm_actions)와 자동조치 게이트 불충족(asr_trigger)에서 자동 발행됩니다.</p></section>`;
+}
 function drawDetail(e,ask=false){
  const canWrite=config.writeEnabled&&config.role==='operator'&&e.actionable;
  const running=['EXECUTING','VERIFYING'].includes(e.rawStatus);
@@ -145,36 +427,173 @@ function drawDetail(e,ask=false){
  let buttons='<button class="cancel-button" data-action="close">닫기</button>';
  if(canWrite&&!running&&!operationBusy){
   if(ask)buttons='<button data-action="cancel-review">돌아가기</button><button class="primary-button" data-action="confirm-approve">변경 내용 승인</button>';
-  else if(e.rawStatus==='APPROVED')buttons+='<button data-action="cancel">승인 취소</button><button class="primary-button" data-action="execute">데모 조치 실행</button>';
+  // 작은따옴표 문자열 안에 ${...} 를 넣어 두어 app.js 전체가 SyntaxError 로 죽던 자리다.
+  else if(e.rawStatus==='APPROVED')buttons+=`<button data-action="cancel">승인 취소</button><button class="primary-button" data-action="execute">${config.mode==='live'?(e.plan?.manual?'수동 조치 완료 기록':'승인한 AWS 조치 실행'):'데모 조치 실행'}</button>`;
   else if(['PENDING_VERIFICATION','VERIFICATION_FAILED'].includes(e.rawStatus))buttons+='<button class="primary-button" data-action="verify">동일 기준 재검증</button>';
   else if(['NEW','PENDING_APPROVAL','EXECUTION_FAILED'].includes(e.rawStatus))buttons+='<button class="primary-button" data-action="approve">조치 검토 및 승인</button>';
  }
- $('#dialog-content').innerHTML=`<div class="dialog-header"><div><div class="eyebrow">${esc(e.id)} / ${esc(e.scenario)}</div><h2 id="dialog-title">${esc(e.title)}</h2></div><button class="dialog-close" data-action="close" aria-label="상세 닫기">×</button></div><div class="dialog-body"><dl class="detail-meta"><div><dt>위험도</dt><dd>${badge(e)}</dd></div><div><dt>탐지 소스</dt><dd>${esc(e.source)}</dd></div><div><dt>대상 자원</dt><dd>${esc(e.resource)}</dd></div><div><dt>상태</dt><dd>${esc(e.status)}</dd></div><div><dt>승인자</dt><dd>${esc(e.approver||'미승인')}</dd></div><div><dt>발생 시각</dt><dd>${format(e.at)} KST</dd></div></dl><div class="execution-flow"><span>실행 ${esc(e.execution)}</span><span>→ 재검증 ${esc(e.verification)}</span></div>${e.sourceIp?`<section class="detail-section"><h3>공격 출발지 → 대상</h3><p>${esc(e.sourceIp)} → ${esc(e.region)}</p><p>${esc(e.geoStatus)} · ${esc(e.sourceLocation?.provenance||'좌표 없음')}</p><p>모의 IP/좌표입니다. 실제 공격자 귀속 정보가 아닙니다.</p></section>`:''}<section class="detail-section"><h3>탐지 근거</h3><p>${esc(e.evidence)}</p></section><section class="detail-section"><h3>권장 조치</h3><p>${esc(e.recommendation)}</p></section>${e.plan?`<section class="${ask?'approval-box':'detail-section'}"><h3>${ask?'승인할 변경 내용':'로컬 모의 조치 계획'}</h3><p>대상: ${esc(e.plan.target)}</p><p>변경: ${esc(e.plan.change)}</p><p>절차: ${esc(e.plan.document)} · 버전 ${esc(e.plan.version)}</p>${e.plan.imageBefore?`<p>이미지 ${esc(e.plan.imageBefore)} → ${esc(e.plan.imageAfter)}</p>`:''}<p>실제 AWS 자원은 변경되지 않습니다.</p></section>`:'<p class="muted">이 이벤트의 수동 실행은 미지원입니다. 자동 대응 이력은 조회만 가능합니다.</p>'}<section class="detail-section"><h3>Before / After · 동일 기준 재검증</h3><p>${esc(e.criterion)} · 검사 버전 ${esc(e.criterionVersion)}</p><p>같은 대상: ${esc(e.resource)}</p><div class="comparison"><div><label>BEFORE</label><strong>${value(e.before)}</strong><small>${format(e.beforeAt)} KST</small></div><div><label>AFTER · ${esc(e.verification)}</label><strong>${value(e.afterValue)}</strong><small>${format(e.afterAt)}${e.afterAt?' KST':''}</small></div></div></section><section class="detail-section"><h3>처리 이력</h3><ol class="history-list">${e.history.map(h=>`<li><time>${format(h.at)} KST</time>${esc(h.text)}</li>`).join('')}</ol></section><section class="detail-section"><button data-action="evidence">증적 12항목 보기</button><div id="evidence-content"></div></section></div><div class="dialog-actions"><span>${running?'작업 처리 중 · 창을 닫아도 계속됩니다.':'로컬 데모 · 실제 AWS 조치 없음'}</span>${buttons}</div>`;
+ $('#dialog-content').innerHTML=`<div class="dialog-header"><div><div class="eyebrow">${esc(e.id)} / ${esc(e.scenario)}</div><h2 id="dialog-title">${esc(e.title)}</h2></div><button class="dialog-close" data-action="close" aria-label="상세 닫기">×</button></div><div class="dialog-body"><dl class="detail-meta"><div><dt>위험도</dt><dd>${badge(e)}</dd></div><div><dt>탐지 소스</dt><dd>${esc(e.source)}</dd></div><div><dt>대상 자원</dt><dd>${esc(e.resource)}</dd></div><div><dt>상태</dt><dd>${esc(e.status)}</dd></div><div><dt>승인자</dt><dd>${esc(e.approver||'미승인')}</dd></div><div><dt>알림 발송</dt><dd>${notifyCell(e)}</dd></div><div><dt>발생 시각</dt><dd>${format(e.at)} KST</dd></div></dl><div class="execution-flow"><span>실행 ${esc(e.execution)}</span><span>→ 재검증 ${esc(e.verification)}</span></div>${e.sourceIp?`<section class="detail-section"><h3>공격 출발지 → 대상</h3><p>${esc(e.sourceIp)} → ${esc(e.region)}</p><p>${esc(e.geoStatus)} · ${esc(e.sourceLocation?.provenance||'좌표 없음')}</p><p>${config.mode==='live'?'탐지 서비스가 제공한 출발지 정보입니다.':'모의 IP/좌표입니다. 실제 공격자 귀속 정보가 아닙니다.'}</p></section>`:''}<section class="detail-section"><h3>탐지 근거</h3><p>${esc(e.evidence)}</p></section><section class="detail-section"><h3>권장 조치</h3><p>${esc(e.recommendation)}</p></section>${e.plan?`<section class="${ask?'approval-box':'detail-section'}"><h3>${ask?'승인할 변경 내용':(config.mode==='live'?'승인 대상 조치 계획':'로컬 모의 조치 계획')}</h3><p>대상: ${esc(e.plan.target)}</p><p>변경: ${esc(e.plan.change)}</p><p>절차: ${esc(e.plan.document)} · 버전 ${esc(e.plan.version)}</p>${e.plan.imageBefore?`<p>이미지 ${esc(e.plan.imageBefore)} → ${esc(e.plan.imageAfter)}</p>`:''}<p>${config.mode==='live'?(e.plan.manual?'담당자가 수행한 조치와 증적을 기록합니다.':'승인 후 실행하면 실제 AWS 자원이 변경됩니다.'):'실제 AWS 자원은 변경되지 않습니다.'}</p></section>`:'<p class="muted">이 이벤트의 수동 실행은 미지원입니다. 자동 대응 이력은 조회만 가능합니다.</p>'}<section class="detail-section"><h3>Before / After · 동일 기준 재검증</h3><p>${esc(e.criterion)} · 검사 버전 ${esc(e.criterionVersion)}</p><p>같은 대상: ${esc(e.resource)}</p><div class="comparison"><div><label>BEFORE</label><strong>${value(e.before)}</strong><small>${format(e.beforeAt)} KST</small></div><div><label>AFTER · ${esc(e.verification)}</label><strong>${value(e.afterValue)}</strong><small>${format(e.afterAt)}${e.afterAt?' KST':''}</small></div></div></section>${notifySection(e)}<section class="detail-section"><h3>처리 이력</h3><ol class="history-list">${e.history.map(h=>`<li><time>${format(h.at)} KST</time>${esc(h.text)}</li>`).join('')}</ol></section><section class="detail-section"><button data-action="evidence">증적 12항목 보기</button><div id="evidence-content"></div></section></div><div class="dialog-actions"><span>${running?'작업 처리 중 · 창을 닫아도 계속됩니다.':(config.mode==='live'?'실 AWS 처리 이력':'로컬 데모 · 실제 AWS 조치 없음')}</span>${buttons}</div>`;
+ if(needsBlockPlan(e)&&(canWrite||config.mode!=='live')){
+  $('.dialog-body').insertAdjacentHTML('beforeend','<section class="detail-section" id="block-plan">차단 대상을 불러오는 중…</section>');
+  renderBlockPlan(e);
+ }
+ if(config.mode==='live'&&canWrite&&((e.plan?.manual&&e.rawStatus==='APPROVED')||(e.verificationMethod==='operator-evidence'&&['PENDING_VERIFICATION','VERIFICATION_FAILED'].includes(e.rawStatus)))){
+  $('.dialog-body').insertAdjacentHTML('beforeend',`<section class="detail-section"><h3>담당자 증적</h3><label>조치 내용 <input id="manual-note" maxlength="2000"></label><label>증적 파일 경로 또는 참조 <input id="manual-reference" maxlength="2000"></label><label>동일 기준 재검사 결과값 <input id="manual-value" type="number" min="0"></label><p>현재 대상과 검사 버전으로 수행한 점검만 기록하세요. 자동 검증 결과와 구분하여 저장합니다.</p></section>`);
+ }
 }
-function closeDialog(){clearTimeout(pollTimer);detailSerial++;$('#event-dialog').close();}
+// ── SEC-06 차단 계획 폼 ──────────────────────────────────
+// POST /api/events/:id/plan 은 구현돼 있었으나 화면에서 부르는 곳이 없었다.
+// 값을 손으로 찾지 않도록 NACL 목록과 빈 규칙 번호를 서버에서 받아 채운다.
+let naclCache=null;
+function needsBlockPlan(e){
+ return e.scenario==='SEC-06'&&['NEW','PENDING_APPROVAL','EXECUTION_FAILED','VERIFICATION_FAILED'].includes(e.rawStatus);
+}
+async function renderBlockPlan(e){
+ const box=$('#block-plan');if(!box)return;
+ const live=config.mode==='live';
+ try{
+  if(!naclCache)naclCache=await api.nacls();
+  const acls=naclCache.items;
+  const [lo,hi]=naclCache.denyRuleRange;
+  const first=acls[0];
+  box.innerHTML=`<h3>차단 대상 설정 · ASR-BlockIpWithNacl</h3>
+   <p class="muted">Private NACL 의 <b>${lo}~${hi}</b> 번은 Deny 예약 구간입니다. 서버가 비어 있는 번호를 제안합니다.</p>
+   <label>대상 NACL
+    <select id="nacl-id">${acls.map(a=>`<option value="${esc(a.id)}" data-suggest="${a.suggestedRuleNumber??''}">${esc(a.id)}${a.name?' · '+esc(a.name):''}${a.isDefault?' (기본)':''} — 사용 중 ${a.usedDenyRuleNumbers.join(', ')||'없음'}</option>`).join('')}</select></label>
+   <label>차단할 출발지 IP <input id="nacl-ip" value="${esc(e.sourceIp||'')}" readonly>
+    <small class="muted">탐지된 출발지입니다. 다른 값을 보내면 서버가 409로 막습니다.</small></label>
+   <label>규칙 번호 (${lo}~${hi}) <input id="nacl-rule" type="number" min="${lo}" max="${hi}" value="${first?.suggestedRuleNumber??''}"></label>
+   <label>차단 근거 <input id="nacl-evidence" maxlength="2000" placeholder="예: 5분간 인증 실패 47회 · CloudWatch 알람 soar-sec-dev-mysql-bruteforce"></label>
+   ${live?'<button class="primary-button" data-action="prepare-plan">차단 계획 설정</button>'
+        :'<p class="muted">데모 모드에서는 계획을 적용하지 않습니다. 실 AWS 모드에서만 설정할 수 있습니다.</p>'}`;
+  const select=$('#nacl-id');
+  if(select)select.addEventListener('change',()=>{const v=select.selectedOptions[0]?.dataset.suggest;if(v)$('#nacl-rule').value=v;});
+ }catch(error){box.innerHTML=`<p class="muted">NACL 목록을 불러오지 못했습니다: ${esc(error.message)}</p>`;}
+}
+async function submitBlockPlan(){
+ const id=activeId;
+ const acl=$('#nacl-id')?.value,ip=$('#nacl-ip')?.value,rule=$('#nacl-rule')?.value,why=$('#nacl-evidence')?.value;
+ if(!acl||!ip||!rule||!why?.trim()){toast('NACL, 출발지 IP, 규칙 번호, 차단 근거를 모두 채워주세요.');return;}
+ operationBusy=true;
+ try{
+  await api.change(id,'plan',{parameters:{networkAclId:acl,sourceIp:ip,ruleNumber:Number(rule),sourceEvidence:why.trim()}});
+  await refresh();
+  if(activeId===id&&$('#event-dialog').open)drawDetail(await api.detail(id));
+  toast('차단 계획을 설정했습니다. 이제 승인할 수 있습니다.');
+ }catch(error){toast(error.message);}
+ finally{operationBusy=false;}
+}
+function closeDialog(fromHistory=false){clearTimeout(pollTimer);detailSerial++;$('#event-dialog').close();if(!fromHistory)syncUrl(true);}
 function pollJob(id,jobId){
  clearTimeout(pollTimer);
  pollTimer=setTimeout(async()=>{try{const result=await api.job(id,jobId);if(activeId!==id||!$('#event-dialog').open)return;
  const e=await api.detail(id);drawDetail(e);if(result.execution.status==='RUNNING')pollJob(id,jobId);else{await refresh();toast('작업 완료 · '+e.status);}}
  catch(error){toast(error.message);}},800);
 }
+// ── 표 안에서 바로 실행하는 조치 ──────────────────────────
+async function rowActionRun(id,action){
+ if(operationBusy)return;
+ operationBusy=true;
+ try{
+  if(!api.get(id))await api.detail(id);
+  await api.change(id,action,{});
+  selected.delete(id);
+  await refresh();
+  toast({approve:'승인했습니다.',execute:'조치 실행을 접수했습니다.',verify:'동일 기준 재검증을 시작했습니다.'}[action]);
+ }catch(error){toast(error.message);}
+ finally{operationBusy=false;}
+}
+async function bulkApprove(){
+ const ids=[...selected];
+ if(!ids.length){toast('먼저 승인할 항목을 선택하세요.');return;}
+ if(operationBusy)return;
+ operationBusy=true;
+ let done=0;const failures=[];
+ try{
+  for(const id of ids){
+   try{if(!api.get(id))await api.detail(id);await api.change(id,'approve',{});done++;selected.delete(id);}
+   catch(error){failures.push(`${id}: ${error.message}`);}
+  }
+  await refresh();
+  toast(failures.length?`${done}건 승인 · ${failures.length}건 실패 (${failures[0]})`:`${done}건을 승인했습니다.`);
+ }finally{operationBusy=false;}
+}
+let autoTimer=null;
+function setAuto(on){
+ state.auto=on;
+ const button=$('#auto-refresh');
+ button.textContent=on?'자동 새로고침 30초':'자동 새로고침 꺼짐';
+ button.setAttribute('aria-pressed',String(on));
+ button.classList.toggle('active',on);
+ clearInterval(autoTimer);autoTimer=null;
+ // 상세 창이 열려 있거나 탭이 숨겨져 있으면 건너뛴다. 읽는 중에 화면이 갈아엎히면 안 된다.
+ if(on)autoTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('#event-dialog').open&&!operationBusy)refresh();},30000);
+}
 async function dialogAction(action){
  if(action==='close'){closeDialog();return;}
  if(action==='approve'){approval=true;drawDetail(api.get(activeId),true);return;}
  if(action==='cancel-review'){approval=false;drawDetail(api.get(activeId));return;}
  if(action==='retry-detail'){eventDialog(activeId);return;}
+ if(action==='prepare-plan'){if(!operationBusy)submitBlockPlan();return;}
  if(action==='evidence'){try{const result=await request('/api/events/'+encodeURIComponent(activeId)+'/evidence');$('#evidence-content').innerHTML=result.items.map(i=>`<p><strong>${i.no}. ${esc(i.label)}</strong><br>${esc(i.value||'데이터 없음')} <small>(${esc(i.source)})</small></p>`).join('');}catch(error){toast(error.message);}return;}
  if(operationBusy)return;
  if(['confirm-approve','cancel','execute','verify'].includes(action)){
-  const id=activeId;operationBusy=true;drawDetail(api.get(id));
-  try{const result=await api.change(id,action==='confirm-approve'?'approve':action);await refresh();if(activeId===id&&$('#event-dialog').open){drawDetail(await api.detail(id));if(result.execution)pollJob(id,result.execution.executionId);}toast(result.execution?'작업이 접수됐습니다.':'승인 상태를 저장했습니다.');}
+  const id=activeId,e=api.get(id),extra={};
+  if(config.mode==='live'&&action==='execute'&&e.plan?.manual)extra.evidence={note:$('#manual-note')?.value||'',reference:$('#manual-reference')?.value||''};
+  if(config.mode==='live'&&action==='verify'&&e.verificationMethod==='operator-evidence'){
+   const raw=$('#manual-value')?.value;
+   if(!raw||!$('#manual-reference')?.value){toast('재검사 결과값과 증적 참조를 입력해주세요.');return;}
+   extra.evidence={resource:e.resource,criterionVersion:e.criterionVersion,value:Number(raw),observedAt:Date.now(),reference:$('#manual-reference').value};
+  }
+  operationBusy=true;drawDetail(e);
+  try{const result=await api.change(id,action==='confirm-approve'?'approve':action,extra);await refresh();if(activeId===id&&$('#event-dialog').open){drawDetail(await api.detail(id));if(result.execution)pollJob(id,result.execution.executionId);}toast(result.execution?'작업이 접수됐습니다.':'승인 상태를 저장했습니다.');}
   catch(error){toast(error.message);if(activeId===id)await api.detail(id);}
   finally{operationBusy=false;if(activeId===id&&$('#event-dialog').open)drawDetail(api.get(id));}
  }
 }
-async function refresh(){
+// ── 주소창 상태 동기화 ────────────────────────────────────
+// 새로고침하면 필터가 초기화되던 문제. 화면·필터·열어둔 이벤트를 주소에 담아
+// 복구와 링크 공유가 되게 한다. 뒤로가기는 **화면 전환과 상세 열기만** 쌓는다 —
+// 검색어 한 글자마다 히스토리가 쌓이면 뒤로가기가 못 쓰게 된다.
+const URL_DEFAULTS={view:'overview',region:'ap-northeast-2',resource:'',hours:24,endOffset:0,severity:'',status:'',source:'',search:'',page:1};
+const URL_KEYS={view:'view',region:'region',resource:'resource',hours:'hours',endOffset:'back',severity:'severity',status:'status',source:'source',search:'q',page:'page'};
+function urlFromState(){
+ const p=new URLSearchParams();
+ for(const [key,param] of Object.entries(URL_KEYS)){
+  const value=state[key];
+  if(value!==undefined&&value!==null&&String(value)!==String(URL_DEFAULTS[key]))p.set(param,String(value));
+ }
+ if(activeId)p.set('event',activeId);
+ const qs=p.toString();
+ return window.location.pathname+(qs?'?'+qs:'');
+}
+function syncUrl(push=false){
+ const next=urlFromState();
+ if(next===window.location.pathname+window.location.search)return;
+ try{window.history[push?'pushState':'replaceState']({},'',next);}catch(error){/* 주소 갱신 실패는 화면을 막지 않는다 */}
+}
+function applyUrl(){
+ const p=new URLSearchParams(window.location.search);
+ for(const [key,param] of Object.entries(URL_KEYS)){
+  if(!p.has(param)){state[key]=URL_DEFAULTS[key];continue;}
+  const raw=p.get(param);
+  const value=typeof URL_DEFAULTS[key]==='number'?Number(raw):raw;
+  state[key]=(typeof URL_DEFAULTS[key]==='number'&&!Number.isFinite(value))?URL_DEFAULTS[key]:value;
+ }
+ if(!titles[state.view])state.view=URL_DEFAULTS.view;      // 주소에 잘못된 화면이 와도 죽지 않는다
+ if(state.page<1)state.page=1;
+ return p.get('event')||'';
+}
+function syncControls(){
+ $('#region').value=state.region;
+ ['severity','status','source','search'].forEach(key=>{const el=$('#'+key);if(el)el.value=state[key];});
+ $('#time-range').value=state.endOffset;
+ updateSelectedCountry(state.region);
+}
+async function refresh(options={}){
+ syncUrl(options.push===true);
  const box=$('#load-state');box.hidden=false;box.className='load-state';box.textContent='불러오는 중…';$('#refresh').disabled=true;$('#content').setAttribute('aria-busy','true');
- try{const [loaded]=await Promise.all([api.load(),mapReady?Promise.resolve():loadMap()]);if(loaded===false)return;render();box.hidden=true;$('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;$('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');applyModeLabels();$('#worker-state').textContent=summary.health.checks.worker==='ok'?'로컬 작업 처리기 정상':'작업 처리기 중지 · 실행 대기 작업은 재시작 후 처리';}catch(e){if(e.name==='AbortError')return;box.classList.add('error');box.innerHTML=`${esc(e.message)} <button id="retry">다시 시도</button>`;}finally{$('#refresh').disabled=false;$('#content').removeAttribute('aria-busy');}
+ try{const [loaded]=await Promise.all([api.load(),mapReady?Promise.resolve():loadMap()]);if(loaded===false)return;render();box.hidden=true;$('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;$('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');applyModeLabels();$('#worker-state').textContent=config.mode==='live'?'실 AWS 모드 · 작업은 SSM에서 처리':summary.health.checks.worker==='ok'?'로컬 작업 처리기 정상':'작업 처리기 중지 · 실행 대기 작업은 재시작 후 처리';}catch(e){if(e.name==='AbortError')return;box.classList.add('error');box.innerHTML=`${esc(e.message)} <button id="retry">다시 시도</button>`;}finally{$('#refresh').disabled=false;$('#content').removeAttribute('aria-busy');}
 }
 $('#region').innerHTML='<option value="all">전체 리전</option>'+regions.map(r=>`<option value="${r.id}">${r.name}${r.id==='global'?'':` · ${r.id}`}</option>`).join('');$('#region').value=state.region;
 let searchTimer;
@@ -187,8 +606,13 @@ $('#event-dialog').addEventListener('close',()=>{activeId=null;approval=false;co
 $('#event-dialog').addEventListener('click',e=>{if(e.target===$('#event-dialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown',e=>{const attack=e.target.closest('.attack-connection');if(attack&&['Enter',' '].includes(e.key)){e.preventDefault();eventDialog(attack.dataset.event);return;}const marker=e.target.closest('.marker');if(marker&&['Enter',' '].includes(e.key)){e.preventDefault();const id=marker.dataset.region;chooseRegion(id);$(`#markers [data-region="${id}"]`)?.focus();}});
 document.addEventListener('click',e=>{
- const view=e.target.closest('[data-view]');if(view){state.view=view.dataset.view;state.page=1;refresh();return;}
+ const view=e.target.closest('[data-view]');if(view){state.view=view.dataset.view;state.page=1;refresh({push:true});return;}
  const region=e.target.closest('[data-region]');if(region){chooseRegion(region.dataset.region);return;}
+ const hostCard=e.target.closest('[data-host]');if(hostCard){state.resource=hostCard.dataset.host;refresh();return;}
+ const vt=e.target.closest('[data-vuln-target]');if(vt){vulnTarget=vt.dataset.vulnTarget;vulnPage=1;renderVulnerabilities();return;}
+ const vp=e.target.closest('[data-vuln-page]');if(vp){vulnPage+=vp.dataset.vulnPage==='next'?1:-1;renderVulnerabilities();return;}
+ const rowRun=e.target.closest('[data-row-action]');if(rowRun){rowActionRun(rowRun.dataset.event,rowRun.dataset.rowAction);return;}
+ const notify=e.target.closest('[data-notify]');if(notify){applyNotification(notify.dataset.notify);return;}
  const event=e.target.closest('[data-event]');if(event){eventDialog(event.dataset.event);return;}
  const action=e.target.closest('[data-action]');if(action){dialogAction(action.dataset.action);return;}
  const hours=e.target.closest('[data-hours]');if(hours){state.hours=+hours.dataset.hours;state.page=1;refresh();return;}
@@ -200,16 +624,57 @@ document.addEventListener('click',e=>{
  if(id==='zoom-out'){animateTo(rotation,Math.max(ZOOM_MIN,zoom-.3),300);}
  if(id==='zoom-reset'){animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM,500);}
  if(id==='clear-filters'){Object.assign(state,{severity:'',status:'',source:'',search:'',endOffset:0,hours:24});['severity','status','source','search'].forEach(k=>$(`#${k}`).value='');$('#time-range').value=0;state.page=1;refresh();toast('검색·위험도·상태·소스·시간 필터를 초기화했습니다.');}
- if(id==='notifications'){state.view='events';state.status='승인 대기';$('#status').value=state.status;state.page=1;refresh();toast('현재 지역과 시간 범위의 승인 대기 알림을 표시합니다.');}
+ if(id==='notifications'){const panel=$('#notification-panel');panel.hidden=!panel.hidden;$('#notifications').setAttribute('aria-expanded',String(!panel.hidden));}
+ if(id==='auto-refresh')setAuto(!state.auto);
+ if(id==='bulk-approve')bulkApprove();
+ if(id==='pick-all'){const boxes=$$('.row-pick');const on=$('#pick-all').checked;boxes.forEach(b=>{b.checked=on;on?selected.add(b.dataset.pick):selected.delete(b.dataset.pick);});updateBulkCount();}
  if(id==='export')api.export().catch(e=>toast(e.message));
  if(id==='logout')api.logout().catch(e=>toast(e.message));
  const pager=e.target.closest('[data-page]');if(pager){state.page+=pager.dataset.page==='next'?1:-1;render();}
 
 });
+window.addEventListener('popstate',async()=>{
+ const wanted=applyUrl();
+ syncControls();
+ if(!wanted&&$('#event-dialog').open)closeDialog(true);
+ await refresh();
+ if(wanted&&activeId!==wanted)eventDialog(wanted);
+});
 bindMapInteraction($('#world-map'),()=>({zoom,rotation}),value=>{zoom=value.zoom;rotation=value.rotation;scheduleCameraUpdate();});
 $('#attack-filter').addEventListener('change',e=>{attackSelection=e.target.value;renderAttacks(selectEvents());});
+document.addEventListener('change',e=>{
+ if(e.target.id==='host'){state.resource=e.target.value;refresh();return;}
+ if(e.target.id==='vuln-size'){vulnSize=+e.target.value;vulnPage=1;renderVulnerabilities();return;}
+ if(e.target.id==='vuln-fixable'){vulnFixable=e.target.checked;vulnPage=1;renderVulnerabilities();return;}
+ if(e.target.classList.contains('row-pick')){
+  e.target.checked?selected.add(e.target.dataset.pick):selected.delete(e.target.dataset.pick);
+  updateBulkCount();
+ }
+});
+function updateBulkCount(){const box=$('#bulk-count');if(box)box.textContent=String($$('.row-pick').filter(b=>selected.has(b.dataset.pick)).length);}
+function applyNotification(key){
+ $('#notification-panel').hidden=true;
+ const map={'승인 대기':{view:'events',status:'승인 대기'},'재검증 실패':{view:'responses',status:'재검증 실패'},
+            '재검증 대기':{view:'responses',status:'재검증 대기'},'임계치 경보 (CloudWatch)':{view:'infrastructure',status:'',source:'CloudWatch'}};
+ const target=map[key];if(!target)return;
+ state.view=target.view;state.status=target.status;state.source=target.source||'';
+ $('#status').value=state.status;$('#source').value=state.source;
+ state.page=1;refresh();
+}
+document.addEventListener('keydown',e=>{
+ if(e.target.matches('input,select,textarea'))return;
+ if(e.key==='r'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();refresh();}
+ if(e.key==='/'){e.preventDefault();$('#search').focus();}
+ if(e.key==='Escape'&&!$('#notification-panel').hidden)$('#notification-panel').hidden=true;
+ const index='12345'.indexOf(e.key);
+ if(index>=0){const button=$$('nav [data-view]')[index];if(button){state.view=button.dataset.view;state.page=1;refresh();}}
+});
+setAuto(false);
 updateCamera();
-refresh();
+// 주소에 담긴 상태로 시작한다. 새로고침·링크 공유 복구 지점.
+const bootEvent=applyUrl();
+syncControls();
+refresh().then(()=>{if(bootEvent)eventDialog(bootEvent);});
 
 
 

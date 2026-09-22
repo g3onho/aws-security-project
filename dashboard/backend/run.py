@@ -38,12 +38,12 @@ def create_app(overrides=None):
         from app.adapters.local import LocalAdapter
         adapter=LocalAdapter(app.config['DATABASE'])
     else:
-        from app.adapters.live import LiveAdapter
-        adapter=LiveAdapter(Config)
+        from types import SimpleNamespace
+        from app.adapters.live_service import LiveService
         # 실모드 쓰기는 기본 꺼짐. 실제 AWS 리소스를 바꾸므로 명시적으로 켜야 한다.
         # 데모 모드와 달리 기본값이 false 인 것이 핵심이다.
-        app.config['WRITE_ENABLED']=os.environ.get('WRITE_ENABLED','false').lower()=='true'
-        Config.WRITE_ENABLED=app.config['WRITE_ENABLED']
+        app.config['WRITE_ENABLED']=(overrides or {}).get('WRITE_ENABLED',os.environ.get('WRITE_ENABLED','false').lower()=='true')
+        adapter=LiveService(SimpleNamespace(**app.config),app.config['DATABASE'])
     app.extensions['dashboard_adapter']=adapter
     register(app);install(app);app.register_blueprint(bp)
 
@@ -57,9 +57,11 @@ def create_app(overrides=None):
 
     @app.get('/health')
     def health():
-        checks=adapter.health_checks() if adapter.mode=='demo' else {'aws':'not_connected','worker':'not_available'}
-        return dict(status='ok' if checks.get('worker')=='ok' else 'degraded',mode=adapter.mode,
-            aws_connected=False,version=app.config['VERSION'],write_enabled=app.config['WRITE_ENABLED'],checks=checks)
+        checks=adapter.health_checks()
+        healthy=bool(checks) and all(value=='ok' for value in checks.values())
+        return dict(status='ok' if healthy else 'degraded',mode=adapter.mode,
+            aws_connected=adapter.mode=='live' and healthy,
+            version=app.config['VERSION'],write_enabled=app.config['WRITE_ENABLED'],checks=checks)
 
     @app.after_request
     def headers(response):
@@ -72,7 +74,6 @@ def create_app(overrides=None):
 
 def worker(app,once=False):
     adapter=app.extensions['dashboard_adapter']
-    if adapter.mode!='demo':raise SystemExit('로컬 작업 처리기는 데모 모드에서만 실행됩니다.')
     while True:
         adapter.work_once()
         if once:return

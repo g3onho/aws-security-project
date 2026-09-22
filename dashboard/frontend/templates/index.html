@@ -15,7 +15,7 @@
 <a class="skip-link" href="#main">본문으로 이동</a>
 <header class="topbar flex items-center justify-between">
  <a class="brand flex items-center gap-3" href="/"><svg width="24" height="28" viewBox="0 0 24 28" fill="none" aria-hidden="true"><path d="M12 2 22 6v8c0 6-10 12-10 12S2 20 2 14V6Z" stroke="currentColor" stroke-width="1.5"/><path d="m7 13 3 3 7-7" stroke="currentColor" stroke-width="1.5"/></svg><span>AWS <strong>Security Operations</strong></span></a>
- <div class="top-controls flex items-center gap-3"><span class="demo-dot" id="data-mode">데모 데이터</span><span class="connection" id="aws-state">AWS 미연동</span><button id="notifications" class="icon-button" aria-label="알림 보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="notification-count" class="notification-dot"></span></button><span id="session-user" class="session-user"></span><button id="logout" class="subtle-button">로그아웃</button></div>
+ <div class="top-controls flex items-center gap-3"><span class="demo-dot" id="data-mode">데모 데이터</span><span class="connection" id="aws-state">AWS 미연동</span><button id="auto-refresh" class="subtle-button" aria-pressed="false">자동 새로고침 꺼짐</button><div class="notification-wrap"><button id="notifications" class="icon-button" aria-label="알림 보기" aria-expanded="false" aria-controls="notification-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="notification-count" class="notification-dot"></span></button><div id="notification-panel" class="notification-panel" hidden></div></div><span id="session-user" class="session-user"></span><button id="logout" class="subtle-button">로그아웃</button></div>
 </header>
 <aside class="sidebar">
  <div class="workspace-label">WORKSPACE <span>01</span></div>
@@ -23,6 +23,7 @@
   <button data-view="overview" class="active"><span>▦</span>통합 관제</button>
   <button data-view="events"><span>◎</span>보안 이벤트</button>
   <button data-view="vulnerabilities"><span>◇</span>취약점 점검</button>
+  <button data-view="incidents"><span>⚑</span>침해사례</button>
   <button data-view="infrastructure"><span>▥</span>인프라 모니터링</button>
   <button data-view="responses"><span>↻</span>대응 이력</button>
  </nav>
@@ -51,12 +52,12 @@
   </div>
  </section>
  <section class="timeline panel" aria-label="시간 범위">
-  <div class="time-presets flex items-center gap-1"><span class="muted">기간</span><button data-hours="1">1시간</button><button data-hours="6">6시간</button><button data-hours="24" class="active">24시간</button><button data-hours="168">7일</button></div>
-  <div class="range-wrap"><label for="time-range" class="sr-only">종료 시각을 과거로 이동 (시간 전)</label><input id="time-range" type="range" min="0" max="144" step="1" value="0" dir="rtl"><div class="range-labels"><span>6일 전</span><span>3일 전</span><span>데모 기준 시각</span></div></div>
+  <div class="time-presets flex items-center gap-1"><span class="muted">기간</span><button data-hours="0.25">15분</button><button data-hours="1">1시간</button><button data-hours="24" class="active">1일</button><button data-hours="168">1주일</button></div>
+  <div class="range-wrap"><label for="time-range" class="sr-only">종료 시각을 과거로 이동 (시간 전)</label><input id="time-range" type="range" min="0" max="72" step="1" value="0" dir="rtl"><div class="range-labels"><span id="range-max">3일 전</span><span id="range-mid">1.5일 전</span><span>기준 시각</span></div></div>
   <div id="time-label" class="time-label"></div>
  </section>
  <div id="worker-state" class="local-context" role="status"></div><div id="content"></div>
- <footer class="main-footer"><span><span class="status-dot"></span> DEMO MODE <span class="footer-divider">/</span> 모든 조치는 시뮬레이션입니다.</span><span>기준 데이터 2026.09.18 15:00 KST</span></footer>
+ <footer class="main-footer"><span><span class="status-dot"></span> DEMO MODE <span class="footer-divider">/</span> 모든 조치는 시뮬레이션입니다.</span><span id="footer-asof">기준 데이터 —</span></footer>
 </main>
 <dialog id="event-dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
 <div id="toast" role="status" aria-live="polite" hidden></div>

@@ -82,8 +82,8 @@ SCENARIOS = [
      "evidence": "sg-db-manual의 TCP 3306 인바운드가 외부 전체 주소를 허용합니다.",
      "recommendation": "DB 인바운드를 애플리케이션 보안 그룹으로 제한합니다.", "mode": "수동"},
     {"scenario": "SEC-04", "title": "컨테이너 이미지 취약점", "source": "Trivy", "severity": "High",
-     "criterion": "고정 검사 DB demo-20260918의 HIGH 이상 취약점 수", "before": 12, "after": 2, "unit": "개",
-     "evidence": "app:1.2 이미지에서 HIGH 이상 취약점 12개가 발견되었습니다. 동일 검사 DB로 비교합니다.",
+     "criterion": "동일 대상의 미해결 CVE 수 (전체 심각도)", "before": 12, "after": 2, "unit": "개",
+     "evidence": "app:1.2 이미지에서 취약점 12개가 발견되었습니다. 동일 대상·동일 검사 기준으로 비교합니다.",
      "recommendation": "수정된 app:1.3 이미지로 교체하고 동일 기준으로 재검사합니다.", "mode": "수동"},
     {"scenario": "DETECT-01", "title": "외부 IP의 비정상 접근 탐지", "source": "GuardDuty", "severity": "Critical",
      "criterion": "동일 10분 관찰 구간의 비정상 접근 수", "before": 8, "after": 0, "unit": "건",
@@ -113,8 +113,6 @@ GLOBAL_SCENARIO = {
 # data.js:86
 AGES = [.12, .3, .55, .8, 1.2, 2, 3, 4, 5, 7, 9, 11, 13, 15, 17, 20, 23, 30, 40, 50, 65, 80, 110, 145]
 
-CPU_CURVE = [58, 61, 64, 68, 73, 81, 86, 65, 57, 44, 47, 42]
-MEM_CURVE = [63, 65, 66, 71, 76, 84, 68, 63, 59, 55, 54, 51]
 
 
 def _measure(value, unit, at):
@@ -234,40 +232,191 @@ def _build_events() -> list[dict]:
                 "severityBumped": False,
                 "approver": None,
                 "approvedAt": None,
+                # 알림은 대시보드가 보내지 않는다 — CloudWatch 알람의 alarm_actions 와
+                # asr_trigger 의 sns.publish 가 보낸다. 화면은 "갔는지"만 표시한다.
+                # 실모드는 remediation_actions 의 manual-notified 행에서 온다.
+                "notification": _demo_notification(s, status_ko, at),
             })
     return out
 
 
-def metrics_for(region_id: str, hours: float, end_offset: float = 0.0,
-                environment: str = "production") -> dict:
-    """data.js:99-104 metricsFor() 의 포팅."""
+def _demo_notification(scenario: dict, status_ko: str, at: int):
+    """데모용 알림 이력.
+
+    수동 대응 이벤트가 '승인 대기'에 있다는 것은 asr_trigger 가 게이트 불충족으로 판정하고
+    SNS 를 발행한 결과다. 그 사실만 표시한다 — 없는 발송 기록을 만들지 않는다.
+    """
+    if scenario["source"] == "CloudWatch":
+        return {"at": at, "channel": "SNS", "source": "cloudwatch-alarm",
+                "reason": scenario["title"], "count": 1}
+    if scenario["mode"] == "수동" and status_ko == "승인 대기":
+        return {"at": at, "channel": "SNS", "source": "asr_trigger",
+                "reason": "자동조치 게이트 불충족 (데모 데이터)", "count": 1}
+    return None
+
+
+# ── 데모 텔레메트리 ────────────────────────────────────────
+# v3 (보완설계 §2.1): 곡선 인덱스를 **포인트의 절대 시각**으로 잡는다.
+# 이전 구현은 `floor(endOffset) % 12` 였다. 그래서
+#   - 1시간 구간: 12개 표본의 offset 이 0.0~1.0 이라 floor 가 전부 0 → 직선
+#   - 7일 구간: offset 이 15.3시간씩 뛰면서 12로 감싸 → 실제 시각과 무관한 톱니
+# 였다. 지금은 KST 하루를 12구간으로 보고 선형 보간하므로, 어떤 기간을 골라도
+# 같은 시각에는 같은 값이 나오고 구간을 좁히면 해상도만 올라간다.
+CPU_CURVE = [58, 61, 64, 68, 73, 81, 86, 65, 57, 44, 47, 42]
+MEM_CURVE = [63, 65, 66, 71, 76, 84, 68, 63, 59, 55, 54, 51]
+
+KST_OFFSET_MS = 9 * 3600000
+SLOT_MS = 86400000 // 12          # 하루 12구간 = 2시간
+# CloudWatch 가 실제로 쓰는 period 후보. 화면 표본은 121개를 넘기지 않는다.
+SAMPLE_PERIODS = [60, 300, 900, 1800, 3600, 10800, 21600]
+MAX_POINTS = 120
+THRESHOLD = {"cpu": 80, "memory": 80}
+
+# 서울(ap-northeast-2)은 실제 구축 리전이라 Terraform 의 EC2 5대를 그대로 둔다.
+# 나머지 리전은 지도 표기용이므로 대표 인스턴스 1대만 둔다.
+HOSTS = {
+    "ap-northeast-2": [
+        {"id": "i-seoul-app-01", "name": "docker-host", "role": "3-Tier 컨테이너 호스트",
+         "type": "t3.small", "tier": "app", "seed": 0},
+        {"id": "i-seoul-db-01", "name": "db", "role": "MySQL EC2 (탐지·조치 대상)",
+         "type": "t3.small", "tier": "db", "seed": 3},
+        {"id": "i-seoul-web-01", "name": "web-dvwa", "role": "DVWA 웹서버",
+         "type": "t3.micro", "tier": "web", "seed": 2},
+        {"id": "i-seoul-dash-01", "name": "dashboard", "role": "보안 대시보드",
+         "type": "t3.micro", "tier": "ops", "seed": 1},
+        {"id": "i-seoul-atk-01", "name": "attacker", "role": "공격 시연용 (기본 off)",
+         "type": "t3.micro", "tier": "ops", "seed": 4},
+    ],
+}
+
+
+def hosts_for(region_id: str) -> list[dict]:
+    """리전의 EC2 목록. data.js `hostsFor()` 와 같은 결과여야 한다."""
+    if region_id in HOSTS:
+        return [dict(h, region=region_id) for h in HOSTS[region_id]]
     region = next((r for r in REGIONS if r["id"] == region_id), None)
     if not region or not region.get("resource"):
-        return {"resource": None, "at": None, "cpu": None, "memory": None,
-                "threshold": {"cpu": 80, "memory": 80}, "points": [],
+        return []
+    return [{"id": region["resource"], "name": "app", "role": "애플리케이션 EC2",
+             "type": "t3.micro", "tier": "app", "seed": REGIONS.index(region) % 5,
+             "region": region_id}]
+
+
+def _round1(value: float) -> float:
+    # JS 와 같은 반올림. Python 의 round() 는 은행가 반올림이라 쓰지 않는다.
+    return math.floor(value * 10 + 0.5) / 10
+
+
+def _curve_value(curve: list[int], at_ms: int) -> float:
+    x = ((at_ms + KST_OFFSET_MS) % 86400000) / float(SLOT_MS)
+    i = int(x) % 12
+    j = (i + 1) % 12
+    return curve[i] + (curve[j] - curve[i]) * (x - int(x))
+
+
+def _jitter(at_ms: int, salt: int) -> float:
+    """시각에서 결정되는 0~1 의사난수. JS 와 같은 정수 연산만 쓴다."""
+    n = ((at_ms // 1000) + salt) % 100003
+    return ((n * 48271) % 2147483647) / 2147483647.0
+
+
+def _sample(curve: list[int], at_ms: int, seed: int, env_delta: int, salt: int) -> float:
+    base = _curve_value(curve, at_ms) + seed + env_delta
+    value = base + (_jitter(at_ms, salt) * 2 - 1) * 2.5
+    return _round1(max(1.0, min(99.0, value)))
+
+
+def period_seconds(range_ms: int) -> int:
+    for period in SAMPLE_PERIODS:
+        if range_ms / 1000.0 / period <= MAX_POINTS:
+            return period
+    return SAMPLE_PERIODS[-1]
+
+
+def breaches_of(points: list[dict], threshold: dict) -> list[dict]:
+    """임계치를 연속으로 넘은 구간. 화면 음영과 '초과 N회' 요약의 근거다."""
+    out = []
+    for metric in ("cpu", "memory"):
+        limit = threshold[metric]
+        run = None
+        for point in points:
+            value = point.get(metric)
+            if value is not None and value > limit:
+                if run is None:
+                    run = {"metric": metric, "from": point["at"], "to": point["at"],
+                           "peak": value, "samples": 1}
+                else:
+                    run["to"] = point["at"]
+                    run["peak"] = max(run["peak"], value)
+                    run["samples"] += 1
+            elif run is not None:
+                out.append(run)
+                run = None
+        if run is not None:
+            out.append(run)
+    out.sort(key=lambda r: (r["from"], r["metric"]))
+    return out
+
+
+def _stats(points: list[dict], metric: str) -> dict:
+    values = [p[metric] for p in points if p.get(metric) is not None]
+    if not values:
+        return {"max": None, "avg": None, "last": None}
+    return {"max": max(values), "avg": _round1(sum(values) / len(values)), "last": values[-1]}
+
+
+def metrics_all_for(region_id: str, hours: float, end_offset: float = 0.0,
+                    environment: str = "production") -> list[dict]:
+    """리전의 **모든 호스트** 시계열. metrics_for 를 호스트 수만큼 돌린 것뿐이라
+    data.js 와의 대조는 metrics_for 하나로 충분하다."""
+    return [metrics_for(region_id, hours, end_offset, environment, host["id"])
+            for host in hosts_for(region_id)]
+
+
+def metrics_for(region_id: str, hours: float, end_offset: float = 0.0,
+                environment: str = "production", resource: str | None = None) -> dict:
+    """data.js `metricsFor()` 의 포팅. 두 구현이 같은 값을 내야 한다
+    (tests/test_demo_parity.py)."""
+    hosts = hosts_for(region_id)
+    if not hosts:
+        return {"resource": None, "host": None, "at": None, "cpu": None, "memory": None,
+                "threshold": dict(THRESHOLD), "period": None, "points": [], "breaches": [],
+                "summary": None, "window": None,
                 "note": "선택한 리전에 EC2 데모 지표가 없습니다."}
 
-    n = REGIONS.index(region) % 5
+    host = next((h for h in hosts if h["id"] == resource), hosts[0])
     env_delta = -12 if environment == "staging" else 0
 
-    def at_offset(offset: float) -> dict:
-        k = int(math.floor(offset)) % 12
-        return {"cpu": CPU_CURVE[k] + n * 2 + env_delta,
-                "memory": MEM_CURVE[k] + n + env_delta}
+    to = int(math.floor(DEMO_NOW - end_offset * 3600000 + 0.5))
+    frm = int(math.floor(to - hours * 3600000 + 0.5))
+    period = period_seconds(to - frm)
+    step = period * 1000
+    count = max(2, min(MAX_POINTS + 1, (to - frm) // step + 1))
 
-    head = at_offset(end_offset)
     points = []
-    for i in range(12):
-        offset = end_offset + (11 - i) * hours / 11
-        values = at_offset(offset)
-        points.append({"at": DEMO_NOW - int(offset * 3600000), **values})
+    for k in range(count):
+        at = to - (count - 1 - k) * step
+        points.append({
+            "at": at,
+            "cpu": _sample(CPU_CURVE, at, host["seed"] * 2, env_delta, 11),
+            "memory": _sample(MEM_CURVE, at, host["seed"], env_delta, 29),
+        })
 
+    head = points[-1]
     return {
-        "resource": region["resource"],
-        "at": DEMO_NOW - int(end_offset * 3600000),
-        "cpu": head["cpu"], "memory": head["memory"],
-        "threshold": {"cpu": 80, "memory": 80},
+        "resource": host["id"],
+        "host": {k: host[k] for k in ("id", "name", "role", "type", "tier", "region")},
+        "hosts": [{k: h[k] for k in ("id", "name", "role", "type", "tier")} for h in hosts],
+        "at": head["at"],
+        "cpu": head["cpu"],
+        "memory": head["memory"],
+        "threshold": dict(THRESHOLD),
+        "period": period,
         "points": points,
+        "breaches": breaches_of(points, THRESHOLD),
+        "summary": {"cpu": _stats(points, "cpu"), "memory": _stats(points, "memory"),
+                    "samples": len(points)},
+        "window": {"from": points[0]["at"], "to": to},
         "note": None,
     }
 
@@ -297,37 +446,69 @@ class DemoAdapter:
         return self._events.get(event_id)
 
     def metrics(self, q: dict) -> dict:
-        hours = max(1.0, (q["to"] - q["from"]) / 3600000)
+        # 15분 구간을 보려면 하한이 1시간이면 안 된다. 0.05시간(3분)까지 허용한다.
+        hours = max(0.05, (q["to"] - q["from"]) / 3600000)
         end_offset = max(0.0, (DEMO_NOW - q["to"]) / 3600000)
-        return metrics_for(q.get("region") or "ap-northeast-2", hours, end_offset,
-                           q.get("environment") or "production")
+        region = q.get("region") or "ap-northeast-2"
+        if region == "all":
+            region = "ap-northeast-2"
+        environment = q.get("environment") or "production"
+        data = metrics_for(region, hours, end_offset, environment, q.get("resource") or None)
+        if q.get("scope") == "all":
+            # 인프라 화면이 운영 중인 서버를 한 번에 본다. 호출을 1회로 묶는다.
+            data["series"] = [
+                {k: series[k] for k in ("resource", "host", "cpu", "memory", "period",
+                                        "points", "breaches", "summary", "threshold")}
+                for series in metrics_all_for(region, hours, end_offset, environment)
+            ]
+        return data
+
+    def resources(self, q: dict) -> dict:
+        """리전별 EC2 목록. 인프라 화면의 호스트 선택기가 쓴다."""
+        region = q.get("region") or "all"
+        regions = [region] if region not in ("all", "") else [r["id"] for r in REGIONS]
+        items = []
+        for rid in regions:
+            for host in hosts_for(rid):
+                items.append({"id": host["id"], "region": rid, "mode": "demo",
+                              "name": host["name"], "role": host["role"],
+                              "type": host["type"], "tier": host["tier"]})
+        return {"items": items}
+
+    def nacls(self, q: dict) -> dict:
+        """데모 NACL. 화면에서 차단 폼을 보여주기 위한 표시용이다.
+        계획 설정(prepare_plan)은 실모드 전용이라 데모에서는 제출이 막힌다."""
+        return {"items": [{
+            "id": "acl-demo-private", "vpcId": "vpc-demo", "name": "soar-sec-dev-private-nacl",
+            "isDefault": False, "subnets": ["subnet-demo-app", "subnet-demo-db"],
+            "usedDenyRuleNumbers": [1, 2], "suggestedRuleNumber": 3, "mode": "demo",
+        }], "denyRuleRange": [1, 99]}
+
+    def services(self, q: dict) -> dict:
+        """3계층(Nginx→Flask→MySQL) 상태. 데모에서도 실제 값이 흐르게 한다."""
+        from ..services.tiers import build_services
+        from ..services.filters import apply_filters
+        region = q.get("region") or "ap-northeast-2"
+        if region == "all":
+            region = "ap-northeast-2"
+        metrics = self.metrics({**q, "region": region})
+        events = apply_filters(list(self._events.values()), {**q, "region": region})
+        return build_services(region, q["to"], metrics, events, self.mode)
 
     def vulnerabilities(self, q: dict) -> dict:
-        from ..services.filters import apply_filters
-        rows = apply_filters(
-            [e for e in self._events.values() if e["source"] in ("Trivy", "Inspector")], q
-        )
-        items = []
-        for e in rows:
-            items.append({
-                "id": e["id"],
-                "cveId": None,
-                "source": e["source"],
-                "severity": e["severity"],
-                "cvss": None,
-                "package": None,
-                "installedVersion": None,
-                "fixedVersion": None,
-                "resource": e["resource"],
-                "region": e["region"],
-                "foundAt": e["at"],
-                "reportKey": None,
-            })
-        return {"items": items, "nextCursor": None}
+        from ..services.vulns import build_vulnerabilities
+        region = q.get("region") or "ap-northeast-2"
+        if region == "all":
+            region = "ap-northeast-2"
+        return build_vulnerabilities(list(self._events.values()), q, DEMO_NOW, region)
 
     def scenarios(self, q: dict) -> dict:
         from ..services.scenarios import build_coverage
         return build_coverage(list(self._events.values()), q)
+
+    def incidents(self, q: dict) -> dict:
+        from ..services.incidents import build_incidents
+        return build_incidents(list(self._events.values()), q)
 
     def evidence(self, event_id: str):
         from ..services.evidence import build_evidence

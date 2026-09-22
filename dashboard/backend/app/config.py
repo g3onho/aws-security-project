@@ -48,6 +48,13 @@ class Config:
     # (soar/cloudwatch.tf:56 의 "${name_prefix}/host"). 비면 표준 CWAgent 로 본다.
     NAME_PREFIX = os.getenv("NAME_PREFIX", "")
 
+    # 3계층 상태의 로그 기반 판정에 쓴다(adapters/live.py services()).
+    # ALB 가 꺼져 있으면(enable_alb 기본 false) 대상 그룹 헬스체크가 없으므로
+    # docker-host 의 nginx 로그와 db 의 mysql 로그가 유일한 실측 신호다.
+    # 이름 정본은 aws-soar-terraform/main.tf:16-17 의 locals 다.
+    LOG_GROUP_NGINX = os.getenv("LOG_GROUP_NGINX", "")
+    LOG_GROUP_MYSQL = os.getenv("LOG_GROUP_MYSQL", "")
+
     VERSION = read_version()
 
     # 응답 캐시 TTL (초) — 04-backend-design.md §4.6
@@ -58,10 +65,37 @@ class Config:
         "scenarios": 300,
     }
 
-    # 조회 상한
-    MAX_LIMIT = 200
-    DEFAULT_LIMIT = 50
+    # 조회 상한.
+    # MAX_LIMIT 은 /api/events 의 페이지 크기 상한이다. 취약점 목록이 대상당 수십 건이라
+    # 200 이면 한 이미지도 다 못 본다. 1000 으로 올리고, 응답 총량은 어댑터의
+    # MAX_RESPONSE_ITEMS(5000)에서만 자른다.
+    MAX_LIMIT = 1000
+    DEFAULT_LIMIT = 200
     MAX_RANGE_MS = 31 * 24 * 3600 * 1000  # 31일
+
+
+def log_groups(config=None) -> tuple[str, str]:
+    """(nginx, mysql) 로그 그룹 이름.
+
+    `config` 를 주면 그 객체의 값을 먼저 본다 — 실모드 어댑터는 app.config 스냅샷을
+    들고 다니므로 모듈 전역 Config 와 값이 다를 수 있다.
+
+    환경변수가 비어 있으면 NAME_PREFIX("<project>-<env>")에서 유도한다.
+    Terraform 은 `/<project>/<env>/web/nginx` 로 만든다 — 접두사와 구분자가 다르므로
+    마지막 하이픈에서 한 번만 쪼갠다. 유도에 실패하면 빈 문자열이고, 그때는
+    해당 계층이 UNKNOWN 으로 떨어진다(추측해서 틀린 그룹을 읽지 않는다).
+    """
+    source = config if config is not None else Config
+    nginx = getattr(source, "LOG_GROUP_NGINX", "") or Config.LOG_GROUP_NGINX
+    mysql = getattr(source, "LOG_GROUP_MYSQL", "") or Config.LOG_GROUP_MYSQL
+    if nginx and mysql:
+        return nginx, mysql
+    prefix = getattr(source, "NAME_PREFIX", "") or Config.NAME_PREFIX
+    if "-" not in prefix:
+        return nginx, mysql
+    project, env = prefix.rsplit("-", 1)
+    return (nginx or f"/{project}/{env}/web/nginx",
+            mysql or f"/{project}/{env}/db/mysql")
 
 
 def as_dict() -> dict:
