@@ -58,8 +58,11 @@ class Config:
     VERSION = read_version()
 
     # 응답 캐시 TTL (초) — 04-backend-design.md §4.6
+    # events 는 15 -> 60. Security Hub GetFindings 계정당 요청 제한이 낮은데
+    # 지금 계정 ACTIVE finding 이 2,241건까지 늘어 15초마다 재조회하면
+    # TooManyRequestsException 이 바로 남(2026-09-22 확인). 호출 빈도를 줄인다.
     CACHE_TTL = {
-        "events": 15,
+        "events": 60,
         "metrics": 30,
         "vulnerabilities": 120,
         "scenarios": 300,
