@@ -319,7 +319,7 @@ EC2 → Security Hub 직접 경로는 없습니다. finding은 반드시 탐지 
 | ② | `ASR-RotateDbSecret` | Automation | Secrets Manager 앱 계정 비밀번호 로테이션, DB 반영은 Run Command |
 | ③ | 취약 이미지 교체 절차 | — | Trivy 비교 → 최저 위험 이미지로 버전 고정, Dockerfile `USER` 지정, ECR push |
 
-수동 경로: asr_trigger 조건 불충족 → SNS 담당자 알림 → 대시보드에서 요청→승인→실행 → 대시보드 EC2의 **실행 전용 정책**(`automation-definition/ASR-*`)으로 SSM 실행.
+수동 경로: asr_trigger 조건 불충족 → SNS 담당자 알림 → 대시보드에서 요청→승인→실행 → 대시보드 EC2의 **실행 전용 정책**(`document/ASR-*` + `automation-execution/*`)으로 SSM 실행.
 
 **v11 보완**: 대시보드 EC2 역할에 `sns:Publish` 권한이 추가됐습니다(v3.0). user_data 가 토픽 ARN 을 받는데 권한이 없어 발행이 실패하던 것을 막습니다.
 
@@ -661,7 +661,7 @@ EBS는 전부 `gp3` + `encrypted = true` 입니다.
 ### 설계가 코드로 드러나는 지점 (발표 포인트)
 
 1. **Lambda 는 조치하지 않는다** — 판정만 하고 실행은 SSM Automation 에 위임. Lambda 권한이 `ASR-*` 문서 범위로 묶임
-2. **읽기/실행 권한 분리** — 대시보드 EC2 역할에 읽기 전용 정책과 `automation-definition/ASR-*` 실행 전용 정책을 분리. 대시보드에 버그가 있어도 조회 화면 때문에 조치가 실행되지 않음
+2. **읽기/실행 권한 분리** — 대시보드 EC2 역할에 읽기 전용 정책과 `document/ASR-*` + `automation-execution/*` 실행 전용 정책을 분리. 대시보드에 버그가 있어도 조회 화면 때문에 조치가 실행되지 않음
 3. **DB 1대 + SG 2개** — Config 가 SG 단위로 평가하는 점을 이용해 EC2 절감하면서 자동/수동 대조군 시연
 4. **되돌릴 수 있는 조치만 자동화** — SG 회수·키 비활성화. 판정 결과는 분기와 무관하게 항상 DynamoDB 기록
 5. **액세스 키 없는 CI** — OIDC 단기 토큰. plan 은 ReadOnly, apply 는 main 전용 역할로 분리

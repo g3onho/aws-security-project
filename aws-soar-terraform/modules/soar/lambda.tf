@@ -76,9 +76,15 @@ data "aws_iam_policy_document" "asr_trigger" {
   }
 
   statement {
-    sid       = "StartApprovedPlaybooks"
-    actions   = ["ssm:StartAutomationExecution"]
-    resources = ["arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-*"]
+    sid     = "StartApprovedPlaybooks"
+    actions = ["ssm:StartAutomationExecution"]
+    # StartAutomationExecution 은 IAM 상 document/* (실행할 문서) 와
+    # automation-execution/* (생성되는 실행 ID) 두 리소스 타입을 모두 요구합니다.
+    # automation-definition/* 은 이 액션에 유효한 리소스 타입이 아니라 AccessDenied 가 났습니다. (2026-09-21 실계정 확인)
+    resources = [
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-*",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-execution/*",
+    ]
   }
 
   statement {
