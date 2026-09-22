@@ -5,11 +5,32 @@ set -euxo pipefail
 exec > >(tee -a /var/log/user-data.log) 2>&1
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get install -y ca-certificates curl unzip jq docker.io
+
+# NAT 라우트가 붙기 전에 부팅하면 apt·docker pull 이 전부 타임아웃되고, set -e 로
+# 부트스트랩이 통째로 중단된다 (2026-09-22 docker-host 사고 참고).
+# 밖으로 나갈 수 있을 때까지 기다렸다가, 그 뒤 일시적 실패는 재시도로 넘긴다.
+wait_for_net() {
+  for i in $(seq 1 30); do
+    curl -fsS --max-time 5 -o /dev/null http://archive.ubuntu.com/ && return 0
+    echo "egress 대기 중 ($i/30)"; sleep 10
+  done
+  echo "5분간 외부로 나갈 수 없습니다. NAT 게이트웨이/라우트를 확인하세요." >&2
+  return 1
+}
+retry() {
+  for i in $(seq 1 5); do
+    "$@" && return 0
+    echo "실패 ($i/5): $* — 15초 후 재시도" >&2; sleep 15
+  done
+  return 1
+}
+
+wait_for_net
+retry apt-get update -y
+retry apt-get install -y ca-certificates curl unzip jq docker.io
 systemctl enable --now docker
 
 # 공식 교육용 DVWA 컨테이너. 반드시 관리자 IP / ALB 뒤에서만 노출합니다.
-docker run -d --restart unless-stopped -p 80:80 --name dvwa vulnerables/web-dvwa:latest
+retry docker run -d --restart unless-stopped -p 80:80 --name dvwa vulnerables/web-dvwa:latest
 
 echo "web-dvwa user-data done. 외부 0.0.0.0/0 노출 금지 - SG 로 관리자 IP·ALB 만 허용."

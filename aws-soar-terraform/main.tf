@@ -111,6 +111,12 @@ module "soar" {
 module "compute" {
   source = "./modules/compute"
 
+  # 인스턴스는 서브넷·SG 만 참조하므로 NAT 라우트(network/main.tf aws_route.private_nat)
+  # 와는 의존 관계가 생기지 않는다. 그 탓에 인스턴스가 라우트보다 먼저 떠서 user_data 의
+  # apt-get 이 전부 타임아웃되는 일이 있었다 (2026-09-22 01:04 docker-host: docker 미설치
+  # -> :80 미기동 -> ALB 헬스체크 실패 -> 502). 네트워크가 다 끝난 뒤 뜨도록 강제한다.
+  depends_on = [module.network]
+
   name_prefix = local.name_prefix
   region      = local.region
   account_id  = local.account_id
