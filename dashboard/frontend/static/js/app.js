@@ -1,18 +1,20 @@
-import {project,globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './map.js?v=2.2.2';
-import {regions,sources,statuses,severityColors,threatActors,DEMO_NOW,metricsFor} from './data.js?v=2.2.2';
-import {state,selectEvents,api,toCSV} from './store.js?v=2.2.2';
+import {project,globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './map.js?v=local-1';
+import {regions,sources,statuses,severityColors} from './data.js?v=local-1';
+import {state,selectEvents,api,config,summary,DEMO_NOW,metricsFor,request} from './store.js?v=local-1';
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const format=(time,short=false)=>new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',...(short?{}:{month:'2-digit',day:'2-digit'}),hour:'2-digit',minute:'2-digit',hour12:false}).format(time);
+const format=(time,short=false)=>time==null?'데이터 없음':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',...(short?{}:{month:'2-digit',day:'2-digit'}),hour:'2-digit',minute:'2-digit',hour12:false}).format(time);
 const titles={overview:['통합 관제','Overview'],events:['보안 이벤트','Security events'],vulnerabilities:['취약점 점검','Vulnerabilities'],infrastructure:['인프라 모니터링','Infrastructure'],responses:['대응 이력','Response history']};
 let attackSelection='all';
 let charts=[],mapReady=false,zoom=DEFAULT_ZOOM,rotation=[...DEFAULT_ROTATION],panelOpen=true,activeId=null,approval=false,lastTrigger=null,toastTimer;
 let worldFeatures=[],cachedAll=[],cachedMapped=[],rafPending=false,selectedCountryIndex=-1;
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,3500);}
-function badge(e){return `<span class="badge" style="color:${severityColors[e.severity]}">${e.severity}</span>`;}
-function statusBadge(status){return `<span class="status-badge" style="color:${status==='해결'?'#32d4be':status==='재검증 실패'?'#ef777f':status==='승인 대기'?'#d8ca78':'#a9bcb1'}">${status}</span>`;}
+// severityBumped: correlator 가 "위협+CVE 동시 존재"로 한 단계 올린 건. 올렸다는 사실이
+// 화면에 없으면 자동 모니터링 2번이 동작한 증거가 남지 않는다.
+function badge(e){return `<span class="badge" style="color:${severityColors[e.severity]}">${e.severity}</span>`+(e.severityBumped?` <span class="badge bumped" title="GuardDuty 위협과 Inspector CVE가 같은 자원에 있어 심각도를 한 단계 올렸습니다">↑상향</span>`:'');}
+function statusBadge(status){return `<span class="status-badge" style="color:${status==='해결'?'#32d4be':status==='재검증 실패'?'#ef777f':status==='승인 대기'?'#d8ca78':'#a9bcb1'}">${esc(status)}</span>`;}
 function empty(message='선택한 조건에 맞는 이벤트가 없습니다.'){return `<div class="empty"><strong>데이터 없음</strong>${message}</div>`;}
 function header(title,meta=''){return `<div class="panel-heading"><h2>${title}</h2><span class="meta">${meta}</span></div>`;}
 function canvas(id,label){return `<canvas id="${id}" role="img" aria-label="${esc(label)}">${esc(label)}</canvas>`;}
@@ -22,7 +24,7 @@ function drawChart(id,type,data,options={}){
  charts.push(new Chart(el,{type,data,options:{responsive:true,maintainAspectRatio:false,animation:reduce?false:{duration:500},plugins:{legend:{display:false},tooltip:{backgroundColor:'#17251e',titleColor:'#e7eeec',bodyColor:'#c4d7cb',padding:10}},...options}}));
 }
 async function loadMap(){
- const response=await fetch('/static/data/countries.geojson?v=2.2.2');if(!response.ok)throw Error('지도 데이터를 불러오지 못했습니다.');
+ const response=await fetch('/static/data/countries.geojson?v=local-1');if(!response.ok)throw Error('지도 데이터를 불러오지 못했습니다.');
  const data=await response.json();worldFeatures=data.features.filter(f=>f.properties.ADMIN!=='Antarctica');mapReady=true;
  updateSelectedCountry(state.region);
  renderCountries();
@@ -85,7 +87,7 @@ function renderAttacks(rows){
  $('#attack-summary').textContent=`${cachedMapped.length}개 흐름 · 위치 미상 ${chosen.length-cachedMapped.length}건 · 모의 IP/좌표`;
 }
 
-function chooseRegion(id,move=true){state.region=id;$('#region').value=id;panelOpen=true;updateSelectedCountry(id);if(mapReady)renderCountries();if(move){const r=regions.find(r=>r.id===id);if(r?.lon!==undefined)animateTo([r.lon,clampPhi(r.lat)],REGION_ZOOM);else animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM);}render();}
+function chooseRegion(id,move=true){state.region=id;$('#region').value=id;panelOpen=true;updateSelectedCountry(id);if(mapReady)renderCountries();if(move){const r=regions.find(r=>r.id===id);if(r?.lon!==undefined)animateTo([r.lon,clampPhi(r.lat)],REGION_ZOOM);else animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM);}state.page=1;refresh();}
 function mapRender(rows){
  if(!mapReady)return;
  cachedAll=selectEvents({ignoreRegion:true});renderAttacks(rows);
@@ -104,10 +106,10 @@ function overviewCharts(rows){
  const counts=sources.map(source=>({source,count:rows.filter(e=>e.source===source).length}));const max=Math.max(1,...counts.map(s=>s.count));
  return `<div class="chart-grid"><section class="panel">${header('자원 및 대응 현황','RESOURCE HEALTH')}<div class="chart-body"><div class="gauges">${gauge(m?.cpu??null,'CPU 사용률')}${gauge(m?.memory??null,'메모리 사용률')}${gauge(rate,'대응 완료율')}</div><p class="gauge-note">${m?esc(m.resource):'EC2 데이터 없음'} · 해결 ${done} / ${rows.length}건</p></div></section><section class="panel">${header('탐지 소스별 이벤트','DETECTION SOURCES')}<div class="chart-body source-bars">${counts.map(s=>`<div><div class="bar-heading"><span>${s.source}</span><span>${s.count}건</span></div><div class="bar-track"><div class="bar-fill" style="width:${s.count/max*100}%"></div></div></div>`).join('')}</div></section><section class="panel">${header('위험도 분포',`${rows.length} EVENTS`)}<div class="chart-body donut-body"><div class="donut-wrap">${canvas('severity-chart','위험도별 건수는 오른쪽 범례에 표시됩니다.')}<div class="donut-center"><b>${rows.length}</b><span>전체 이벤트</span></div></div><div class="donut-legend">${Object.entries(severityColors).map(([s,c])=>`<div><i style="background:${c}"></i><span>${s}</span><b>${rows.filter(e=>e.severity===s).length}</b></div>`).join('')}</div></div></section></div>`;
 }
-function table(rows,full=false){return `<section class="panel ${full?'full-panel':''}">${header(state.view==='responses'?'대응 이력':state.view==='vulnerabilities'?'취약점 점검 결과':'최근 보안 이벤트',`<button id="export" class="text-button">↓ CSV 내보내기</button>`)}${rows.length?`<div class="table-scroll"><table><caption class="sr-only">현재 필터에 해당하는 ${rows.length}개 이벤트</caption><thead><tr><th>위험도</th><th>이벤트 / 자원</th><th>탐지 소스</th><th>발생 시각 (KST)</th><th>상태</th>${full?'<th>대응</th><th>재검증</th>':''}</tr></thead><tbody>${rows.map(e=>`<tr><td>${badge(e)}</td><td><button class="event-link" data-event="${e.id}">${esc(e.title)}<small>${e.scenario} · ${esc(e.resource)}</small></button></td><td>${e.source}</td><td>${format(e.at,true)}</td><td>${statusBadge(e.status)}</td>${full?`<td>${e.mode} · ${e.execution}</td><td>${e.verification}</td>`:''}</tr>`).join('')}</tbody></table></div>`:empty()}<div class="table-footer"><span>총 ${rows.length}건 · 현재 필터 적용</span><span>${state.view==='overview'?'<button class="text-button" data-view="events">전체 이벤트 보기 →</button>':'이벤트를 선택해 근거와 조치 결과 확인'}</span></div></section>`;}
-function responseCard(rows){const pending=rows.filter(e=>e.status==='승인 대기');return `<section class="panel">${header('대응 관리',`${pending.length} APPROVALS`)}<div class="response-body"><div class="response-summary"><div>자동 대응<b>${rows.filter(e=>e.mode==='자동').length}</b></div><div>수동 대응<b>${rows.filter(e=>e.mode==='수동').length}</b></div><div>승인 대기<b style="color:#d8ca78">${pending.length}</b></div></div><div class="response-list">${pending.slice(0,4).map(e=>`<div class="response-item"><span class="response-icon">!</span><div><strong>${esc(e.title)}</strong><small>${e.scenario} · ${format(e.at,true)} KST</small></div><button data-event="${e.id}">검토</button></div>`).join('')||'<p class="muted">승인 대기 이벤트가 없습니다.</p>'}</div></div></section>`;}
-function infrastructure(){const r=regions.find(r=>r.id===state.region);const m=metricsFor(r,state.hours,state.endOffset,state.environment);return `<div class="view-intro"><span>CloudWatch · CPU / 메모리 · 5분 평균 · 데모 시계열</span><span>경보 임계치 <strong class="mint">80%</strong></span></div><div class="infrastructure-grid"><section class="panel">${header('EC2 자원 사용률',m?.resource||'EC2 미선택')}${m?`<div class="metric-large">${canvas('metrics-chart',`CPU ${m.cpu}%, 메모리 ${m.memory}%, 임계치 80%`)}</div><div class="context-note">CPU ${m.cpu}% · 메모리 ${m.memory}% · 임계치 80% — 선택 구간 종료 시점의 값입니다. 보안 이벤트 필터와 독립적인 자원 지표입니다.</div>`:empty('단일 AWS 리전을 선택하면 EC2 데모 지표를 볼 수 있습니다.')}</section><section class="panel">${header('3계층 서비스','DEMO HEALTH')}<div class="service-flow"><div class="service-node">Nginx<span>● 정상</span></div><span class="mint">→</span><div class="service-node">Flask<span>● 정상</span></div><span class="mint">→</span><div class="service-node">MySQL<span>● 정상</span></div></div><div class="context-note">데모 서비스 구성도 · 실제 상태 미연동<br>HTTP /health: 데모 200<br>실제 AWS 조회 및 조치: 미연동</div></section></div>`;}
-function visibleRows(){const rows=selectEvents();return state.view==='vulnerabilities'?rows.filter(e=>['Trivy','Inspector'].includes(e.source)):state.view==='responses'?rows.filter(e=>e.history.length>1||e.status==='승인 대기'):rows;}
+function table(rows,full=false){const total=rows.length,pages=Math.max(1,Math.ceil(total/15));state.page=Math.min(state.page,pages);rows=rows.slice((state.page-1)*15,state.page*15);return `<section class="panel ${full?'full-panel':''}">${header(state.view==='responses'?'대응 이력':state.view==='vulnerabilities'?'취약점 점검 결과':'최근 보안 이벤트',`<button id="export" class="text-button">↓ CSV 내보내기</button>`)}${rows.length?`<div class="table-scroll"><table><caption class="sr-only">현재 필터에 해당하는 ${rows.length}개 이벤트</caption><thead><tr><th>위험도</th><th>이벤트 / 자원</th><th>탐지 소스</th><th>발생 시각 (KST)</th><th>상태</th>${full?'<th>대응</th><th>재검증</th>':''}</tr></thead><tbody>${rows.map(e=>`<tr><td>${badge(e)}</td><td><button class="event-link" data-event="${e.id}">${esc(e.title)}<small>${esc(e.scenario)} · ${esc(e.resource)}</small></button></td><td>${esc(e.source)}</td><td>${format(e.at,true)}</td><td>${statusBadge(e.status)}</td>${full?`<td>${esc(e.mode)} · ${esc(e.execution)}</td><td>${esc(e.verification)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:empty()}<div class="table-footer"><span>총 ${total}건 · 현재 필터 적용</span><span>${state.view==='overview'?'<button class="text-button" data-view="events">전체 이벤트 보기 →</button>':'이벤트를 선택해 근거와 조치 결과 확인'}</span></div><div class="table-pager"><button data-page="prev" ${state.page<=1?'disabled':''}>← 이전</button><span>${state.page} / ${pages}</span><button data-page="next" ${state.page>=pages?'disabled':''}>다음 →</button></div></section>`;}
+function responseCard(rows){const pending=rows.filter(e=>e.status==='승인 대기');return `<section class="panel">${header('대응 관리',`${pending.length} APPROVALS`)}<div class="response-body"><div class="response-summary"><div>자동 대응<b>${rows.filter(e=>e.mode==='자동').length}</b></div><div>수동 대응<b>${rows.filter(e=>e.mode==='수동').length}</b></div><div>승인 대기<b style="color:#d8ca78">${pending.length}</b></div></div><div class="response-list">${pending.slice(0,4).map(e=>`<div class="response-item"><span class="response-icon">!</span><div><strong>${esc(e.title)}</strong><small>${esc(e.scenario)} · ${format(e.at,true)} KST</small></div><button data-event="${e.id}">검토</button></div>`).join('')||'<p class="muted">승인 대기 이벤트가 없습니다.</p>'}</div></div></section>`;}
+function infrastructure(){const r=regions.find(r=>r.id===state.region);const m=metricsFor(r,state.hours,state.endOffset,state.environment);return `<div class="view-intro"><span>CloudWatch · CPU / 메모리 · 5분 평균 · 데모 시계열</span><span>경보 임계치 <strong class="mint">80%</strong></span></div><div class="infrastructure-grid"><section class="panel">${header('EC2 자원 사용률',m?.resource||'EC2 미선택')}${m?`<div class="metric-large">${canvas('metrics-chart',`CPU ${m.cpu}%, 메모리 ${m.memory}%, 임계치 80%`)}</div><div class="context-note">CPU ${m.cpu}% · 메모리 ${m.memory}% · 임계치 80% — 선택 구간 종료 시점의 값입니다. 보안 이벤트 필터와 독립적인 자원 지표입니다.</div>`:empty('단일 AWS 리전을 선택하면 EC2 데모 지표를 볼 수 있습니다.')}</section><section class="panel">${header('3계층 서비스','DEMO HEALTH')}<div class="service-flow"><div class="service-node">Nginx<span>○ 미연동</span></div><span class="mint">→</span><div class="service-node">Flask<span>○ 미연동</span></div><span class="mint">→</span><div class="service-node">MySQL<span>○ 미연동</span></div></div><div class="context-note">데모 서비스 구성도 · 실제 상태 미연동<br>각 서비스의 실제 상태 점검: 미연동<br>실제 AWS 조회 및 조치: 미연동</div></section></div>`;}
+function visibleRows(){return selectEvents();}
 function render(){
  charts.forEach(c=>c.destroy());charts=[];
  const rows=selectEvents();const [title,en]=titles[state.view];$('#page-title').innerHTML=`${title} <span>${en}</span>`;document.title=`AWS Security Operations · ${title}`;
@@ -122,39 +124,74 @@ function render(){
  }else {const visible=visibleRows();$('#content').innerHTML=`<div class="view-intro"><span>${state.view==='vulnerabilities'?'Trivy / Inspector · 같은 자원과 검사 기준으로 결과 비교':state.view==='responses'?'실행 결과와 재검증 결과를 구분하여 확인합니다.':'탐지 근거에서 대응과 재검증까지 추적합니다.'}</span><span class="view-summary">전체 <strong>${visible.length}건</strong> 미해결 <strong>${visible.filter(e=>e.status!=='해결').length}건</strong></span></div>${table(visible,true)}`;}
  $('#notification-count').hidden=!rows.some(e=>e.status==='승인 대기');
 }
-function eventDialog(id,ask=false){
- const e=api.get(id);if(!e)return;activeId=id;approval=ask;
- const running=['조치 실행 중','재검증 중'].includes(e.status);
- const actor=e.sourceLocation?.actorId?threatActors.find(a=>a.id===e.sourceLocation.actorId):null;
- $('#dialog-content').innerHTML=`<div class="dialog-header"><div><div class="eyebrow">${e.id} / ${e.scenario}</div><h2 id="dialog-title">${esc(e.title)}</h2></div><button class="dialog-close" data-action="close" aria-label="상세 닫기">×</button></div><div class="dialog-body"><dl class="detail-meta"><div><dt>위험도</dt><dd>${badge(e)}</dd></div><div><dt>탐지 소스</dt><dd>${e.source}</dd></div><div><dt>발생 시각 (KST)</dt><dd>${format(e.at)}</dd></div><div><dt>대상 자원</dt><dd>${esc(e.resource)}</dd></div><div><dt>리전</dt><dd>${e.region}</dd></div><div><dt>처리 상태</dt><dd>${statusBadge(e.status)}</dd></div></dl><div class="execution-flow" role="status" aria-live="polite"><span>${e.mode} 대응</span><span>→ 실행 <b>${e.execution}</b></span><span>→ 재검증 <b>${e.verification}</b></span></div>${e.sourceIp?`<section class="detail-section attack-detail"><h3>공격 출발지 → 대상</h3><p><strong>${esc(e.sourceIp)}</strong> → ${esc(e.region)} / ${esc(e.resource)}</p><p>${e.sourceLocation?`${esc(e.sourceLocation.city)} · ${esc(e.sourceLocation.provenance)} · 좌표 ${e.sourceLocation.lat}, ${e.sourceLocation.lon}`:esc(e.geoStatus)+' · 지도 연결선 미표시'}</p><p>선은 출발지와 대상의 관계를 나타냅니다. 실제 인터넷 경로나 공격자의 물리적 위치를 의미하지 않습니다.</p>${actor?`<div class="threat-actor-box"><div class="threat-actor-head">${esc(actor.country)} 배후 추정 그룹(예시): ${esc(actor.groups.join(', '))}</div><dl class="threat-actor-meta"><div><dt>주요 목적</dt><dd>${esc(actor.purpose)}</dd></div><div><dt>주요 타겟</dt><dd>${esc(actor.targets.join(', '))}</dd></div><div><dt>주요 전술</dt><dd>${esc(actor.tactics.join(', '))}</dd></div></dl><p class="threat-actor-disclaimer">공개 위협 인텔리전스 자료(CISA, MITRE ATT&CK 등)를 참고해 구성한 교육용 데모 정보이며, 이 개별 이벤트에 대한 실제 귀속(attribution)이 아닙니다.</p></div>`:''}</section>`:''}<section class="detail-section"><h3>탐지 근거</h3><p>${esc(e.evidence)}</p></section><section class="detail-section"><h3>권장 조치</h3><p>${esc(e.recommendation)}</p></section>${ask?`<div class="approval-box"><strong>데모 조치 승인</strong>대상: ${esc(e.resource)}<br>변경: ${esc(e.recommendation)}<br>실제 AWS 자원은 변경되지 않습니다. 승인 후 실행 결과를 확인하고 재검증을 진행하세요.</div>`:''}<section class="detail-section"><h3>Before / After · 동일 기준 재검증</h3><p>${esc(e.criterion)}</p><p>비교 자원: ${esc(e.resource)}</p><div class="comparison"><div><label>BEFORE · 조치 전</label><strong>${e.before}${e.unit}</strong><small>${format(e.beforeAt)} KST</small></div><div><label>AFTER · 재검증 ${e.verification}</label><strong>${e.afterValue===null?'검사 대기':`${e.afterValue}${e.unit}`}</strong><small>${e.afterAt?format(e.afterAt)+' KST':'조치 성공만으로 해결되지 않습니다.'}</small></div></div></section><section class="detail-section"><h3>처리 이력</h3><ol class="history-list">${e.history.map(h=>`<li><time>${format(h.at)} KST</time>${esc(h.text)}</li>`).join('')}</ol></section></div><div class="dialog-actions"><span>DEMO · 실제 AWS 조치 없음</span>${ask?'<button class="cancel-button" data-action="cancel-approval">취소</button><button class="primary-button" data-action="execute">승인 및 데모 실행</button>':running?'<button class="primary-button" disabled>처리 중…</button>':e.status==='재검증 대기'?'<button class="primary-button" data-action="verify">동일 기준 재검증</button>':e.status==='해결'?'<button class="cancel-button" data-action="close">닫기</button>':`<button class="cancel-button" data-action="close">닫기</button><button class="primary-button" data-action="${e.mode==='수동'?'approve':'execute'}">${e.mode==='수동'?'조치 검토 및 승인':'자동 대응 데모 실행'}</button>`}</div>`;
- if(!$('#event-dialog').open){lastTrigger=document.activeElement;$('#event-dialog').showModal();}else if(!running){$('#dialog-content .primary-button, #dialog-content .cancel-button')?.focus();}
+
+let detailSerial=0,operationBusy=false,pollTimer;
+async function eventDialog(id,ask=false){
+ const serial=++detailSerial;activeId=id;approval=ask;
+ if(!$('#event-dialog').open){lastTrigger=document.activeElement;$('#event-dialog').showModal();}
+ $('#dialog-content').textContent='상세 정보를 불러오는 중…';
+ try{const e=await api.detail(id);if(serial!==detailSerial||activeId!==id)return;drawDetail(e,ask);if(e.activeExecutionId)pollJob(id,e.activeExecutionId);}
+ catch(error){if(serial===detailSerial){$('#dialog-content').innerHTML=`<div class="dialog-body"><p>${esc(error.message)}</p><button data-action="retry-detail">재시도</button><button data-action="close">닫기</button></div>`;}}
 }
-function closeDialog(){ $('#event-dialog').close(); }
+function applyModeLabels(){const live=config.mode==='live';
+ $('#data-mode').textContent=live?'실 AWS 데이터':'데모 데이터';
+ $('#aws-state').textContent=live?'AWS 연동됨':'AWS 미연동';
+ $('#env-label').textContent=live?'실 AWS 환경':'로컬 데모 환경';
+ $('#env-sub').textContent=live?config.mode+' · 읽기 전용':'실제 AWS 연결 없음';}
+function drawDetail(e,ask=false){
+ const canWrite=config.writeEnabled&&config.role==='operator'&&e.actionable;
+ const running=['EXECUTING','VERIFYING'].includes(e.rawStatus);
+ const value=v=>v==null?'검사 대기':esc(v)+esc(e.unit);
+ let buttons='<button class="cancel-button" data-action="close">닫기</button>';
+ if(canWrite&&!running&&!operationBusy){
+  if(ask)buttons='<button data-action="cancel-review">돌아가기</button><button class="primary-button" data-action="confirm-approve">변경 내용 승인</button>';
+  else if(e.rawStatus==='APPROVED')buttons+='<button data-action="cancel">승인 취소</button><button class="primary-button" data-action="execute">데모 조치 실행</button>';
+  else if(['PENDING_VERIFICATION','VERIFICATION_FAILED'].includes(e.rawStatus))buttons+='<button class="primary-button" data-action="verify">동일 기준 재검증</button>';
+  else if(['NEW','PENDING_APPROVAL','EXECUTION_FAILED'].includes(e.rawStatus))buttons+='<button class="primary-button" data-action="approve">조치 검토 및 승인</button>';
+ }
+ $('#dialog-content').innerHTML=`<div class="dialog-header"><div><div class="eyebrow">${esc(e.id)} / ${esc(e.scenario)}</div><h2 id="dialog-title">${esc(e.title)}</h2></div><button class="dialog-close" data-action="close" aria-label="상세 닫기">×</button></div><div class="dialog-body"><dl class="detail-meta"><div><dt>위험도</dt><dd>${badge(e)}</dd></div><div><dt>탐지 소스</dt><dd>${esc(e.source)}</dd></div><div><dt>대상 자원</dt><dd>${esc(e.resource)}</dd></div><div><dt>상태</dt><dd>${esc(e.status)}</dd></div><div><dt>승인자</dt><dd>${esc(e.approver||'미승인')}</dd></div><div><dt>발생 시각</dt><dd>${format(e.at)} KST</dd></div></dl><div class="execution-flow"><span>실행 ${esc(e.execution)}</span><span>→ 재검증 ${esc(e.verification)}</span></div>${e.sourceIp?`<section class="detail-section"><h3>공격 출발지 → 대상</h3><p>${esc(e.sourceIp)} → ${esc(e.region)}</p><p>${esc(e.geoStatus)} · ${esc(e.sourceLocation?.provenance||'좌표 없음')}</p><p>모의 IP/좌표입니다. 실제 공격자 귀속 정보가 아닙니다.</p></section>`:''}<section class="detail-section"><h3>탐지 근거</h3><p>${esc(e.evidence)}</p></section><section class="detail-section"><h3>권장 조치</h3><p>${esc(e.recommendation)}</p></section>${e.plan?`<section class="${ask?'approval-box':'detail-section'}"><h3>${ask?'승인할 변경 내용':'로컬 모의 조치 계획'}</h3><p>대상: ${esc(e.plan.target)}</p><p>변경: ${esc(e.plan.change)}</p><p>절차: ${esc(e.plan.document)} · 버전 ${esc(e.plan.version)}</p>${e.plan.imageBefore?`<p>이미지 ${esc(e.plan.imageBefore)} → ${esc(e.plan.imageAfter)}</p>`:''}<p>실제 AWS 자원은 변경되지 않습니다.</p></section>`:'<p class="muted">이 이벤트의 수동 실행은 미지원입니다. 자동 대응 이력은 조회만 가능합니다.</p>'}<section class="detail-section"><h3>Before / After · 동일 기준 재검증</h3><p>${esc(e.criterion)} · 검사 버전 ${esc(e.criterionVersion)}</p><p>같은 대상: ${esc(e.resource)}</p><div class="comparison"><div><label>BEFORE</label><strong>${value(e.before)}</strong><small>${format(e.beforeAt)} KST</small></div><div><label>AFTER · ${esc(e.verification)}</label><strong>${value(e.afterValue)}</strong><small>${format(e.afterAt)}${e.afterAt?' KST':''}</small></div></div></section><section class="detail-section"><h3>처리 이력</h3><ol class="history-list">${e.history.map(h=>`<li><time>${format(h.at)} KST</time>${esc(h.text)}</li>`).join('')}</ol></section><section class="detail-section"><button data-action="evidence">증적 12항목 보기</button><div id="evidence-content"></div></section></div><div class="dialog-actions"><span>${running?'작업 처리 중 · 창을 닫아도 계속됩니다.':'로컬 데모 · 실제 AWS 조치 없음'}</span>${buttons}</div>`;
+}
+function closeDialog(){clearTimeout(pollTimer);detailSerial++;$('#event-dialog').close();}
+function pollJob(id,jobId){
+ clearTimeout(pollTimer);
+ pollTimer=setTimeout(async()=>{try{const result=await api.job(id,jobId);if(activeId!==id||!$('#event-dialog').open)return;
+ const e=await api.detail(id);drawDetail(e);if(result.execution.status==='RUNNING')pollJob(id,jobId);else{await refresh();toast('작업 완료 · '+e.status);}}
+ catch(error){toast(error.message);}},800);
+}
 async function dialogAction(action){
- if(action==='close'){closeDialog();return;}if(action==='approve'){eventDialog(activeId,true);return;}if(action==='cancel-approval'){eventDialog(activeId);toast('승인을 취소했습니다. 상태는 변경되지 않았습니다.');return;}
- if(['execute','verify'].includes(action)){
-  const id=activeId;try{const operation=action==='execute'?api.execute(id):api.verify(id);eventDialog(id);render();await operation;render();if($('#event-dialog').open&&activeId===id)eventDialog(id);toast(action==='execute'?'데모 조치 실행 성공. 재검증이 필요합니다.':`재검증 ${api.get(id).verification} · ${api.get(id).status}`);}catch(error){toast(error.message);}
+ if(action==='close'){closeDialog();return;}
+ if(action==='approve'){approval=true;drawDetail(api.get(activeId),true);return;}
+ if(action==='cancel-review'){approval=false;drawDetail(api.get(activeId));return;}
+ if(action==='retry-detail'){eventDialog(activeId);return;}
+ if(action==='evidence'){try{const result=await request('/api/events/'+encodeURIComponent(activeId)+'/evidence');$('#evidence-content').innerHTML=result.items.map(i=>`<p><strong>${i.no}. ${esc(i.label)}</strong><br>${esc(i.value||'데이터 없음')} <small>(${esc(i.source)})</small></p>`).join('');}catch(error){toast(error.message);}return;}
+ if(operationBusy)return;
+ if(['confirm-approve','cancel','execute','verify'].includes(action)){
+  const id=activeId;operationBusy=true;drawDetail(api.get(id));
+  try{const result=await api.change(id,action==='confirm-approve'?'approve':action);await refresh();if(activeId===id&&$('#event-dialog').open){drawDetail(await api.detail(id));if(result.execution)pollJob(id,result.execution.executionId);}toast(result.execution?'작업이 접수됐습니다.':'승인 상태를 저장했습니다.');}
+  catch(error){toast(error.message);if(activeId===id)await api.detail(id);}
+  finally{operationBusy=false;if(activeId===id&&$('#event-dialog').open)drawDetail(api.get(id));}
  }
 }
 async function refresh(){
- const box=$('#load-state');box.hidden=false;box.className='load-state';box.textContent='데모 데이터를 불러오는 중…';$('#refresh').disabled=true;$('#content').setAttribute('aria-busy','true');
- try{await Promise.all([api.load(),mapReady?Promise.resolve():loadMap()]);render();box.hidden=true;$('#updated').textContent=`갱신 ${format(Date.now(),true)} KST`;}catch(e){box.classList.add('error');box.innerHTML=`${esc(e.message)} <button id="retry">다시 시도</button>`;}finally{$('#refresh').disabled=false;$('#content').removeAttribute('aria-busy');}
+ const box=$('#load-state');box.hidden=false;box.className='load-state';box.textContent='불러오는 중…';$('#refresh').disabled=true;$('#content').setAttribute('aria-busy','true');
+ try{const [loaded]=await Promise.all([api.load(),mapReady?Promise.resolve():loadMap()]);if(loaded===false)return;render();box.hidden=true;$('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;$('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');applyModeLabels();$('#worker-state').textContent=summary.health.checks.worker==='ok'?'로컬 작업 처리기 정상':'작업 처리기 중지 · 실행 대기 작업은 재시작 후 처리';}catch(e){if(e.name==='AbortError')return;box.classList.add('error');box.innerHTML=`${esc(e.message)} <button id="retry">다시 시도</button>`;}finally{$('#refresh').disabled=false;$('#content').removeAttribute('aria-busy');}
 }
 $('#region').innerHTML='<option value="all">전체 리전</option>'+regions.map(r=>`<option value="${r.id}">${r.name}${r.id==='global'?'':` · ${r.id}`}</option>`).join('');$('#region').value=state.region;
-$('#status').insertAdjacentHTML('beforeend',statuses.map(s=>`<option>${s}</option>`).join(''));$('#source').insertAdjacentHTML('beforeend',sources.map(s=>`<option>${s}</option>`).join(''));
-['environment','severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{state[key]=e.target.value;render();}));
+let searchTimer;
+$('#status').insertAdjacentHTML('beforeend',[...statuses,'승인됨','실행 실패'].map(s=>`<option>${s}</option>`).join(''));$('#source').insertAdjacentHTML('beforeend',sources.map(s=>`<option>${s}</option>`).join(''));
+['severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{state[key]=e.target.value;state.page=1;refresh();}));
 $('#region').addEventListener('change',e=>chooseRegion(e.target.value));
-$('#search').addEventListener('input',e=>{state.search=e.target.value;render();});
-$('#time-range').addEventListener('input',e=>{state.endOffset=+e.target.value;render();});
+$('#search').addEventListener('input',e=>{state.search=e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,220);});
+$('#time-range').addEventListener('input',e=>{state.endOffset=+e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,120);});
 $('#event-dialog').addEventListener('close',()=>{activeId=null;approval=false;const target=lastTrigger?.isConnected?lastTrigger:$('#page-title');if(!target.hasAttribute('tabindex')&&target.tagName==='H1')target.tabIndex=-1;target.focus();});
 $('#event-dialog').addEventListener('click',e=>{if(e.target===$('#event-dialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown',e=>{const attack=e.target.closest('.attack-connection');if(attack&&['Enter',' '].includes(e.key)){e.preventDefault();eventDialog(attack.dataset.event);return;}const marker=e.target.closest('.marker');if(marker&&['Enter',' '].includes(e.key)){e.preventDefault();const id=marker.dataset.region;chooseRegion(id);$(`#markers [data-region="${id}"]`)?.focus();}});
 document.addEventListener('click',e=>{
- const view=e.target.closest('[data-view]');if(view){state.view=view.dataset.view;render();return;}
+ const view=e.target.closest('[data-view]');if(view){state.view=view.dataset.view;state.page=1;refresh();return;}
  const region=e.target.closest('[data-region]');if(region){chooseRegion(region.dataset.region);return;}
  const event=e.target.closest('[data-event]');if(event){eventDialog(event.dataset.event);return;}
  const action=e.target.closest('[data-action]');if(action){dialogAction(action.dataset.action);return;}
- const hours=e.target.closest('[data-hours]');if(hours){state.hours=+hours.dataset.hours;render();return;}
+ const hours=e.target.closest('[data-hours]');if(hours){state.hours=+hours.dataset.hours;state.page=1;refresh();return;}
  const id=e.target.closest('button')?.id;
  if(id==='refresh'||id==='retry')refresh();
  if(id==='close-region'){panelOpen=false;$('#region-panel').hidden=true;$('#open-region').hidden=false;$('#open-region').focus();}
@@ -162,9 +199,12 @@ document.addEventListener('click',e=>{
  if(id==='zoom-in'){animateTo(rotation,Math.min(ZOOM_MAX,zoom+.3),300);}
  if(id==='zoom-out'){animateTo(rotation,Math.max(ZOOM_MIN,zoom-.3),300);}
  if(id==='zoom-reset'){animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM,500);}
- if(id==='clear-filters'){Object.assign(state,{severity:'',status:'',source:'',search:'',endOffset:0,hours:24});['severity','status','source','search'].forEach(k=>$(`#${k}`).value='');$('#time-range').value=0;render();toast('검색·위험도·상태·소스·시간 필터를 초기화했습니다.');}
- if(id==='notifications'){state.view='events';state.status='승인 대기';$('#status').value=state.status;render();toast('현재 지역과 시간 범위의 승인 대기 알림을 표시합니다.');}
- if(id==='export'){const rows=visibleRows();const blob=new Blob([toCSV(rows)],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`aws-events-${state.region}-${state.view}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`${rows.length}개 이벤트를 CSV로 내보냈습니다.`);}
+ if(id==='clear-filters'){Object.assign(state,{severity:'',status:'',source:'',search:'',endOffset:0,hours:24});['severity','status','source','search'].forEach(k=>$(`#${k}`).value='');$('#time-range').value=0;state.page=1;refresh();toast('검색·위험도·상태·소스·시간 필터를 초기화했습니다.');}
+ if(id==='notifications'){state.view='events';state.status='승인 대기';$('#status').value=state.status;state.page=1;refresh();toast('현재 지역과 시간 범위의 승인 대기 알림을 표시합니다.');}
+ if(id==='export')api.export().catch(e=>toast(e.message));
+ if(id==='logout')api.logout().catch(e=>toast(e.message));
+ const pager=e.target.closest('[data-page]');if(pager){state.page+=pager.dataset.page==='next'?1:-1;render();}
+
 });
 bindMapInteraction($('#world-map'),()=>({zoom,rotation}),value=>{zoom=value.zoom;rotation=value.rotation;scheduleCameraUpdate();});
 $('#attack-filter').addEventListener('change',e=>{attackSelection=e.target.value;renderAttacks(selectEvents());});

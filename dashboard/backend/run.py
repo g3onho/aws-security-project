@@ -40,7 +40,10 @@ def create_app(overrides=None):
     else:
         from app.adapters.live import LiveAdapter
         adapter=LiveAdapter(Config)
-        app.config['WRITE_ENABLED']=False
+        # 실모드 쓰기는 기본 꺼짐. 실제 AWS 리소스를 바꾸므로 명시적으로 켜야 한다.
+        # 데모 모드와 달리 기본값이 false 인 것이 핵심이다.
+        app.config['WRITE_ENABLED']=os.environ.get('WRITE_ENABLED','false').lower()=='true'
+        Config.WRITE_ENABLED=app.config['WRITE_ENABLED']
     app.extensions['dashboard_adapter']=adapter
     register(app);install(app);app.register_blueprint(bp)
 
@@ -79,6 +82,10 @@ def worker(app,once=False):
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--port',type=int,default=5050)
+    # 기본은 이 PC 에서만. --lan 을 줘야 같은 공유기 안의 다른 기기가 접속한다.
+    # 인터넷에는 열리지 않는다(공유기 NAT 뒤). 실제 AWS 취약점 목록을 보여주는
+    # 화면이라 기본값을 넓히지 않는다.
+    parser.add_argument('--lan',action='store_true',help='같은 네트워크에 공개')
     parser.add_argument('--worker',action='store_true')
     parser.add_argument('--once',action='store_true')
     parser.add_argument('--init-admin',action='store_true')
@@ -103,5 +110,11 @@ if __name__=='__main__':
     elif args.worker:worker(app,args.once)
     else:
         from waitress import serve
-        print(f'Local dashboard: http://127.0.0.1:{args.port}',flush=True)
-        serve(app,host='127.0.0.1',port=args.port,threads=4)
+        host='0.0.0.0' if args.lan else '127.0.0.1'
+        if args.lan:
+            import socket
+            lan_ip=socket.gethostbyname(socket.gethostname())
+            print(f'LAN dashboard: http://{lan_ip}:{args.port}  (같은 네트워크 전용)',flush=True)
+        else:
+            print(f'Local dashboard: http://127.0.0.1:{args.port}',flush=True)
+        serve(app,host=host,port=args.port,threads=4)

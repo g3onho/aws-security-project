@@ -9,4 +9,7 @@ Flask-Login>=0.6
 SQLAlchemy>=2.0
 
 # 배포
-gunicorn>=22.0
+# run.py:105 는 waitress 로 기동한다. gunicorn 은 Windows 에서 동작하지 않으므로
+# 로컬(팀 PC)은 waitress, Linux 배포는 gunicorn 을 쓴다.
+waitress>=3.0
+gunicorn>=22.0 ; sys_platform != "win32"

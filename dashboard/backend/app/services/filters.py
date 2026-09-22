@@ -88,3 +88,39 @@ def paginate(rows: list[dict], q: dict) -> dict:
         ).decode()
 
     return {"items": page, "nextCursor": next_cursor, "total": total, "truncated": False}
+
+
+def view_rows(rows: list[dict], q: dict) -> list[dict]:
+    """화면(view)별 추가 필터. 목록과 집계가 같은 규칙을 써야 숫자가 맞는다."""
+    view = q.get("view")
+    if view == "vulnerabilities":
+        return [e for e in rows if e["source"] in ("Inspector", "Trivy")]
+    if view == "responses":
+        return [e for e in rows if len(e["history"]) > 1 or e["status"] == "PENDING_APPROVAL"]
+    return rows
+
+
+def build_snapshot(events: list[dict], q: dict, mode: str) -> dict:
+    """지역 합계·차트·표가 같은 한 판(revision)을 보도록 한 번에 만든다.
+
+    demo/local 과 live 가 같은 모양을 내야 프론트가 분기 없이 그린다.
+    """
+    import hashlib
+
+    from ..storage import encode, ms
+
+    rows = view_rows(apply_filters(events, q), q)
+    regional = apply_filters(events, {**q, "region": "all", "ignoreRegion": True})
+
+    summary = {"total": len(rows),
+               "resolved": sum(e["status"] == "RESOLVED" for e in rows),
+               "regions": {}, "sources": {}, "severity": {}}
+    for e in regional:
+        summary["regions"][e["region"]] = summary["regions"].get(e["region"], 0) + 1
+    for e in rows:
+        for field, key in (("source", "sources"), ("severity", "severity")):
+            summary[key][e[field]] = summary[key].get(e[field], 0) + 1
+
+    return {"items": rows, "regionalItems": regional, "summary": summary, "mode": mode,
+            "asOf": q["to"], "collectedAt": ms(),
+            "snapshot": hashlib.sha256(encode(rows).encode()).hexdigest()[:20]}

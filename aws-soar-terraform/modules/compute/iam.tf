@@ -209,6 +209,10 @@ data "aws_iam_policy_document" "dashboard_read" {
       "logs:StartQuery",
       "logs:GetQueryResults",
       "cloudtrail:LookupEvents",
+      # SEC-05 재검증(iam_key_status) — 노출된 키가 정말 Inactive 가 됐는지 확인한다.
+      # 읽기 전용이며 키 값 자체는 반환되지 않는다(메타데이터만).
+      "iam:ListAccessKeys",
+      "iam:GetAccessKeyLastUsed",
     ]
     resources = ["*"]
   }

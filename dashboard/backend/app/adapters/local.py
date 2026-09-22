@@ -69,18 +69,8 @@ class LocalAdapter(DemoAdapter):
 
     def snapshot(self,q):
         # One SQLite read provides one revision for regional totals, charts and the paged table.
-        events=list(self._events.values())
-        rows=apply_filters(events,q)
-        if q.get('view')=='vulnerabilities':rows=[e for e in rows if e['source'] in ('Inspector','Trivy')]
-        if q.get('view')=='responses':rows=[e for e in rows if len(e['history'])>1 or e['status']=='PENDING_APPROVAL']
-        regional=apply_filters(events,{**q,'region':'all','ignoreRegion':True})
-        result={'total':len(rows),'resolved':sum(e['status']=='RESOLVED' for e in rows),'regions':{},'sources':{},'severity':{}}
-        for e in regional:result['regions'][e['region']]=result['regions'].get(e['region'],0)+1
-        for e in rows:
-            for field,key in [('source','sources'),('severity','severity')]:
-                result[key][e[field]]=result[key].get(e[field],0)+1
-        return {'items':rows,'regionalItems':regional,'summary':result,'mode':'demo','asOf':q['to'],
-                'collectedAt':ms(),'snapshot':hashlib.sha256(encode(rows).encode()).hexdigest()[:20]}
+        from ..services.filters import build_snapshot
+        return build_snapshot(list(self._events.values()),q,'demo')
 
     def approve(self,event_id,body,actor,key):return self._change(event_id,'approve',body,actor,key)
     def cancel(self,event_id,body,actor,key):return self._change(event_id,'cancel',body,actor,key)
