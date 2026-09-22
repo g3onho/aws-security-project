@@ -75,13 +75,14 @@ def query() -> dict:
         raise ApiProblem(400, "검색어가 너무 깁니다.", code="INVALID_PARAMETER")
     limit = _int('limit', Config.DEFAULT_LIMIT)
     if not 1 <= limit <= Config.MAX_LIMIT:
-        raise ApiProblem(400,'limit은 1~200이어야 합니다.',code='INVALID_PARAMETER')
+        raise ApiProblem(400, f'limit은 1~{Config.MAX_LIMIT} 이어야 합니다.', code='INVALID_PARAMETER')
 
     return {
         "region": region,
         "view": request.args.get('view') or 'overview',
         "ignoreRegion": request.args.get("ignoreRegion", "").lower() in ("1", "true"),
         "environment": request.args.get("environment") or None,
+        "resource": request.args.get("resource") or None,
         "from": frm,
         "to": to,
         "severity": _enum("severity", set(enums.SEVERITY_ORDER)),
@@ -92,6 +93,10 @@ def query() -> dict:
         "cursor": request.args.get("cursor") or None,
         "limit": limit,
         "includeDemoOnly": request.args.get("includeDemoOnly", "").lower() in ("1", "true"),
+        # 취약점 화면 전용 — 수정 버전이 있는 항목만 본다.
+        "fixableOnly": request.args.get("fixableOnly", "").lower() in ("1", "true"),
+        # 인프라 화면이 리전의 모든 호스트 시계열을 한 번에 받는다.
+        "scope": "all" if request.args.get("scope") == "all" else "one",
     }
 
 
@@ -173,6 +178,13 @@ def vulnerabilities():
 def scenarios():
     g.cache_ttl = Config.CACHE_TTL["scenarios"]
     return adapter().scenarios(query())
+
+
+@bp.get("/incidents")
+def incidents():
+    # 침해사례 탭 — 시나리오별 "공격 → 탐지 → 승인 → 조치 → 재검증" (README 2장·12장)
+    g.cache_ttl = Config.CACHE_TTL["scenarios"]
+    return adapter().incidents(query())
 
 
 @bp.get("/events/<path:event_id>/evidence")
@@ -263,20 +275,41 @@ def config():
     from ..adapters.demo import DEMO_NOW,REGIONS
     return dict(mode=adapter().mode,asOf=DEMO_NOW if adapter().mode=='demo' else _now_ms(),
                 writeEnabled=current_app.config['WRITE_ENABLED'],role=g.role,regions=REGIONS,
-                statuses=enums.STATUS_TO_KO,sources=enums.SOURCES,awsConnected=adapter().mode=='live')
+                statuses=enums.STATUS_TO_KO,sources=enums.SOURCES,awsConnected=None if adapter().mode=='live' else False)
 
 
 @bp.get('/audit')
 def audit_log():
     from ..storage import connect
     with connect(current_app.config['DATABASE']) as db:
-        rows=db.execute('SELECT id,at,actor,event_id,action,detail FROM audit ORDER BY id DESC LIMIT 200').fetchall()
+        rows=db.execute('SELECT id,at,actor,event_id,action,detail FROM audit ORDER BY id DESC LIMIT 1000').fetchall()
     return {'items':[dict(row) for row in rows]}
 
 
 @bp.get('/resources')
 def resources():
-    from ..adapters.demo import REGIONS
-    if adapter().mode!='demo':
-        raise ApiProblem(501,'실제 자원 목록 미연동',code='NOT_IMPLEMENTED')
-    return {'items':[dict(id=r['resource'],region=r['id'],mode='demo') for r in REGIONS if r['resource']]}
+    # 데모도 어댑터에 맡긴다. 서울 리전은 Terraform 의 EC2 5대를 그대로 돌려주므로
+    # 인프라 화면에서 호스트를 골라 지표를 볼 수 있다.
+    return adapter().resources(query())
+
+
+@bp.get('/nacls')
+def nacls():
+    # SEC-06 차단 계획 폼이 쓰는 목록. 규칙 번호 1~99 는 Deny 예약 구간이다.
+    g.cache_ttl = Config.CACHE_TTL["metrics"]
+    return adapter().nacls(query())
+
+
+@bp.get('/services')
+def services():
+    # 3계층(Nginx→Flask→MySQL) 상태. 화면 하드코딩을 대체하는 경로다.
+    g.cache_ttl = Config.CACHE_TTL["metrics"]
+    return adapter().services(query())
+
+
+@bp.post('/events/<path:event_id>/plan')
+def prepare_plan(event_id):
+    require_write()
+    if adapter().mode != 'live':
+        raise ApiProblem(409, '실모드에서만 대상 계획을 설정할 수 있습니다.', code='WRITE_DISABLED')
+    return adapter().prepare_plan(event_id, body(), actor(), idempotency_key())

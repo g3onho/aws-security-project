@@ -47,6 +47,11 @@ def migrate(path):
           actor TEXT NOT NULL,event_id TEXT,action TEXT NOT NULL,detail TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS login_limits(key TEXT PRIMARY KEY,failures INTEGER NOT NULL,until REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS live_events(id TEXT PRIMARY KEY,payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS live_jobs(id TEXT PRIMARY KEY,event_id TEXT NOT NULL,state TEXT NOT NULL,payload TEXT NOT NULL);
+        CREATE UNIQUE INDEX IF NOT EXISTS live_active_job ON live_jobs(event_id) WHERE state='RUNNING';
+        CREATE TABLE IF NOT EXISTS live_requests(key TEXT PRIMARY KEY,hash TEXT NOT NULL,response TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS live_outbox(id TEXT PRIMARY KEY,payload TEXT NOT NULL);
         ''')
         db.execute('INSERT OR IGNORE INTO schema_versions VALUES(1,?)',(ms(),))
 

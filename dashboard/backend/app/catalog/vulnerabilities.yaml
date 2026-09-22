@@ -1,0 +1,3046 @@
+# 취약점(CVE) 카탈로그 — 데모/로컬 모드 전용
+#
+# 정본 주의:
+#   - **이 파일은 발표·개발용 데모 데이터다.** CVE ID 와 패키지명은 공개 정보를 참고했지만
+#     CVSS 점수·설치/수정 버전은 화면 검증용 표기값이며 NVD 원본과 다를 수 있다.
+#   - 실모드(USE_DEMO_DATA=false)는 이 파일을 쓰지 않는다. Inspector2 ListFindings 와
+#     S3 의 Trivy 리포트가 정본이다(adapters/live.py vulnerabilities()).
+#   - 실제 점검 결과로 교체할 때는 generator(tools/gen_vulnerabilities.py)를 다시 돌린다.
+#
+# 대상(target) 종류
+#   IMAGE     ECR 이미지 — Trivy 컨테이너 이미지 점검(수동 모니터링 ②)
+#   INSTANCE  EC2 인스턴스 — Inspector2 패키지 CVE 스캔(자동 모니터링 ①)
+#
+# scenario 는 조치 동선을 잇기 위한 매핑이다. SEC-04(이미지 취약점) / SEC-07(자격증명)
+# 판정은 scenarios.yaml 이 정본이고, 여기서는 표시용으로만 쓴다.
+
+version: 1
+updated: 2026-09-22
+
+targets:
+  - id: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    note: "docker-host 의 web 컨테이너 이미지"
+  - id: "ecr/app:1.3"
+    source: Trivy
+    kind: IMAGE
+    note: "교체 후보 이미지"
+  - id: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    note: "리버스 프록시 이미지"
+  - id: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    note: "3-Tier DB 컨테이너 이미지"
+  - id: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    note: "docker-host"
+  - id: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    note: "MySQL EC2"
+  - id: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    note: "DVWA 웹서버"
+  - id: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    note: "보안 대시보드"
+
+vulnerabilities:
+  - cveId: CVE-2021-44228
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: log4j-core
+    installedVersion: "2.14.1"
+    fixedVersion: "2.15.0"
+    severity: CRITICAL
+    cvss: 10.0
+    family: lang
+  - cveId: CVE-2021-45046
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: log4j-core
+    installedVersion: "2.15.0"
+    fixedVersion: "2.16.0"
+    severity: CRITICAL
+    cvss: 9.0
+    family: lang
+  - cveId: CVE-2022-22965
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: spring-beans
+    installedVersion: "5.3.17"
+    fixedVersion: "5.3.18"
+    severity: CRITICAL
+    cvss: 9.8
+    family: lang
+  - cveId: CVE-2022-42889
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: commons-text
+    installedVersion: "1.9"
+    fixedVersion: "1.10.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: lang
+  - cveId: CVE-2020-36518
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: jackson-databind
+    installedVersion: "2.13.1"
+    fixedVersion: "2.13.2.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-42003
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: jackson-databind
+    installedVersion: "2.13.2"
+    fixedVersion: "2.13.4.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-42004
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: jackson-databind
+    installedVersion: "2.13.2"
+    fixedVersion: "2.13.4"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2019-11358
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: jquery
+    installedVersion: "3.3.1"
+    fixedVersion: "3.4.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2020-8203
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: lodash
+    installedVersion: "4.17.15"
+    fixedVersion: "4.17.19"
+    severity: HIGH
+    cvss: 7.4
+    family: lang
+  - cveId: CVE-2021-23337
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: lodash
+    installedVersion: "4.17.20"
+    fixedVersion: "4.17.21"
+    severity: HIGH
+    cvss: 7.2
+    family: lang
+  - cveId: CVE-2023-4863
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-44487
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: nghttp2
+    installedVersion: "1.43.0"
+    fixedVersion: "1.57.0"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9511
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9513
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2022-41741
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.8
+    family: app
+  - cveId: CVE-2022-41742
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21980
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.32"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21912
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.31"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2021-2154
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.23"
+    fixedVersion: "8.0.24"
+    severity: MEDIUM
+    cvss: 6.5
+    family: app
+  - cveId: CVE-2023-25690
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: apache2
+    installedVersion: "2.4.54"
+    fixedVersion: "2.4.56"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2022-31813
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: apache2
+    installedVersion: "2.4.52"
+    fixedVersion: "2.4.54"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2023-24329
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: python3
+    installedVersion: "3.10.6"
+    fixedVersion: "3.10.9"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-45061
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: python3
+    installedVersion: "3.9.2"
+    fixedVersion: "3.9.16"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2021-3737
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: python3
+    installedVersion: "3.8.10"
+    fixedVersion: "3.8.12"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-30861
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: flask
+    installedVersion: "2.2.2"
+    fixedVersion: "2.2.5"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-32681
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: requests
+    installedVersion: "2.28.1"
+    fixedVersion: "2.31.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2022-40897
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: setuptools
+    installedVersion: "59.6.0"
+    fixedVersion: "65.5.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-5752
+    target: "ecr/app:1.2"
+    source: Trivy
+    kind: IMAGE
+    package: pip
+    installedVersion: "22.0.2"
+    fixedVersion: "23.3"
+    severity: MEDIUM
+    cvss: 5.5
+    family: lang
+  - cveId: CVE-2019-11358
+    target: "ecr/app:1.3"
+    source: Trivy
+    kind: IMAGE
+    package: jquery
+    installedVersion: "3.3.1"
+    fixedVersion: "3.4.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2023-32681
+    target: "ecr/app:1.3"
+    source: Trivy
+    kind: IMAGE
+    package: requests
+    installedVersion: "2.28.1"
+    fixedVersion: "2.31.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2023-4863
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-44487
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: nghttp2
+    installedVersion: "1.43.0"
+    fixedVersion: "1.57.0"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9511
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9513
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2022-41741
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.8
+    family: app
+  - cveId: CVE-2022-41742
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21980
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.32"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21912
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.31"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2021-2154
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.23"
+    fixedVersion: "8.0.24"
+    severity: MEDIUM
+    cvss: 6.5
+    family: app
+  - cveId: CVE-2023-25690
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: apache2
+    installedVersion: "2.4.54"
+    fixedVersion: "2.4.56"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2022-31813
+    target: "ecr/nginx:1.22"
+    source: Trivy
+    kind: IMAGE
+    package: apache2
+    installedVersion: "2.4.52"
+    fixedVersion: "2.4.54"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2023-4863
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-44487
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: nghttp2
+    installedVersion: "1.43.0"
+    fixedVersion: "1.57.0"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9511
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9513
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2022-41741
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.8
+    family: app
+  - cveId: CVE-2022-41742
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21980
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.32"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21912
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.31"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2021-2154
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: mysql-server
+    installedVersion: "8.0.23"
+    fixedVersion: "8.0.24"
+    severity: MEDIUM
+    cvss: 6.5
+    family: app
+  - cveId: CVE-2023-25690
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: apache2
+    installedVersion: "2.4.54"
+    fixedVersion: "2.4.56"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2022-31813
+    target: "ecr/mysql:8.0.31"
+    source: Trivy
+    kind: IMAGE
+    package: apache2
+    installedVersion: "2.4.52"
+    fixedVersion: "2.4.54"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2021-44228
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: log4j-core
+    installedVersion: "2.14.1"
+    fixedVersion: "2.15.0"
+    severity: CRITICAL
+    cvss: 10.0
+    family: lang
+  - cveId: CVE-2021-45046
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: log4j-core
+    installedVersion: "2.15.0"
+    fixedVersion: "2.16.0"
+    severity: CRITICAL
+    cvss: 9.0
+    family: lang
+  - cveId: CVE-2022-22965
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: spring-beans
+    installedVersion: "5.3.17"
+    fixedVersion: "5.3.18"
+    severity: CRITICAL
+    cvss: 9.8
+    family: lang
+  - cveId: CVE-2022-42889
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: commons-text
+    installedVersion: "1.9"
+    fixedVersion: "1.10.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: lang
+  - cveId: CVE-2020-36518
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jackson-databind
+    installedVersion: "2.13.1"
+    fixedVersion: "2.13.2.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-42003
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jackson-databind
+    installedVersion: "2.13.2"
+    fixedVersion: "2.13.4.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-42004
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jackson-databind
+    installedVersion: "2.13.2"
+    fixedVersion: "2.13.4"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2019-11358
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jquery
+    installedVersion: "3.3.1"
+    fixedVersion: "3.4.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2020-8203
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: lodash
+    installedVersion: "4.17.15"
+    fixedVersion: "4.17.19"
+    severity: HIGH
+    cvss: 7.4
+    family: lang
+  - cveId: CVE-2021-23337
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: lodash
+    installedVersion: "4.17.20"
+    fixedVersion: "4.17.21"
+    severity: HIGH
+    cvss: 7.2
+    family: lang
+  - cveId: CVE-2023-4863
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-24329
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: python3
+    installedVersion: "3.10.6"
+    fixedVersion: "3.10.9"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-45061
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: python3
+    installedVersion: "3.9.2"
+    fixedVersion: "3.9.16"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2021-3737
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: python3
+    installedVersion: "3.8.10"
+    fixedVersion: "3.8.12"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-30861
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: flask
+    installedVersion: "2.2.2"
+    fixedVersion: "2.2.5"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-32681
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: requests
+    installedVersion: "2.28.1"
+    fixedVersion: "2.31.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2022-40897
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: setuptools
+    installedVersion: "59.6.0"
+    fixedVersion: "65.5.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-5752
+    target: "i-seoul-app-01"
+    source: Inspector
+    kind: INSTANCE
+    package: pip
+    installedVersion: "22.0.2"
+    fixedVersion: "23.3"
+    severity: MEDIUM
+    cvss: 5.5
+    family: lang
+  - cveId: CVE-2023-4863
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-44487
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nghttp2
+    installedVersion: "1.43.0"
+    fixedVersion: "1.57.0"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9511
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9513
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2022-41741
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.8
+    family: app
+  - cveId: CVE-2022-41742
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21980
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: mysql-server
+    installedVersion: "8.0.32"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21912
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: mysql-server
+    installedVersion: "8.0.31"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2021-2154
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: mysql-server
+    installedVersion: "8.0.23"
+    fixedVersion: "8.0.24"
+    severity: MEDIUM
+    cvss: 6.5
+    family: app
+  - cveId: CVE-2023-25690
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: apache2
+    installedVersion: "2.4.54"
+    fixedVersion: "2.4.56"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2022-31813
+    target: "i-seoul-db-01"
+    source: Inspector
+    kind: INSTANCE
+    package: apache2
+    installedVersion: "2.4.52"
+    fixedVersion: "2.4.54"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2023-4863
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-44487
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nghttp2
+    installedVersion: "1.43.0"
+    fixedVersion: "1.57.0"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9511
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2019-9513
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.18.0"
+    fixedVersion: "1.19.1"
+    severity: HIGH
+    cvss: 7.5
+    family: app
+  - cveId: CVE-2022-41741
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.8
+    family: app
+  - cveId: CVE-2022-41742
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: nginx
+    installedVersion: "1.22.0"
+    fixedVersion: "1.23.2"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21980
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: mysql-server
+    installedVersion: "8.0.32"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2023-21912
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: mysql-server
+    installedVersion: "8.0.31"
+    fixedVersion: "8.0.33"
+    severity: HIGH
+    cvss: 7.1
+    family: app
+  - cveId: CVE-2021-2154
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: mysql-server
+    installedVersion: "8.0.23"
+    fixedVersion: "8.0.24"
+    severity: MEDIUM
+    cvss: 6.5
+    family: app
+  - cveId: CVE-2023-25690
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: apache2
+    installedVersion: "2.4.54"
+    fixedVersion: "2.4.56"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2022-31813
+    target: "i-seoul-web-01"
+    source: Inspector
+    kind: INSTANCE
+    package: apache2
+    installedVersion: "2.4.52"
+    fixedVersion: "2.4.54"
+    severity: CRITICAL
+    cvss: 9.8
+    family: app
+  - cveId: CVE-2021-44228
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: log4j-core
+    installedVersion: "2.14.1"
+    fixedVersion: "2.15.0"
+    severity: CRITICAL
+    cvss: 10.0
+    family: lang
+  - cveId: CVE-2021-45046
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: log4j-core
+    installedVersion: "2.15.0"
+    fixedVersion: "2.16.0"
+    severity: CRITICAL
+    cvss: 9.0
+    family: lang
+  - cveId: CVE-2022-22965
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: spring-beans
+    installedVersion: "5.3.17"
+    fixedVersion: "5.3.18"
+    severity: CRITICAL
+    cvss: 9.8
+    family: lang
+  - cveId: CVE-2022-42889
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: commons-text
+    installedVersion: "1.9"
+    fixedVersion: "1.10.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: lang
+  - cveId: CVE-2020-36518
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jackson-databind
+    installedVersion: "2.13.1"
+    fixedVersion: "2.13.2.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-42003
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jackson-databind
+    installedVersion: "2.13.2"
+    fixedVersion: "2.13.4.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-42004
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jackson-databind
+    installedVersion: "2.13.2"
+    fixedVersion: "2.13.4"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2019-11358
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: jquery
+    installedVersion: "3.3.1"
+    fixedVersion: "3.4.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2020-8203
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: lodash
+    installedVersion: "4.17.15"
+    fixedVersion: "4.17.19"
+    severity: HIGH
+    cvss: 7.4
+    family: lang
+  - cveId: CVE-2021-23337
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: lodash
+    installedVersion: "4.17.20"
+    fixedVersion: "4.17.21"
+    severity: HIGH
+    cvss: 7.2
+    family: lang
+  - cveId: CVE-2023-4863
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libwebp
+    installedVersion: "1.2.2"
+    fixedVersion: "1.3.2"
+    severity: CRITICAL
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2022-37434
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2018-25032
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: zlib
+    installedVersion: "1.2.11"
+    fixedVersion: "1.2.12"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3711
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-0778
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1l"
+    fixedVersion: "1.1.1n"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2022-2068
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1n"
+    fixedVersion: "1.1.1p"
+    severity: HIGH
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2023-0215
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-0286
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.7"
+    fixedVersion: "3.0.8"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2023-0464
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "3.0.8"
+    fixedVersion: "3.0.9"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-3712
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1k"
+    fixedVersion: "1.1.1l"
+    severity: HIGH
+    cvss: 7.4
+    family: os
+  - cveId: CVE-2020-1971
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.1.1g"
+    fixedVersion: "1.1.1i"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2015-7547
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.19"
+    fixedVersion: "2.23"
+    severity: CRITICAL
+    cvss: 8.1
+    family: os
+  - cveId: CVE-2021-33574
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.32"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2022-23219
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: glibc
+    installedVersion: "2.31"
+    fixedVersion: "2.35"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-22946
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2021-22947
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.74.0"
+    fixedVersion: "7.79.0"
+    severity: MEDIUM
+    cvss: 5.9
+    family: os
+  - cveId: CVE-2022-32221
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.83.0"
+    fixedVersion: "7.86.0"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2019-5481
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: curl
+    installedVersion: "7.61.0"
+    fixedVersion: "7.66.0"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2023-38408
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.9p1"
+    fixedVersion: "9.3p2"
+    severity: CRITICAL
+    cvss: 9.8
+    family: os
+  - cveId: CVE-2021-41617
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "8.2p1"
+    fixedVersion: "8.8p1"
+    severity: MEDIUM
+    cvss: 7.0
+    family: os
+  - cveId: CVE-2018-15473
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssh
+    installedVersion: "7.6p1"
+    fixedVersion: "7.7p1"
+    severity: MEDIUM
+    cvss: 5.3
+    family: os
+  - cveId: CVE-2016-5195
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "4.4.0"
+    fixedVersion: "4.8.3"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-0847
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: linux-kernel
+    installedVersion: "5.8.0"
+    fixedVersion: "5.16.11"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-4034
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: polkit
+    installedVersion: "0.105"
+    fixedVersion: "0.120"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2021-3156
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: sudo
+    installedVersion: "1.8.31"
+    fixedVersion: "1.9.5p2"
+    severity: HIGH
+    cvss: 7.8
+    family: os
+  - cveId: CVE-2022-1271
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: gzip
+    installedVersion: "1.10"
+    fixedVersion: "1.12"
+    severity: HIGH
+    cvss: 8.8
+    family: os
+  - cveId: CVE-2021-33560
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: libgcrypt
+    installedVersion: "1.8.5"
+    fixedVersion: "1.9.4"
+    severity: HIGH
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2016-2183
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: openssl
+    installedVersion: "1.0.2"
+    fixedVersion: "1.1.0"
+    severity: MEDIUM
+    cvss: 7.5
+    family: os
+  - cveId: CVE-2023-24329
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: python3
+    installedVersion: "3.10.6"
+    fixedVersion: "3.10.9"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2022-45061
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: python3
+    installedVersion: "3.9.2"
+    fixedVersion: "3.9.16"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2021-3737
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: python3
+    installedVersion: "3.8.10"
+    fixedVersion: "3.8.12"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-30861
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: flask
+    installedVersion: "2.2.2"
+    fixedVersion: "2.2.5"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-32681
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: requests
+    installedVersion: "2.28.1"
+    fixedVersion: "2.31.0"
+    severity: MEDIUM
+    cvss: 6.1
+    family: lang
+  - cveId: CVE-2022-40897
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: setuptools
+    installedVersion: "59.6.0"
+    fixedVersion: "65.5.1"
+    severity: HIGH
+    cvss: 7.5
+    family: lang
+  - cveId: CVE-2023-5752
+    target: "i-seoul-dash-01"
+    source: Inspector
+    kind: INSTANCE
+    package: pip
+    installedVersion: "22.0.2"
+    fixedVersion: "23.3"
+    severity: MEDIUM
+    cvss: 5.5
+    family: lang
+
+# 총 299건

@@ -109,15 +109,42 @@ def test_metrics_match(js_dump):
         if want is None:
             assert got["resource"] is None, f"{key}: 원본은 null 인데 자원이 있습니다"
             continue
-        assert got["resource"] == want["resource"], key
-        assert got["cpu"] == want["cpu"], f"{key} cpu"
-        assert got["memory"] == want["memory"], f"{key} memory"
-        assert got["at"] == want["at"], f"{key} at"
-        assert len(got["points"]) == len(want["points"]), f"{key} points 길이"
-        for index, (a, b) in enumerate(zip(got["points"], want["points"])):
-            # data.js 는 `DEMO_NOW - offset*3600000` 을 float 그대로 둔다(예: ...272.7273).
-            # API 는 at 을 정수 ms 로 규정했으므로(03-api-spec.yaml) 여기서만 1ms 오차를
-            # 허용한다. 차트 x축에서 1ms 미만은 의미가 없다.
-            assert abs(a["at"] - b["at"]) < 1, f"{key} points[{index}] at"
-            assert (a["cpu"], a["memory"]) == (b["cpu"], b["memory"]), \
-                f"{key} points[{index}] 값"
+        _compare_metric(got, want, key)
+
+
+def test_host_metrics_match(js_dump):
+    """서울 리전의 EC2 5대가 각각 다른 곡선을 그리고, 그 값이 data.js 와 같아야 한다."""
+    for key, want in js_dump["byHost"].items():
+        region, resource, hours = key.split("|")
+        got = demo_mod.metrics_for(region, float(hours), 0.0, "production", resource)
+        assert got["resource"] == resource, key
+        _compare_metric(got, want, key)
+
+
+def test_host_catalog_matches(js_dump):
+    for region_id, want in js_dump["hosts"].items():
+        got = demo_mod.hosts_for(region_id)
+        assert [h["id"] for h in got] == [h["id"] for h in want], region_id
+        for a, b in zip(got, want):
+            for field in ("name", "role", "type", "tier", "seed"):
+                assert a[field] == b[field], f"{region_id}.{a['id']}.{field}"
+
+
+def _compare_metric(got, want, key):
+    assert got["resource"] == want["resource"], key
+    assert got["cpu"] == want["cpu"], f"{key} cpu"
+    assert got["memory"] == want["memory"], f"{key} memory"
+    assert got["at"] == want["at"], f"{key} at"
+    # 표본 주기와 개수가 어긋나면 화면의 x축이 실제 시간과 달라진다.
+    assert got["period"] == want["period"], f"{key} period"
+    assert len(got["points"]) == len(want["points"]), f"{key} points 길이"
+    for index, (a, b) in enumerate(zip(got["points"], want["points"])):
+        assert a["at"] == b["at"], f"{key} points[{index}] at"
+        assert (a["cpu"], a["memory"]) == (b["cpu"], b["memory"]), \
+            f"{key} points[{index}] 값"
+    assert len(got["breaches"]) == len(want["breaches"]), f"{key} breaches 개수"
+    for a, b in zip(got["breaches"], want["breaches"]):
+        assert (a["metric"], a["from"], a["to"], a["peak"], a["samples"]) == \
+               (b["metric"], b["from"], b["to"], b["peak"], b["samples"]), f"{key} breach"
+    assert got["summary"]["cpu"] == want["summary"]["cpu"], f"{key} summary.cpu"
+    assert got["summary"]["memory"] == want["summary"]["memory"], f"{key} summary.memory"

@@ -38,7 +38,25 @@ from ..catalog import loader
 # ponytail: correlated 테이블에 시간 GSI 가 없어 Scan 한다.
 # 발표용 계정 규모에서 넉넉하고, 넘치면 GSI 를 파고 Query 로 바꾼다.
 # 100 인 이유: securityhub:GetFindings 와 inspector2:ListFindings 의 상한이 100 이다.
-MAX_ITEMS = 100
+# 상류 API 의 **페이지당** 상한. 총 건수 상한이 아니다 — 모두 _pages() 로 끝까지 읽는다.
+# 아래 값은 각 API 가 허용하는 최대치다. 100 은 우리가 정한 값이 아니라 AWS 하드 상한이다.
+#   securityhub:GetFindings        MaxResults  최대 100
+#   inspector2:ListFindings        maxResults  최대 100
+#   cloudwatch:DescribeAlarms      MaxRecords  최대 100
+#   ec2:DescribeInstances          MaxResults  5~1000
+#   s3:ListObjectsV2               MaxKeys     최대 1000
+#   dynamodb:Scan                  Limit       항목 수 제한 없음(페이지당 1MB)
+PAGE_SECURITYHUB = 100
+PAGE_INSPECTOR = 100
+PAGE_ALARMS = 100
+PAGE_EC2 = 1000
+PAGE_S3 = 1000
+PAGE_DYNAMODB = 500
+# 한 응답에 실어 보낼 최대 항목 수. 브라우저 렌더 보호용이며, 넘으면 truncated=True 로 알린다.
+MAX_RESPONSE_ITEMS = 5000
+# Private NACL 의 Deny 예약 구간 상한(README 1장: 1~99 Deny, 100 이상 Allow)
+DENY_RULE_MAX = 99
+MAX_ITEMS = 100  # 하위호환 — 새 코드는 위 상수를 쓴다
 
 NO_ACTIONS_TABLE_NOTE = (
     "REMEDIATION_ACTIONS_TABLE 이 설정되지 않아 조치 이력을 붙이지 못했습니다. "
@@ -237,7 +255,7 @@ class LiveAdapter:
 
     def __init__(self, config) -> None:
         self.config = config
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._clients: dict[str, object] = {}
         self._cache: dict[str, tuple[float, object]] = {}
         self._idempotency: dict[str, object] = {}
@@ -291,13 +309,27 @@ class LiveAdapter:
                 detail=action + ": WRITE_ENABLED=true 로 기동해야 합니다.",
             )
 
+    def _pages(self, service, operation, result_key, token='NextToken', **kwargs):
+        rows, seen = [], set()
+        while True:
+            page = self._call(service, operation, **kwargs)
+            rows.extend(page.get(result_key, []))
+            next_token = page.get('LastEvaluatedKey' if token == 'ExclusiveStartKey' else token)
+            if not next_token:
+                return rows
+            marker = repr(next_token)
+            if marker in seen:
+                raise ApiProblem(502, '상류 페이지 토큰이 반복되었습니다.', code='UPSTREAM_ERROR')
+            seen.add(marker)
+            kwargs[token] = next_token
+
     # ── 이벤트 조립 ─────────────────────────────────────
     def _correlated(self) -> dict[str, dict]:
         """correlator 결과를 finding_id 로 색인한다. 테이블 미설정이면 빈 dict."""
         table = self.config.CORRELATED_FINDINGS_TABLE
         if not table:
             return {}
-        page = self._call("dynamodb", "scan", TableName=table, Limit=MAX_ITEMS)
+        page = {'Items': self._pages('dynamodb', 'scan', 'Items', token='ExclusiveStartKey', TableName=table, Limit=PAGE_DYNAMODB)}
         out = {}
         for raw in page.get("Items", []):
             item = {k: next(iter(v.values())) for k, v in raw.items()}
@@ -322,7 +354,7 @@ class LiveAdapter:
         table = self.config.REMEDIATION_ACTIONS_TABLE
         if not table:
             return {}
-        page = self._call("dynamodb", "scan", TableName=table, Limit=MAX_ITEMS)
+        page = {'Items': self._pages('dynamodb', 'scan', 'Items', token='ExclusiveStartKey', TableName=table, Limit=PAGE_DYNAMODB)}
         out: dict[str, list[dict]] = {}
         for raw in page.get("Items", []):
             item = {k: next(iter(v.values())) for k, v in raw.items()}
@@ -349,8 +381,8 @@ class LiveAdapter:
         선택적 소스라 조회에 실패해도 전체 목록을 깨뜨리지 않는다.
         """
         try:
-            page = self._call("cloudwatch", "describe_alarms",
-                              StateValue="ALARM", MaxRecords=MAX_ITEMS)
+            page = {'MetricAlarms': self._pages("cloudwatch", "describe_alarms", 'MetricAlarms',
+                              StateValue="ALARM", MaxRecords=PAGE_ALARMS)}
         except ApiProblem:
             return []
 
@@ -379,15 +411,15 @@ class LiveAdapter:
         # INFORMATIONAL 은 "평가할 리소스가 없음"(Compliance=WARNING)이다.
         # 표준을 켜면 이 계정에 없는 서비스(Redshift·SageMaker 등)까지 전부 올라와
         # 화면이 빈 결과로 뒤덮인다. 실제 탐지만 남긴다.
-        page = self._call(
-            "securityhub", "get_findings",
+        page = {'Findings': self._pages(
+            "securityhub", "get_findings", 'Findings',
             Filters={
                 "RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}],
                 "SeverityLabel": [{"Value": v, "Comparison": "EQUALS"}
                                   for v in ("LOW", "MEDIUM", "HIGH", "CRITICAL")],
             },
-            MaxResults=MAX_ITEMS,
-        )
+            MaxResults=PAGE_SECURITYHUB,
+        )}
 
         events, seen = [], set()
         for f in page.get("Findings", []):
@@ -457,7 +489,7 @@ class LiveAdapter:
         """demo.py `_build_events()` 와 같은 필드 집합을 채운다."""
         extra = extra or {}
         wired = loader.is_wired(scenario) if scenario else False
-        mode = "AUTO" if wired else "MANUAL"
+        mode = ((loader.get(scenario) or {}).get('remediation') or {}).get('mode', 'MANUAL')
         # 화면은 한국어다. 카탈로그 제목이 정본, 없으면 표기표, 그것도 없으면 원문.
         # CVE 번호가 들어간 제목은 원문이 더 구체적이다(카탈로그 제목으로 덮으면
         # 88건이 전부 같은 이름이 되어 구분이 사라진다). 그 외에는 한국어를 쓴다.
@@ -471,6 +503,7 @@ class LiveAdapter:
         status = "NEW" if mode == "AUTO" else "PENDING_APPROVAL"
         execution, verification = "NOT_RUN", "NOT_RUN"
         after_at, after_value = None, None
+        external_execution_id = None
         for action in actions or []:
             decision = action["decision"]
             text = DECISION_TEXT.get(decision, decision or "조치 판정")
@@ -480,10 +513,27 @@ class LiveAdapter:
                             "actor": None, "decision": decision})
             if decision == "auto-executed":
                 # SSM 이 실제로 끝났는지는 execution_status() 로 따로 확인한다.
-                status, execution = "PENDING_VERIFICATION", "SUCCEEDED"
+                status, execution = "EXECUTING", "RUNNING"
+                external_execution_id = action.get('executionId')
                 after_at, after_value = action["at"], action["afterState"] or None
             elif decision == "manual-notified":
                 status = "PENDING_APPROVAL"
+
+        # 알림은 대시보드가 보내지 않는다. asr_trigger 가 게이트 불충족으로 판정할 때
+        # 직접 SNS 로 발행하고(lambda_src/asr_trigger/handler.py), CloudWatch 알람은
+        # alarm_actions 로 발행한다(soar/cloudwatch.tf). 화면은 "갔는지"만 보여준다.
+        notified = [a for a in (actions or []) if a["decision"] == "manual-notified"]
+        if notified:
+            last = notified[-1]
+            notification = {"at": last["at"], "channel": "SNS", "source": "asr_trigger",
+                            "reason": last["beforeState"] or "자동조치 게이트 불충족",
+                            "count": len(notified)}
+        elif source == "CloudWatch":
+            # 알람이 ALARM 상태라 화면에 올라온 것이므로 alarm_actions 가 이미 발행했다.
+            notification = {"at": at, "channel": "SNS", "source": "cloudwatch-alarm",
+                            "reason": title, "count": 1}
+        else:
+            notification = None
         return {
             "id": event_id,
             "scenario": scenario or "UNCLASSIFIED",
@@ -516,11 +566,13 @@ class LiveAdapter:
             "geoStatus": (origin or {}).get("geoStatus", "해당 없음"),
             "history": history,
             "historyNote": None if self.config.REMEDIATION_ACTIONS_TABLE else NO_ACTIONS_TABLE_NOTE,
+            "notification": notification,
             "playbook": loader.playbook(scenario) if scenario else None,
             "cveIds": extra.get("cveIds") or [],
             "severityBumped": bool(extra.get("severityBumped")),
             "approver": None,
             "approvedAt": None,
+            "externalExecutionId": external_execution_id,
         }
 
     def _events(self) -> list[dict]:
@@ -545,6 +597,10 @@ class LiveAdapter:
     def get_event(self, event_id: str):
         return next((e for e in self._events() if e["id"] == event_id), None)
 
+    def incidents(self, q: dict) -> dict:
+        from ..services.incidents import build_incidents
+        return build_incidents(self._events(), q)
+
     def scenarios(self, q: dict) -> dict:
         from ..services.scenarios import build_coverage
         return build_coverage(self._events(), q)
@@ -559,15 +615,22 @@ class LiveAdapter:
         return build_evidence(event, ssm_execution_ids=ids)
 
     def metrics(self, q: dict) -> dict:
-        instance = self._first_instance()
+        region = q.get('region') or self.config.AWS_REGION
+        if region != self.config.AWS_REGION:
+            return {'resource': None, 'at': None, 'cpu': None, 'memory': None,
+                    'threshold': {'cpu': 80, 'memory': 80}, 'points': [], 'note': '현재 연결된 단일 리전을 선택하세요.'}
+        instances = self.resources({'region': region})['items']
+        instance = q.get('resource') or (instances[0]['id'] if instances else None)
+        if instance and instance not in {item['id'] for item in instances}:
+            raise ApiProblem(404, '선택한 리전의 자원을 찾을 수 없습니다.', code='EVENT_NOT_FOUND')
         if not instance:
             return {"resource": None, "at": None, "cpu": None, "memory": None,
                     "threshold": {"cpu": 80, "memory": 80}, "points": [],
                     "note": "지표를 조회할 EC2 인스턴스를 찾지 못했습니다."}
 
-        period = max(60, (q["to"] - q["from"]) // 1000 // 12)
-        resp = self._call(
-            "cloudwatch", "get_metric_data",
+        period = max(300, (((q["to"] - q["from"]) // 1000 // 12 + 299) // 300) * 300)
+        results = self._pages(
+            "cloudwatch", "get_metric_data", 'MetricDataResults',
             MetricDataQueries=[
                 _metric_query("cpu", "AWS/EC2", "CPUUtilization", instance, period),
                 _metric_query("mem", *self._memory_metric(), instance, period),
@@ -576,13 +639,14 @@ class LiveAdapter:
             EndTime=datetime.fromtimestamp(q["to"] / 1000, tz=timezone.utc),
             ScanBy="TimestampAscending",
         )
-        series = {r["Id"]: r for r in resp.get("MetricDataResults", [])}
-        cpu, mem = series.get("cpu", {}), series.get("mem", {})
-        stamps = cpu.get("Timestamps") or mem.get("Timestamps") or []
-        points = [{"at": _ms(stamps[i]),
-                   "cpu": _round(cpu.get("Values"), i),
-                   "memory": _round(mem.get("Values"), i)}
-                  for i in range(len(stamps))]
+        series = {'cpu': {}, 'mem': {}}
+        for result in results:
+            if result.get('StatusCode') in ('InternalError', 'Forbidden'):
+                raise ApiProblem(502, '일부 지표를 조회할 수 없습니다.', code='UPSTREAM_ERROR')
+            for at, value in zip(result.get('Timestamps', []), result.get('Values', [])):
+                series[result['Id']][_ms(at)] = round(float(value), 1)
+        points = [{'at': at, 'cpu': series['cpu'].get(at), 'memory': series['mem'].get(at)}
+                  for at in sorted(set(series['cpu']) | set(series['mem']))]
         return {
             "resource": instance,
             "at": points[-1]["at"] if points else None,
@@ -592,6 +656,260 @@ class LiveAdapter:
             "points": points,
             "note": None if points else "선택한 기간에 지표 데이터가 없습니다.",
         }
+
+    def nacls(self, q: dict) -> dict:
+        """SEC-06 차단 계획용 NACL 목록.
+
+        화면이 `acl-xxxx` 와 빈 규칙 번호를 손으로 찾지 않게 서버가 제안한다.
+        Private NACL 의 **1~99 번은 Deny 예약**이다(README 1장). 이미 쓰는 번호를 주면
+        prepare_plan 이 409 로 막으므로, 여기서 미리 비어 있는 가장 작은 번호를 고른다.
+        """
+        acls = self._pages("ec2", "describe_network_acls", "NetworkAcls", token="NextToken")
+        items = []
+        for acl in acls:
+            inbound = sorted(entry.get("RuleNumber") for entry in acl.get("Entries", [])
+                             if not entry.get("Egress") and entry.get("RuleNumber") is not None)
+            reserved = [n for n in inbound if 1 <= n <= DENY_RULE_MAX]
+            free = next((n for n in range(1, DENY_RULE_MAX + 1) if n not in reserved), None)
+            name = next((t.get("Value") for t in acl.get("Tags", [])
+                         if t.get("Key") == "Name"), None)
+            items.append({
+                "id": acl.get("NetworkAclId"),
+                "vpcId": acl.get("VpcId"),
+                "name": name,
+                "isDefault": bool(acl.get("IsDefault")),
+                "subnets": [a.get("SubnetId") for a in acl.get("Associations", [])],
+                "usedDenyRuleNumbers": reserved,
+                "suggestedRuleNumber": free,
+                "mode": "live",
+            })
+        # 기본 NACL 은 뒤로 — 차단 규칙은 보통 Private NACL 에 넣는다.
+        items.sort(key=lambda x: (x["isDefault"], x["id"] or ""))
+        return {"items": items, "denyRuleRange": [1, DENY_RULE_MAX]}
+
+    def resources(self, q):
+        if q.get('region') not in (None, 'all', self.config.AWS_REGION):
+            return {'items': []}
+        reservations = self._pages('ec2', 'describe_instances', 'Reservations',
+                                  Filters=[{'Name': 'instance-state-name', 'Values': ['running']}], MaxResults=PAGE_EC2)
+        return {'items': sorted([{'id': item['InstanceId'], 'region': self.config.AWS_REGION, 'mode': 'live'}
+                                for reservation in reservations for item in reservation.get('Instances', [])], key=lambda x: x['id'])}
+
+    # ── 3계층 서비스 상태 ───────────────────────────────
+    def services(self, q: dict) -> dict:
+        """Nginx → Flask → MySQL 계층 상태.
+
+        데모 어댑터와 **같은 모양**을 돌려준다(services/tiers.py 주석 참고).
+
+        신호는 두 갈래다.
+          ① ALB 가 있으면 대상 그룹 헬스체크 + ALB 지표 (가장 정확)
+          ② ALB 가 없으면(`enable_alb` 기본 false) **CloudWatch Logs**
+             — docker-host 의 nginx access/error 로그, db 의 mysql 로그.
+             둘 다 CloudWatch Agent 가 이미 보내고 있고(compute/templates/*.tftpl),
+             대시보드 역할에 `logs:FilterLogEvents` 가 있다.
+
+        조회 실패는 502 로 올리지 않고 해당 계층만 UNKNOWN 으로 떨어뜨린다 —
+        화면 전체가 죽으면 나머지 계층 상태도 못 본다.
+        """
+        from ..config import log_groups
+        from ..services.tiers import CHECK_INTERVAL_SEC, RANK, TIERS
+
+        region = q.get("region") or self.config.AWS_REGION
+        at = q.get("to") or _now_ms()
+        if region != self.config.AWS_REGION:
+            return {"region": region, "checkedAt": at, "mode": "live", "overall": "UNKNOWN",
+                    "target": None, "intervalSec": CHECK_INTERVAL_SEC, "items": [],
+                    "note": "현재 연결된 단일 리전을 선택하세요."}
+
+        health = self._target_health()
+        latency = self._alb_latency(q) if health is not None else None
+        alarms = self._alarm_states()
+        nginx_group, mysql_group = log_groups(self.config)
+        source = "ALB / CloudWatch" if health is not None else "CloudWatch Logs"
+
+        # 로그는 ALB 가 없을 때만 읽는다. 호출 수를 늘리지 않기 위해서다.
+        web_log = None if health is not None else self._nginx_log_signal(nginx_group, q)
+        db_log = self._log_events(mysql_group, q, '?"[ERROR]" ?"Access denied"', limit=20)
+
+        items = []
+        for spec in TIERS:
+            if spec["id"] == "nginx":
+                status, detail, value = self._nginx_status(health, web_log, nginx_group)
+            elif spec["id"] == "flask":
+                status, detail, value = self._flask_status(latency, web_log, nginx_group)
+            else:
+                status, detail, value = self._mysql_status(alarms, db_log, mysql_group)
+
+            items.append({
+                "id": spec["id"], "name": spec["name"], "tier": spec["tier"], "port": spec["port"],
+                "status": status, "detail": detail,
+                "latencyMs": value, "errorRate": None,
+                "checkedAt": at, "intervalSec": CHECK_INTERVAL_SEC,
+                "target": nginx_group if spec["id"] != "mysql" else mysql_group,
+                "probe": spec["probe"].format(host="ALB" if health is not None else "docker-host"),
+                "dependsOn": spec["dependsOn"], "source": source, "blockers": [],
+            })
+
+        overall = "UP"
+        for item in items:
+            if RANK[item["status"]] >= RANK[overall]:
+                overall = item["status"]
+
+        note = None
+        if all(item["status"] == "UNKNOWN" for item in items):
+            note = ("ALB 도 로그도 읽지 못했습니다. `enable_alb=true` 로 배포하거나, "
+                    "CloudWatch Agent 전송(NAT 또는 logs 엔드포인트)과 대시보드 IAM 읽기 권한을 확인하세요.")
+        elif health is None:
+            note = (f"ALB 가 없어 로그 기반으로 판정했습니다 (nginx: {nginx_group}, mysql: {mysql_group}). "
+                    "대상 그룹 헬스체크로 보려면 `enable_alb=true` 로 배포하세요.")
+        return {"region": region, "checkedAt": at, "mode": "live", "overall": overall,
+                "target": self.config.AWS_REGION, "intervalSec": CHECK_INTERVAL_SEC,
+                "items": items, "note": note}
+
+    # ── 계층별 판정 ─────────────────────────────────────
+    @staticmethod
+    def _nginx_status(health, web_log, group):
+        if health is not None:
+            healthy, total = health
+            if total == 0:
+                return "DOWN", "ALB 대상 그룹에 등록된 대상이 없습니다.", None
+            if healthy == 0:
+                return "DOWN", f"정상 대상 0 / {total}", None
+            if healthy < total:
+                return "DEGRADED", f"정상 대상 {healthy} / {total}", None
+            return "UP", f"정상 대상 {healthy} / {total}", None
+        if web_log is None:
+            return "UNKNOWN", f"로그 그룹을 읽지 못했습니다: {group}", None
+        if web_log["errors"]:
+            return "DEGRADED", f"nginx error 로그 {web_log['errors']}건 (최근 구간)", None
+        if not web_log["access"]:
+            return "UNKNOWN", "선택 구간에 nginx 요청 로그가 없습니다. 트래픽이 없거나 Agent 전송이 끊겼습니다.", None
+        return "UP", f"nginx 요청 로그 {web_log['access']}건 · error 0건", None
+
+    @staticmethod
+    def _flask_status(latency, web_log, group):
+        if latency is not None:
+            response_ms, error_ratio = latency
+            if error_ratio >= 5:
+                return "DOWN", f"5XX 비율 {error_ratio}%", response_ms
+            if error_ratio > 0 or response_ms > 1000:
+                return "DEGRADED", f"응답 {response_ms}ms · 5XX {error_ratio}%", response_ms
+            return "UP", f"응답 {response_ms}ms", response_ms
+        if web_log is None:
+            return "UNKNOWN", f"로그 그룹을 읽지 못했습니다: {group}", None
+        # nginx 가 Flask 로 프록시하지 못하면 error.log 에 upstream 오류가 남는다.
+        # 이게 ALB 없이 얻을 수 있는 유일한 앱 계층 신호다.
+        upstream = web_log["upstream"]
+        if upstream >= 5:
+            return "DOWN", f"nginx upstream 오류 {upstream}건 — Flask 로 프록시되지 않습니다.", None
+        if upstream:
+            return "DEGRADED", f"nginx upstream 오류 {upstream}건", None
+        if not web_log["access"]:
+            return "UNKNOWN", "요청 로그가 없어 앱 계층을 판정할 수 없습니다.", None
+        return "UP", f"upstream 오류 0건 · 요청 {web_log['access']}건 프록시 정상", None
+
+    @staticmethod
+    def _mysql_status(alarms, db_log, group):
+        db_alarms = [a for a in alarms
+                     if any(token in a["name"].lower() for token in ("mysql", "auth", "db"))]
+        firing = [a["name"] for a in db_alarms if a["state"] == "ALARM"]
+        if firing:
+            return "DEGRADED", "알람: " + ", ".join(firing), None
+        if db_log is None:
+            if not db_alarms:
+                return "UNKNOWN", f"알람도 로그({group})도 읽지 못했습니다.", None
+            return "UNKNOWN", "MySQL 로그 그룹을 읽지 못했습니다.", None
+        if db_log:
+            return "DEGRADED", f"mysql 오류·인증실패 로그 {len(db_log)}건 (최근 구간)", None
+        if db_alarms:
+            return "UP", f"알람 {len(db_alarms)}건 정상 · 오류 로그 0건", None
+        return "UP", "오류 로그 0건", None
+
+    # ── 상류 신호 ───────────────────────────────────────
+    def _log_events(self, group: str, q: dict, pattern: str | None = None, limit: int = 50):
+        """CloudWatch Logs 조회. 그룹이 없거나 권한이 없으면 None."""
+        if not group:
+            return None
+        kwargs = {"logGroupName": group, "startTime": int(q["from"]), "endTime": int(q["to"]),
+                  "limit": limit}
+        if pattern:
+            kwargs["filterPattern"] = pattern
+        try:
+            return self._call("logs", "filter_log_events", **kwargs).get("events", [])
+        except ApiProblem:
+            return None
+
+    def _nginx_log_signal(self, group: str, q: dict):
+        """(요청 건수, error 건수, upstream 오류 건수). 조회 실패면 None."""
+        access = self._log_events(group, q, limit=50)
+        if access is None:
+            return None
+        errors = self._log_events(group, q, '?"[error]" ?"[crit]" ?"[emerg]"', limit=50) or []
+        upstream = [e for e in errors if "upstream" in (e.get("message") or "")]
+        return {"access": len(access), "errors": len(errors), "upstream": len(upstream)}
+
+    def _target_health(self):
+        """(정상 대상 수, 전체 대상 수). ALB 가 없으면 None."""
+        try:
+            groups = self._pages("elbv2", "describe_target_groups", "TargetGroups",
+                                 token="Marker")
+        except ApiProblem:
+            return None
+        if not groups:
+            return None
+        healthy = total = 0
+        for group in groups:
+            try:
+                descriptions = self._call(
+                    "elbv2", "describe_target_health",
+                    TargetGroupArn=group["TargetGroupArn"]).get("TargetHealthDescriptions", [])
+            except ApiProblem:
+                continue
+            total += len(descriptions)
+            healthy += sum(1 for d in descriptions
+                           if (d.get("TargetHealth") or {}).get("State") == "healthy")
+        return (healthy, total)
+
+    def _alb_latency(self, q: dict):
+        """(p95 응답시간 ms, 5XX 비율 %). 지표가 없으면 None."""
+        period = max(300, (((q["to"] - q["from"]) // 1000 // 12 + 299) // 300) * 300)
+        queries = [
+            {"Id": "rt", "MetricStat": {"Metric": {
+                "Namespace": "AWS/ApplicationELB", "MetricName": "TargetResponseTime"},
+                "Period": period, "Stat": "p95"}},
+            {"Id": "e5", "MetricStat": {"Metric": {
+                "Namespace": "AWS/ApplicationELB", "MetricName": "HTTPCode_Target_5XX_Count"},
+                "Period": period, "Stat": "Sum"}},
+            {"Id": "req", "MetricStat": {"Metric": {
+                "Namespace": "AWS/ApplicationELB", "MetricName": "RequestCount"},
+                "Period": period, "Stat": "Sum"}},
+        ]
+        try:
+            results = self._pages(
+                "cloudwatch", "get_metric_data", "MetricDataResults",
+                MetricDataQueries=queries,
+                StartTime=datetime.fromtimestamp(q["from"] / 1000, tz=timezone.utc),
+                EndTime=datetime.fromtimestamp(q["to"] / 1000, tz=timezone.utc),
+                ScanBy="TimestampDescending")
+        except ApiProblem:
+            return None
+        series = {r["Id"]: [float(v) for v in r.get("Values", [])] for r in results}
+        if not series.get("rt"):
+            return None
+        response_ms = round(series["rt"][0] * 1000, 1)
+        errors, requests = sum(series.get("e5") or []), sum(series.get("req") or [])
+        ratio = round(errors / requests * 100, 2) if requests else 0.0
+        return (response_ms, ratio)
+
+    def _alarm_states(self) -> list[dict]:
+        prefix = getattr(self.config, "NAME_PREFIX", "") or ""
+        kwargs = {"AlarmNamePrefix": prefix} if prefix else {}
+        try:
+            alarms = self._pages("cloudwatch", "describe_alarms", "MetricAlarms", **kwargs)
+        except ApiProblem:
+            return []
+        return [{"name": a.get("AlarmName", ""), "state": a.get("StateValue", "")}
+                for a in alarms]
 
     def _memory_metric(self) -> tuple[str, str]:
         """메모리 지표의 (네임스페이스, 지표명).
@@ -615,7 +933,7 @@ class LiveAdapter:
             resp = self._call(
                 "ec2", "describe_instances",
                 Filters=[{"Name": "instance-state-name", "Values": ["running"]}],
-                MaxResults=MAX_ITEMS,
+                MaxResults=PAGE_EC2,
             )
             for reservation in resp.get("Reservations", []):
                 for instance in reservation.get("Instances", []):
@@ -636,7 +954,7 @@ class LiveAdapter:
             return None
         try:
             page = self._call("s3", "list_objects_v2", Bucket=bucket,
-                              Prefix="trivy/", MaxKeys=MAX_ITEMS)
+                              Prefix="trivy/", MaxKeys=PAGE_S3)
         except ApiProblem:
             return None
         objects = page.get("Contents") or []
@@ -646,16 +964,22 @@ class LiveAdapter:
         return latest.get("Key")
 
     def vulnerabilities(self, q: dict) -> dict:
+        """Inspector2 CVE 목록.
+
+        이전에는 `_call(... maxResults=100)` 한 번이라 **100건에서 잘렸다.**
+        maxResults 100 은 AWS 하드 상한이라 못 늘리므로, `_pages()` 로 끝까지 읽는다.
+        총량은 MAX_RESPONSE_ITEMS 에서만 자르고 그때는 truncated 로 알린다.
+        """
         def build():
             report_key = self._trivy_report_key()
-            resp = self._call(
-                "inspector2", "list_findings",
+            findings = self._pages(
+                "inspector2", "list_findings", "findings", token="nextToken",
                 filterCriteria={"findingType": [
                     {"comparison": "EQUALS", "value": "PACKAGE_VULNERABILITY"}]},
-                maxResults=MAX_ITEMS,
+                maxResults=PAGE_INSPECTOR,
             )
             items = []
-            for f in resp.get("findings", []):
+            for f in findings:
                 vd = f.get("packageVulnerabilityDetails") or {}
                 pkg = (vd.get("vulnerablePackages") or [{}])[0]
                 scores = vd.get("cvss") or []
@@ -664,19 +988,25 @@ class LiveAdapter:
                     "id": f.get("findingArn") or vd.get("vulnerabilityId") or "",
                     "cveId": vd.get("vulnerabilityId"),
                     "source": "Inspector",
+                    "kind": "INSTANCE",
                     "severity": f.get("severity") or "LOW",
                     "cvss": scores[0].get("baseScore") if scores else None,
                     "package": pkg.get("name"),
                     "installedVersion": pkg.get("version"),
                     "fixedVersion": pkg.get("fixedInVersion"),
+                    "family": None,
+                    "target": resource,
                     "resource": resource,
                     "region": _region_of(resource, self.config.AWS_REGION),
                     "foundAt": _ms(f.get("firstObservedAt")),
                     "reportKey": report_key,
+                    "scenario": "SEC-04",
+                    "note": None,
                 })
-            return {"items": items, "nextCursor": None}
+            return items
 
-        return self._cached("vulns", self.config.CACHE_TTL["vulnerabilities"], build)
+        items = self._cached("vulns", self.config.CACHE_TTL["vulnerabilities"], build)
+        return _shape_vulnerabilities(items, q, self._events())
 
     def execution_status(self, event_id: str, execution_id: str):
         event = self.get_event(event_id)
@@ -913,24 +1243,43 @@ class LiveAdapter:
         resp = self._call("ec2", "describe_security_groups",
                           GroupIds=[_short(event.get("resource") or "")])
         port, cidr = spec.get("port"), spec.get("cidr")
+        if not resp.get('SecurityGroups'):
+            raise ApiProblem(422, '재검증 대상 보안 그룹이 없습니다.', code='EVIDENCE_REQUIRED')
         return sum(1
                    for g in resp.get("SecurityGroups", [])
                    for rule in g.get("IpPermissions", [])
-                   if rule.get("FromPort") == port
-                   for r in rule.get("IpRanges", []) if r.get("CidrIp") == cidr)
+                   if str(rule.get('IpProtocol', 'tcp')) == '-1' or
+                   (str(rule.get('IpProtocol', 'tcp')) in ('6', 'tcp') and
+                    rule.get('FromPort', -1) <= port <= rule.get('ToPort', rule.get('FromPort', -1)))
+                   for r in rule.get("IpRanges", []) + rule.get('Ipv6Ranges', [])
+                   if r.get("CidrIp") == cidr or r.get('CidrIpv6') == '::/0')
 
     def _verify_cve_count(self, event: dict, spec: dict) -> int:
-        resp = self._call(
-            "inspector2", "list_findings",
-            filterCriteria={
-                "resourceId": [{"comparison": "EQUALS",
-                                "value": _short(event.get("resource") or "")}],
-                "findingType": [{"comparison": "EQUALS",
-                                 "value": "PACKAGE_VULNERABILITY"}],
-            },
-            maxResults=MAX_ITEMS,
+        """대상의 미해결 CVE 수.
+
+        이전에는 `_call(maxResults=100)` 한 번이라 **100건을 넘으면 그 이상을 못 셌다.**
+        재검증 수치가 실제보다 작게 나와 "개선됐다"로 잘못 읽히는 경로였다.
+        maxResults 100 은 inspector2 하드 상한이므로 `_pages()` 로 끝까지 읽는다.
+
+        심각도 필터는 카탈로그의 `verify.min_severity` 를 따른다. SEC-04 는 criterion 이
+        '전체 심각도'라 None 이다. 여기서 임의로 HIGH 이상을 걸면 criterion 과 어긋난다.
+        """
+        criteria = {
+            "resourceId": [{"comparison": "EQUALS",
+                            "value": _short(event.get("resource") or "")}],
+            "findingType": [{"comparison": "EQUALS",
+                             "value": "PACKAGE_VULNERABILITY"}],
+        }
+        floor = (spec or {}).get("min_severity")
+        if floor:
+            order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL"]
+            keep = order[: order.index(floor) + 1] if floor in order else [floor]
+            criteria["severity"] = [{"comparison": "EQUALS", "value": v} for v in keep]
+        findings = self._pages(
+            "inspector2", "list_findings", "findings", token="nextToken",
+            filterCriteria=criteria, maxResults=PAGE_INSPECTOR,
         )
-        return len(resp.get("findings", []))
+        return len(findings)
 
     def _verify_iam_key(self, event: dict, spec: dict) -> int:
         """키가 아직 Active 면 1.
@@ -939,9 +1288,23 @@ class LiveAdapter:
         조용히 0(통과)으로 떨어뜨리지 않는다 — 조치 안 됐는데 해결로 보이면 안 된다.
         """
         key_id = _short(event.get("resource") or "")
-        resp = self._call("iam", "list_access_keys")
-        return sum(1 for m in resp.get("AccessKeyMetadata", [])
-                   if m.get("AccessKeyId") == key_id and m.get("Status") == "Active")
+        user = self._call('iam', 'get_access_key_last_used', AccessKeyId=key_id).get('UserName')
+        if not user:
+            raise ApiProblem(422, '키 소유자를 확인할 수 없습니다.', code='EVIDENCE_REQUIRED')
+        keys, marker = [], None
+        while True:
+            resp = self._call('iam', 'list_access_keys', UserName=user, **({'Marker': marker} if marker else {}))
+            keys.extend(resp.get('AccessKeyMetadata', []))
+            if not resp.get('IsTruncated'):
+                break
+            next_marker = resp.get('Marker')
+            if not next_marker or next_marker == marker:
+                raise ApiProblem(502, '키 목록이 불완전합니다.', code='UPSTREAM_ERROR')
+            marker = next_marker
+        matches = [item for item in keys if item.get('AccessKeyId') == key_id]
+        if len(matches) != 1 or matches[0].get('Status') not in ('Active', 'Inactive'):
+            raise ApiProblem(422, '키 상태를 확인할 수 없습니다.', code='EVIDENCE_REQUIRED')
+        return int(matches[0]['Status'] == 'Active')
 
     def cancel(self, event_id, body, actor, key):
         self._require_write("cancel")
@@ -984,3 +1347,75 @@ def _metric_query(qid: str, namespace: str, name: str, instance: str, period: in
         "Metric": {"Namespace": namespace, "MetricName": name,
                    "Dimensions": [{"Name": "InstanceId", "Value": instance}]},
         "Period": period, "Stat": "Average"}}
+
+
+def _shape_vulnerabilities(items: list[dict], q: dict, events: list[dict]) -> dict:
+    """데모 어댑터(services/vulns.py)와 **같은 응답 모양**으로 맞춘다.
+
+    프론트가 모드별 분기 없이 같은 화면을 그리려면 groups·summary 가 반드시 있어야 한다.
+    """
+    from ..services.vulns import SEVERITY_RANK
+
+    severity, source = q.get("severity"), q.get("source")
+    needle = (q.get("q") or "").lower()
+    target = q.get("resource")
+    fixable_only = bool(q.get("fixableOnly"))
+
+    rows = []
+    for item in items:
+        if severity and item["severity"] != severity:
+            continue
+        if source and item["source"] != source:
+            continue
+        if target and item["target"] != target:
+            continue
+        if fixable_only and not item.get("fixedVersion"):
+            continue
+        if needle:
+            hay = " ".join(str(item.get(f) or "")
+                           for f in ("cveId", "package", "target", "resource")).lower()
+            if needle not in hay:
+                continue
+        rows.append(item)
+
+    rows.sort(key=lambda x: (SEVERITY_RANK.get(x["severity"], 9), -(x.get("cvss") or 0),
+                             x.get("cveId") or ""))
+    truncated = len(rows) > MAX_RESPONSE_ITEMS
+    rows = rows[:MAX_RESPONSE_ITEMS]
+
+    by_target: dict[str, list[dict]] = {}
+    for item in rows:
+        by_target.setdefault(item["target"], []).append(item)
+
+    def link(target_id: str):
+        pool = [e for e in events if e.get("resource") == target_id]
+        return max(pool, key=lambda e: e["at"]) if pool else None
+
+    groups = []
+    for target_id, mine in sorted(by_target.items()):
+        event = link(target_id)
+        groups.append({
+            "target": target_id, "source": mine[0]["source"], "kind": mine[0]["kind"],
+            "note": None, "scannedAt": max((x["foundAt"] or 0) for x in mine) or None,
+            "total": len(mine),
+            "bySeverity": {s: sum(1 for x in mine if x["severity"] == s)
+                           for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW")},
+            "fixable": sum(1 for x in mine if x.get("fixedVersion")),
+            "eventId": event["id"] if event else None,
+            "eventStatus": event["status"] if event else None,
+            "actionable": bool(event and event.get("actionable")),
+        })
+
+    return {
+        "items": rows, "nextCursor": None, "total": len(rows), "truncated": truncated,
+        "groups": groups,
+        "summary": {
+            "total": len(rows),
+            "bySeverity": {s: sum(1 for x in rows if x["severity"] == s)
+                           for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW")},
+            "fixable": sum(1 for x in rows if x.get("fixedVersion")),
+            "uniqueCves": len({x["cveId"] for x in rows if x.get("cveId")}),
+            "targets": len(groups),
+        },
+        "catalogVersion": None, "timeFiltered": False,
+    }

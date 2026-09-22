@@ -12,6 +12,8 @@ from pathlib import Path
 import yaml
 
 CATALOG_PATH = Path(__file__).with_name("scenarios.yaml")
+INCIDENT_PATH = Path(__file__).with_name("incidents.yaml")
+VULN_PATH = Path(__file__).with_name("vulnerabilities.yaml")
 
 
 @functools.lru_cache(maxsize=1)
@@ -33,6 +35,41 @@ def load() -> dict:
 
 def get(scenario_id: str) -> dict | None:
     return load()["scenarios"].get(scenario_id)
+
+
+@functools.lru_cache(maxsize=1)
+def load_incidents() -> dict:
+    """침해사례 서술 카탈로그.
+
+    scenarios.yaml 과 분리돼 있다 — 이 파일을 고쳐도 탐지 분류·재검증 동작은 바뀌지 않는다.
+    파일이 없으면 빈 카탈로그를 돌려준다(침해사례 탭만 비고 나머지는 정상 동작).
+    """
+    if not INCIDENT_PATH.exists():
+        return {"version": None, "updated": "", "incidents": {}}
+    raw = yaml.safe_load(INCIDENT_PATH.read_text(encoding="utf-8")) or {}
+    return {
+        "version": raw.get("version"),
+        "updated": str(raw.get("updated", "")),
+        "incidents": raw.get("incidents") or {},
+    }
+
+
+def incident(scenario_id: str) -> dict:
+    return load_incidents()["incidents"].get(scenario_id) or {}
+
+
+@functools.lru_cache(maxsize=1)
+def load_vulnerabilities() -> dict:
+    """데모 CVE 카탈로그. 실모드는 쓰지 않는다(Inspector2·Trivy 리포트가 정본)."""
+    if not VULN_PATH.exists():
+        return {"version": None, "targets": [], "vulnerabilities": []}
+    raw = yaml.safe_load(VULN_PATH.read_text(encoding="utf-8")) or {}
+    return {
+        "version": raw.get("version"),
+        "updated": str(raw.get("updated", "")),
+        "targets": raw.get("targets") or [],
+        "vulnerabilities": raw.get("vulnerabilities") or [],
+    }
 
 
 def ids(include_demo_only: bool = False) -> list[str]:

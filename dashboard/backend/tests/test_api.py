@@ -159,10 +159,16 @@ def test_unintegrated_services_and_health(client,demo_app):
     assert client.get('/health').json['checks']['worker']=='stopped'
     work(demo_app);assert client.get('/health').json['checks']['worker']=='ok'
 
-def test_live_no_aws_calls(live_app,monkeypatch):
+def test_live_health_failure_keeps_writes_disabled(live_app,monkeypatch):
     import socket
     monkeypatch.setattr(socket.socket,'connect',lambda *a:pytest.fail('network access'))
-    assert live_app.test_client().get('/health').json['aws_connected'] is False
+    def unavailable(service):
+        raise RuntimeError('simulated unavailable AWS service')
+    monkeypatch.setattr(live_app.extensions['dashboard_adapter'],'_client',unavailable)
+    health=live_app.test_client().get('/health').json
+    assert health['aws_connected'] is False
+    assert health['status']=='degraded'
+    assert set(health['checks'].values())=={'error'}
     assert live_app.config['WRITE_ENABLED'] is False
 
 def test_readonly(demo_app):

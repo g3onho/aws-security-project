@@ -79,7 +79,7 @@ def test_field_set_matches_demo(monkeypatch):
     demo_fields = set(demo_events()[0])
     for event in adapter(monkeypatch)._events():
         assert demo_fields <= set(event), demo_fields - set(event)
-        assert set(event) - demo_fields <= {"historyNote", "titleOriginal", "evidenceOriginal"}
+        assert set(event) - demo_fields <= {"historyNote", "titleOriginal", "evidenceOriginal", "externalExecutionId"}
 
 
 def test_classification_and_correlation(monkeypatch):
@@ -108,8 +108,8 @@ def test_action_history_join(monkeypatch):
     assert "수동 조치 알림" in texts[1]                  # 오래된 판정이 먼저
     assert "자동 조치 실행" in texts[2]
     assert "Inactive in progress" in texts[2]            # after_state 가 붙는다
-    assert gd["status"] == "PENDING_VERIFICATION"        # 마지막 판정 기준
-    assert gd["execution"] == "SUCCEEDED"
+    assert gd["status"] == "EXECUTING"  # 실행 요청 기록은 완료 증거가 아니다
+    assert gd["execution"] == "RUNNING"
     assert gd["afterAt"] == _ms("2026-09-21T00:50:00Z")
     assert gd["historyNote"] is None                     # 테이블이 있으면 안내 불필요
 

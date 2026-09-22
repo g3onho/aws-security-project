@@ -27,6 +27,8 @@ def apply_filters(rows: list[dict], q: dict) -> list[dict]:
 
     out = []
     for e in rows:
+        if q.get('resource') and e.get('resource') != q['resource']:
+            continue
         if not (ignore_region or region == "all" or e["region"] == region):
             continue
         if environment and e["environment"] != environment:
