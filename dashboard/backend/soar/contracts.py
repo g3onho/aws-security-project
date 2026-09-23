@@ -131,7 +131,10 @@ def event_dto(event, allowed_actions):
             "parameters": plan.get("parameters", {}), "criterion": event.get("criterion"),
             "criterionVersion": event.get("criterionVersion"), "unit": event.get("unit"),
             "beforeState": measurement(event.get("before")), "afterState": measurement(event.get("after")),
-            "verification": event.get("verification"), "dataMode": "live"}
+            "verification": event.get("verification"),
+            # 통합 관제 지도의 공격 흐름선. GuardDuty 출발지가 없으면 null.
+            "sourceIp": event.get("sourceIp"), "sourceLocation": event.get("sourceLocation"),
+            "geoStatus": event.get("geoStatus"), "dataMode": "live"}
 
 
 def common_matches(row, q, timestamp, *, check_time=True):

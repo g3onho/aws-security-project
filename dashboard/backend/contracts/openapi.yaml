@@ -309,6 +309,15 @@ components:
         actionId: {type: [string, 'null']}
         beforeState: {$ref: '#/components/schemas/Measurement'}
         afterState: {$ref: '#/components/schemas/Measurement'}
+        sourceIp: {type: [string, 'null']}
+        sourceLocation:
+          type: [object, 'null']
+          properties:
+            lat: {type: number}
+            lon: {type: number}
+            country: {type: [string, 'null']}
+            city: {type: [string, 'null']}
+        geoStatus: {type: [string, 'null'], enum: [located, country-only, unknown, null]}
     Evidence:
       type: object
       required: [eventId, actionId, jobId, actor, source, decision, playbookId, playbookVersion, parametersHash, beforeState, afterState, executionId, verification, createdAt, updatedAt, requestId]

@@ -1,4 +1,4 @@
-from soar.provider import AwsProvider, UnconfiguredProvider
+from soar.provider import AwsProvider, UnconfiguredProvider, remote_ip
 
 
 class FakeSts:
@@ -133,3 +133,14 @@ def test_aws_provider_inspector_findings_are_active_only_and_cached():
     provider.vulnerabilities({})  # 화면이 다음 페이지를 요청해도 AWS 는 다시 호출하지 않는다
     assert len(calls) == 1
     assert calls[0]["filterCriteria"]["findingStatus"][0]["value"] == "ACTIVE"
+
+
+def test_remote_ip_reads_guardduty_slash_keys_for_map_arcs():
+    base = "aws/guardduty/service/action/networkConnectionAction/remoteIpDetails/"
+    got = remote_ip({base + "ipAddressV4": "198.51.100.7", base + "country/countryName": "Netherlands",
+                     base + "geoLocation/lat": "52.37", base + "geoLocation/lon": "4.89"})
+    assert got == {"sourceIp": "198.51.100.7", "geoStatus": "located",
+                   "sourceLocation": {"lat": 52.37, "lon": 4.89, "country": "Netherlands", "city": "Netherlands"}}
+    # 좌표가 없으면 지도에 선을 긋지 않는다(NaN 방지). IP 가 없으면 전부 비운다.
+    assert remote_ip({base + "ipAddressV4": "198.51.100.7", base + "country/countryName": "NL"})["sourceLocation"] is None
+    assert remote_ip({"aws/securityhub/ProductName": "Config"})["sourceIp"] is None

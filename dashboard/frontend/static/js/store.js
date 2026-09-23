@@ -13,7 +13,7 @@ const milliseconds=value=>value==null?null:Date.parse(value);
 function normalize(event){
  requireContract(object(event)&&typeof event.id==='string'&&typeof event.title==='string'&&typeof event.resource==='string'&&typeof event.actionState==='string'&&typeof event.observedAt==='string'&&['CRITICAL','HIGH','MEDIUM','LOW','INFORMATIONAL','UNKNOWN'].includes(event.severity)&&Array.isArray(event.allowedActions));
  const at=milliseconds(event.observedAt);requireContract(Number.isFinite(at)&&Object.hasOwn(labels,event.actionState));
- return {...event,at,status:labels[event.actionState],severity:event.severity[0]+event.severity.slice(1).toLowerCase(),sourceIp:null};
+ return {...event,at,status:labels[event.actionState],severity:event.severity[0]+event.severity.slice(1).toLowerCase()};
 }
 function reset(){controller?.abort();generation++;sessionEpoch++;initializing=null;csrf='';DATA_AS_OF=0;rows=[];regional=[];metric=null;infra=null;details.clear();for(const key of Object.keys(summary))delete summary[key];config={mode:'live',writeEnabled:false,role:'viewer',dataSourceConnected:false};Object.assign(state,defaults);}
 export async function request(url,options={}){

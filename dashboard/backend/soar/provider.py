@@ -11,6 +11,36 @@ from .store import now_ms
 THRESHOLDS = {"cpu": 80, "memory": 80}  # 기획서 80% · CloudWatch 알람 임계치와 같게
 
 
+def remote_ip(product_fields):
+    """GuardDuty finding 의 공격 출발지 — 통합 관제 지도의 공격 흐름선(map.js connectionMarkup).
+
+    Security Hub 는 GuardDuty 상세를 ProductFields 에 **슬래시 구분** 평평한 키로 넣는다
+    (실측 2026-09-22, 삭제 전 app/adapters/live.py _remote_ip 에서 옮김):
+        aws/guardduty/service/action/<액션>/remoteIpDetails/ipAddressV4
+        .../remoteIpDetails/country/countryName · city/cityName · geoLocation/lat · geoLocation/lon
+    액션 종류(awsApiCallAction/networkConnectionAction 등)가 여러 가지라 꼬리만 보고 찾는다.
+    좌표가 없으면 sourceLocation 을 비운다 — 지도가 NaN 좌표로 선을 그리지 않게.
+    """
+    found = {}
+    for key, value in (product_fields or {}).items():
+        if "remoteIpDetails" not in key or not value:
+            continue
+        for tail, name in (("/ipAddressV4", "ip"), ("/country/countryName", "country"),
+                           ("/city/cityName", "city"), ("/geoLocation/lat", "lat"), ("/geoLocation/lon", "lon")):
+            if key.endswith(tail):
+                found[name] = str(value)
+    if "ip" not in found:
+        return {"sourceIp": None, "sourceLocation": None, "geoStatus": "unknown"}
+    try:
+        lat, lon = float(found["lat"]), float(found["lon"])
+    except (KeyError, ValueError):
+        lat = lon = None
+    location = None if lat is None else {"lat": lat, "lon": lon, "country": found.get("country"),
+                                         "city": found.get("city") or found.get("country")}
+    status = "located" if location else "country-only" if found.get("country") else "unknown"
+    return {"sourceIp": found["ip"], "sourceLocation": location, "geoStatus": status}
+
+
 class UnconfiguredProvider:
     connected = False
     regions = ()
@@ -166,8 +196,9 @@ class AwsProvider:
                 "allowedActions": [], "history": [], "before": None, "after": None,
                 "afterValue": None, "evidence": finding.get("Description"),
                 "recommendation": None, "criterion": None, "criterionVersion": None,
-                "sourceIp": None, "geoStatus": "unknown", "accountId": finding.get("AwsAccountId"),
+                "accountId": finding.get("AwsAccountId"),
                 "observedAt": at, "externalFindingId": finding_id,
+                **remote_ip(finding.get("ProductFields")),
             })
         return rows
 
