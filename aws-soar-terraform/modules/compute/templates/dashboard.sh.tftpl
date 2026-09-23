@@ -122,7 +122,7 @@ systemctl status dashboard.service --no-pager || true
 # 리전 버킷을 쓴다(글로벌 엔드포인트는 S3 게이트웨이 엔드포인트로 라우팅되지 않음).
 # 모니터링 실패가 본 서비스 부트스트랩을 막지 않도록 전부 || true.
 retry curl -fsSL https://amazoncloudwatch-agent-${region}.s3.${region}.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/cwagent.deb || true
-dpkg -i -E /tmp/cwagent.deb || true
+apt-get install -y -o DPkg::Lock::Timeout=300 /tmp/cwagent.deb || true
 mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
 cat > /opt/aws/amazon-cloudwatch-agent/etc/cw.json <<CWJSON
 {

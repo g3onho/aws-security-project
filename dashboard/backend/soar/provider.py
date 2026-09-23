@@ -4,8 +4,11 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
+
 from .errors import Problem
 from .store import now_ms
+
+THRESHOLDS = {"cpu": 80, "memory": 80}  # 기획서 80% · CloudWatch 알람 임계치와 같게
 
 
 class UnconfiguredProvider:
@@ -177,6 +180,9 @@ class AwsProvider:
         reservations = self._collect(self._client("ec2"), "describe_instances", "Reservations", **({"Filters": filters} if filters else {}))
         for reservation in reservations:
             for instance in reservation.get("Instances", []):
+                # 교체된 옛 인스턴스가 1시간가량 목록에 남는다 — 모든 화면에서 뺀다.
+                if (instance.get("State") or {}).get("Name") in {"terminated", "shutting-down"}:
+                    continue
                 tags = {t.get("Key"): t.get("Value") for t in instance.get("Tags", [])}
                 items.append({"id": instance["InstanceId"], "name": tags.get("Name") or instance["InstanceId"],
                               "role": tags.get("Role") or "EC2",
@@ -185,7 +191,6 @@ class AwsProvider:
                               "type": instance.get("InstanceType")})
         return {"items": items, "total": len(items), "mode": "live"}
 
-    THRESHOLDS = {"cpu": 80, "memory": 80}
 
     @staticmethod
     def _breaches(points, metric, limit):
@@ -211,8 +216,8 @@ class AwsProvider:
         return {"resource": resource["id"], "region": self.region, "period": raw["period"], "window": window,
                 "host": {"id": resource["id"], "name": resource["name"], "type": resource.get("type"), "role": resource.get("role", "EC2")},
                 "points": points, "cpu": stats["cpu"]["last"], "memory": stats["memory"]["last"],
-                "threshold": dict(self.THRESHOLDS),
-                "breaches": self._breaches(points, "cpu", self.THRESHOLDS["cpu"]) + self._breaches(points, "memory", self.THRESHOLDS["memory"]),
+                "threshold": dict(THRESHOLDS),
+                "breaches": self._breaches(points, "cpu", THRESHOLDS["cpu"]) + self._breaches(points, "memory", THRESHOLDS["memory"]),
                 "summary": {"samples": len(points), "cpu": {k: stats["cpu"][k] for k in ("max", "avg")},
                             "memory": {k: stats["memory"][k] for k in ("max", "avg")}}}
 
@@ -222,7 +227,7 @@ class AwsProvider:
         window = {"from": int(query.get("from", self.as_of - 86400000)), "to": int(query.get("to", self.as_of))}
         resources = [r for r in self.resources({}).get("items", []) if r["state"] == "running"]
         series = [self._host_view(r, self.metric_for(r, query), window) for r in resources]
-        base = {"hosts": resources, "series": series, "thresholds": dict(self.THRESHOLDS),
+        base = {"hosts": resources, "series": series, "thresholds": dict(THRESHOLDS),
                 "periodSeconds": int(query.get("periodSeconds", 300)), "dataMode": "live"}
         if not series:
             return base
@@ -245,12 +250,26 @@ class AwsProvider:
             metric = result.get("Id", "cpu")
             for ts, value in zip(result.get("Timestamps", []), result.get("Values", [])):
                 point = by_at.setdefault(int(ts.timestamp() * 1000), {"cpu": None, "memory": None})
-                point[metric] = value
+                point[metric] = round(value, 1)  # 화면에 1.0388888888888888% 로 찍히지 않게
         return {"period": period, "points": [{"at": at, **values} for at, values in sorted(by_at.items())]}
+
+    # 화면은 200건씩 페이지를 받는데 페이지마다 Inspector 전체(수천 건, 수십 초)를 다시 긁으면
+    # 취약점 탭이 끝없이 "불러오는 중"이다. ACTIVE 만, 5분 캐시(스캔 결과는 자주 안 바뀐다).
+    INSPECTOR_TTL = 300
+
+    def _inspector_findings(self):
+        with self._findings_lock:
+            hit = self._findings_cache.get("__inspector__")
+            if hit and time.monotonic() - hit[0] < self.INSPECTOR_TTL:
+                return hit[1]
+            findings = self._collect(self._client("inspector2"), "list_findings", "findings",
+                                     filterCriteria={"findingStatus": [{"comparison": "EQUALS", "value": "ACTIVE"}]})
+            self._findings_cache["__inspector__"] = (time.monotonic(), findings)
+            return findings
 
     def vulnerabilities(self, query=None, events=None):
         rows = []
-        findings = self._collect(self._client("inspector2"), "list_findings", "findings")
+        findings = self._inspector_findings()
         for finding in findings:
             package = (finding.get("packageVulnerabilityDetails") or {}).get("vulnerablePackages") or [{}]
             package = package[0]
@@ -271,8 +290,6 @@ class AwsProvider:
         rows = []
         for resource in self.resources(query).get("items", []):
             state = resource.get("state", "unknown")
-            if state in {"terminated", "shutting-down"}:  # 교체된 옛 인스턴스가 1시간가량 남는다
-                continue
             # 화면(serviceFlow)이 읽는 필드를 모두 채운다. 없으면 blockers.length 에서 죽는다.
             rows.append({"id": resource["id"], "name": resource["name"],
                          "status": "UP" if state == "running" else "DOWN",

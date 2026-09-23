@@ -38,7 +38,10 @@ def main():
         # 팀 공용 고정 계정. 환경변수로 덮어쓸 수 있다.
         name = os.getenv("DASHBOARD_ADMIN_USER", "admin")
         password = os.getenv("DASHBOARD_ADMIN_PASSWORD", "rapa6074!")
-        create_user(store, name, password, "operator")
+        # 기본 scope 는 accounts=[](아무 계정도 못 봄)라 그대로 두면 모든 화면이 0건이다.
+        # 초기 관리자는 전체 범위(None = 제한 없음)로 만든다.
+        create_user(store, name, password, "operator",
+                    scope={"accounts": None, "regions": None, "resources": None})
         path = Path(app.config["DATABASE"]).parent / "initial-login.txt"
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:

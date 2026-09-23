@@ -119,3 +119,17 @@ def test_aws_provider_findings_are_cached_and_time_filtered():
     assert rows[0]["at"] == 1790128800000
     assert len(provider.observations({})) == 2
     assert hub.calls == 1  # 두 번 조회해도 Security Hub 호출은 한 번
+
+
+def test_aws_provider_inspector_findings_are_active_only_and_cached():
+    calls = []
+    inspector = type("Inspector", (), {"list_findings": lambda self, **kw: calls.append(kw) or {"findings": [
+        {"findingArn": "arn:f1", "severity": "HIGH", "resourceId": "i-1",
+         "packageVulnerabilityDetails": {"vulnerabilityId": "CVE-1", "vulnerablePackages": [{"name": "openssl"}]}}]}})()
+    session = FakeSession("ap-northeast-2")
+    session.client = lambda name, **kw: inspector if name == "inspector2" else FakeSession.client(session, name)
+    provider = AwsProvider("ap-northeast-2", session_factory=lambda region: session)
+    assert provider.vulnerabilities({})["items"][0]["cveId"] == "CVE-1"
+    provider.vulnerabilities({})  # 화면이 다음 페이지를 요청해도 AWS 는 다시 호출하지 않는다
+    assert len(calls) == 1
+    assert calls[0]["filterCriteria"]["findingStatus"][0]["value"] == "ACTIVE"
