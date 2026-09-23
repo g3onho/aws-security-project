@@ -266,7 +266,9 @@ class StandardService:
             for metric in ("cpu", "memory"):
                 points = [{"timestamp": iso(point["at"]), "value": point.get(metric)}
                           for point in raw.get("points", []) if q["from"] <= point["at"] < q["to"]]
-                series.append({"resource": resource["id"], "region": resource["region"], "metric": metric, "unit": "%",
+                # name: 인프라 모니터링 호스트 카드 제목(EC2 Name 태그). 없으면 화면이 ID 를 쓴다.
+                series.append({"resource": resource["id"], "name": resource.get("name"), "region": resource["region"],
+                               "metric": metric, "unit": "%",
                                "points": points, "observedAt": points[-1]["timestamp"] if points else None,
                                "collectionStatus": "available" if any(point["value"] is not None for point in points) else "missing"})
         return {"series": series, "thresholds": {"cpu": 80, "memory": 80}, "periodSeconds": q["periodSeconds"], "dataMode": "live"}

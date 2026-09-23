@@ -168,15 +168,96 @@ function table(rows,full=false){
 }
 function responseCard(rows){const pending=rows.filter(e=>e.actionState==='PENDING_APPROVAL');return `<section class="panel">${header('조치 상태',`${pending.length} PENDING`)}<div class="response-body"><div class="response-summary"><div>관측 이벤트<b>${rows.length}</b></div><div>승인 대기 상태<b>${pending.length}</b></div></div><p class="muted">현재 조치 공급자가 비활성화되어 승인·실행을 접수하지 않습니다.</p></div></section>`;}
 // ── 인프라 모니터링 ────────────────────────────────────────
-const pct=v=>v==null?'—':v+'%';
+// 7934104(v17) 화면 — 호스트 카드 · CPU/메모리 차트 · 임계치 초과 구간 · 3계층 상태 — 을
+// 표준 API(/api/metrics 시계열, /api/infra/status 구성요소)에 맞춰 되살린 것.
+// 호스트 선택은 화면 안에서만 바꾼다. state.resource 를 쓰면 이벤트·지표 조회 범위까지 좁아진다.
+const SERVICE_TEXT={healthy:'정상',degraded:'저하',unhealthy:'장애',unknown:'확인 불가'};
+const SERVICE_COLOR={healthy:'#32d4be',degraded:'#d8ca78',unhealthy:'#ef777f',unknown:'#8fa295'};
+const periodLabel=s=>s==null?'—':s>=3600?`${s/3600}시간`:`${s/60}분`;
+const pct=v=>v==null?'—':Math.round(v*10)/10+'%';
+const metricKo=m=>m==='cpu'?'CPU':'메모리';
+let infraHost='';
+function servicePill(status){const c=SERVICE_COLOR[status]||SERVICE_COLOR.unknown;return `<span class="service-pill" style="color:${c}"><i style="background:${c}"></i>${SERVICE_TEXT[status]||esc(status)} <small>${esc(status)}</small></span>`;}
+// 임계치를 넘은 연속 표본을 한 구간으로 묶는다.
+function breachesOf(points,metric,limit){
+ const out=[];let cur=null;
+ for(const p of points){
+  if(p.value!=null&&p.value>limit){cur=cur||{metric,from:p.at,to:p.at,peak:p.value,samples:0};cur.to=p.at;cur.peak=Math.max(cur.peak,p.value);cur.samples++;}
+  else if(cur){out.push(cur);cur=null;}
+ }
+ if(cur)out.push(cur);
+ return out;
+}
+function hostViews(m){
+ const threshold=m?.thresholds||{cpu:80,memory:80},byId=new Map();
+ for(const s of m?.series||[]){
+  const h=byId.get(s.resource)||{resource:s.resource,name:s.name||s.resource,cpu:[],memory:[]};
+  if(s.metric==='cpu'||s.metric==='memory')h[s.metric]=s.points.map(p=>({at:milliseconds(p.timestamp),value:p.value}));
+  byId.set(s.resource,h);
+ }
+ return [...byId.values()].map(h=>{
+  const stat=key=>{const v=h[key].map(p=>p.value).filter(x=>x!=null);return {now:v.length?v[v.length-1]:null,max:v.length?Math.max(...v):null,avg:v.length?v.reduce((a,b)=>a+b,0)/v.length:null,samples:v.length};};
+  return {...h,threshold,stats:{cpu:stat('cpu'),memory:stat('memory')},
+   breaches:[...breachesOf(h.cpu,'cpu',threshold.cpu),...breachesOf(h.memory,'memory',threshold.memory)].sort((a,b)=>a.from-b.from)};
+ });
+}
+function selectedHost(hosts){return hosts.find(h=>h.resource===infraHost)||hosts[0];}
+function hostPicker(hosts,sel){
+ return `<label class="host-picker"><span>대상 호스트</span><select id="host">${hosts.map(h=>`<option value="${esc(h.resource)}"${h===sel?' selected':''}>${esc(h.name)} · ${esc(h.resource)}</option>`).join('')}</select></label>`;
+}
+function breachPanel(h,span){
+ if(!h.breaches.length)return `<div class="context-note">선택 구간에 ${h.threshold.cpu}% 임계치를 넘은 표본이 없습니다. CPU 최대 ${pct(h.stats.cpu.max)} · 메모리 최대 ${pct(h.stats.memory.max)}.</div>`;
+ return `<ul class="breach-list">${h.breaches.map(b=>`<li><span class="breach-metric" style="color:${b.metric==='cpu'?'#e7a064':'#ef777f'}">${metricKo(b.metric)}</span><span>${formatAt(b.from,span)} — ${formatAt(b.to,span)} KST</span><b>최고 ${pct(b.peak)}</b><small>표본 ${b.samples}개 · 임계치 ${h.threshold[b.metric]}%</small></li>`).join('')}</ul>`;
+}
+function hostGrid(hosts,sel){
+ const bar=(v,limit)=>`<div class="host-bar"><div class="host-bar-fill" style="width:${Math.min(100,v||0)}%;background:${v>limit?'#e7a064':'#32d4be'}"></div><i style="left:${limit}%"></i></div>`;
+ return `<div class="host-grid">${hosts.map(h=>{
+  const over=h.breaches.length,on=h===sel;
+  return `<button data-key="host-${esc(h.resource)}" class="host-card ${on?'selected':''} ${over?'over':''}" data-host="${esc(h.resource)}" aria-pressed="${on}">
+   <div class="host-card-head"><strong>${esc(h.name)}</strong><small>EC2</small></div>
+   <div class="host-metric"><span>CPU</span><b>${pct(h.stats.cpu.now)}</b></div>${bar(h.stats.cpu.now,h.threshold.cpu)}
+   <div class="host-metric"><span>메모리</span><b>${pct(h.stats.memory.now)}</b></div>${bar(h.stats.memory.now,h.threshold.memory)}
+   <div class="host-card-foot">${over?`<span class="over-flag">임계 초과 ${over}구간</span>`:'<span>임계 초과 없음</span>'}<small>${esc(h.resource)}</small></div>
+  </button>`;}).join('')}</div>`;
+}
+function serviceFlow(svc,hosts){
+ if(!svc)return `<div class="context-note">3계층 상태를 불러오지 못했습니다. 새로고침 후에도 같으면 백엔드 /api/infra/status 응답을 확인하세요.</div>`;
+ const items=svc.components||[];
+ if(!items.length)return empty('저장된 인프라 상태 증거가 없습니다.');
+ const nameOf=id=>hosts.find(h=>h.resource===id)?.name||id;
+ return `<div class="service-flow">${items.map((c,i)=>`${i?`<span class="service-arrow" style="color:${SERVICE_COLOR[c.status]||SERVICE_COLOR.unknown}">→</span>`:''}<div class="service-node ${c.status==='unhealthy'?'down':esc(c.status)}"><strong>${esc(c.name)}</strong>${servicePill(c.status)}<small>${esc(nameOf(c.resource))}</small></div>`).join('')}</div>
+ <div class="table-scroll"><table class="service-table"><caption class="sr-only">계층별 점검 결과</caption><thead><tr><th>계층</th><th>자원</th><th>상태</th><th>판정 근거</th><th>관측 시각</th></tr></thead><tbody>${items.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(nameOf(c.resource))}<br><small class="muted">${esc(c.resource)}</small></td><td>${servicePill(c.status)}</td><td>${esc(c.detail||'—')}<br><small class="muted">${esc(c.source||'')}</small></td><td>${format(milliseconds(c.observedAt))}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function infrastructure(){
- const m=metricsFor(),svc=servicesOf();
- const series=m?.series||[],components=svc?.components||[];
- return `<div class="view-intro"><span>CloudWatch 지표 · 수집 상태와 관측값</span></div>
-  <section class="panel full-panel">${header('CPU / 메모리',`${series.length}개 시계열 · ${m?.periodSeconds||'—'}초 간격`)}
-   ${series.length?`<div class="table-scroll"><table><thead><tr><th>자원</th><th>지표</th><th>최근 값</th><th>수집 상태</th><th>관측 시각</th></tr></thead><tbody>${series.map(s=>{const last=[...s.points].reverse().find(p=>p.value!==null);return `<tr><td>${esc(s.resource)}</td><td>${esc(s.metric)}</td><td>${last?pct(last.value):'—'}</td><td>${esc(s.collectionStatus)}</td><td>${format(milliseconds(s.observedAt))}</td></tr>`;}).join('')}</tbody></table></div>`:empty('조회 기간에 수집된 EC2 지표가 없습니다.')}</section>
-  <section class="panel full-panel">${header('인프라 상태',`${components.length}개 구성요소`)}
-   ${components.length?`<div class="table-scroll"><table><thead><tr><th>구성요소</th><th>자원</th><th>상태</th><th>근거</th><th>관측 시각</th></tr></thead><tbody>${components.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.resource)}</td><td>${esc(c.status)}</td><td>${esc(c.detail||c.source)}</td><td>${format(milliseconds(c.observedAt))}</td></tr>`).join('')}</tbody></table></div>`:empty('저장된 인프라 상태 증거가 없습니다.')}</section>`;
+ const m=metricsFor(),svc=servicesOf(),span=state.hours*3600000,hosts=hostViews(m);
+ if(!hosts.length)return `<div class="view-intro"><span>CloudWatch · CPU / 메모리</span></div><section class="panel">${header('EC2 자원 사용률','대상 없음')}${empty('조회 기간에 수집된 EC2 지표가 없습니다.')}</section>
+  <section class="panel full-panel">${header('3계층 서비스',svc?`${(svc.components||[]).length}개 구성요소`:'조회 실패')}${serviceFlow(svc,hosts)}</section>`;
+ const h=selectedHost(hosts),overCpu=h.breaches.filter(b=>b.metric==='cpu').length,overMem=h.breaches.length-overCpu;
+ const samples=hosts.reduce((a,x)=>a+x.stats.cpu.samples,0);
+ return `<div class="view-intro"><span>운영 중인 서버 ${hosts.length}대 · ${periodLabel(m.periodSeconds)} 평균 · 표본 ${samples}개</span><span>최근 ${state.hours}시간 · 경보 임계치 <strong class="mint">${h.threshold.cpu}%</strong></span></div>
+ <section class="panel">${header('운영 중인 서버',`${hosts.length}대 · 카드를 누르면 아래 상세 차트가 바뀝니다`)}${hostGrid(hosts,h)}
+  <div class="context-note">리전에서 조회된 EC2 전체입니다. 메모리는 CloudWatch Agent 가 설치된 호스트만 수집됩니다.</div></section>
+ <div class="infrastructure-grid">
+  <section class="panel">${header(`상세 · ${esc(h.name)}`,hostPicker(hosts,h))}<div class="metric-large">${canvas('metrics-chart',`CPU ${pct(h.stats.cpu.now)}, 메모리 ${pct(h.stats.memory.now)}, 임계치 ${h.threshold.cpu}%`)}</div>
+   <div class="metric-stats"><div><span>CPU 현재</span><b>${pct(h.stats.cpu.now)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(h.stats.cpu.max)} / ${pct(h.stats.cpu.avg)}</b></div><div><span>메모리 현재</span><b>${pct(h.stats.memory.now)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(h.stats.memory.max)} / ${pct(h.stats.memory.avg)}</b></div></div>
+   <div class="context-note">${esc(h.resource)} — 선택 구간의 마지막 표본 기준입니다.</div></section>
+  <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(h,span)}
+   <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>
+  <section class="panel full-panel">${header('3계층 서비스',svc?`${(svc.components||[]).length}개 구성요소 · 수집된 상태`:'조회 실패')}${serviceFlow(svc,hosts)}</section>
+ </div>`;
+}
+function drawInfrastructureChart(){
+ const hosts=hostViews(metricsFor());if(!hosts.length)return;
+ const h=selectedHost(hosts),span=state.hours*3600000,points=h.cpu.length>=h.memory.length?h.cpu:h.memory;
+ const memAt=new Map(h.memory.map(p=>[p.at,p.value])),cpuAt=new Map(h.cpu.map(p=>[p.at,p.value])),t=h.threshold;
+ const cpu=points.map(p=>cpuAt.get(p.at)??null),mem=points.map(p=>memAt.get(p.at)??null);
+ drawChart('metrics-chart','line',{labels:points.map(p=>formatAt(p.at,span)),datasets:[
+  {label:'CPU %',data:cpu,borderColor:'#32d4be',tension:.3,borderWidth:2,spanGaps:true,
+   pointRadius:cpu.map(v=>v>t.cpu?3.5:0),pointBackgroundColor:cpu.map(v=>v>t.cpu?'#e7a064':'#32d4be')},
+  {label:'메모리 %',data:mem,borderColor:'#a3c7b7',tension:.3,borderWidth:2,spanGaps:true,
+   pointRadius:mem.map(v=>v>t.memory?3.5:0),pointBackgroundColor:mem.map(v=>v>t.memory?'#ef777f':'#a3c7b7')},
+  {label:`${t.cpu}% 임계치`,data:points.map(()=>t.cpu),borderColor:'#e7a064',borderDash:[5,5],pointRadius:0,borderWidth:1}]},
+  {plugins:{legend:{display:true,labels:{color:'#c4d7cb',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#8fa295'}},x:{ticks:{color:'#8fa295',maxTicksLimit:8}}}});
 }
 function visibleRows(){return selectEvents();}
 // ── 조치 이력 ──────────────────────────────────────────────
@@ -243,6 +324,7 @@ function render({loadPanels=false}={}){
  if(state.view==='overview'){renderContent(overviewCharts(rows)+`<div class="table-layout">${table(rows)}${responseCard(rows)}</div>`);mapRender(rows);drawChart('severity-chart','doughnut',{labels:Object.keys(severityColors),datasets:[{data:Object.keys(severityColors).map(s=>rows.filter(e=>e.severity===s).length),backgroundColor:Object.values(severityColors),borderWidth:0,hoverOffset:3}]},{cutout:'75%'});}
   else if(state.view==='infrastructure'){
    renderContent(infrastructure());
+   drawInfrastructureChart();
   }else if(state.view==='vulnerabilities'){
    renderContent(`<div id="vulns" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
    if(loadPanels)pending.push(renderVulnerabilities());
@@ -434,7 +516,7 @@ document.addEventListener('keydown',e=>{const attack=e.target.closest('.attack-c
 document.addEventListener('click',e=>{
  const view=e.target.closest('[data-view]');if(view){navigateView(view.dataset.view);return;}
  const region=e.target.closest('[data-region]');if(region){chooseRegion(region.dataset.region);return;}
- const hostCard=e.target.closest('[data-host]');if(hostCard){if(state.resource===hostCard.dataset.host)return;state.resource=hostCard.dataset.host;refresh();return;}
+ const hostCard=e.target.closest('[data-host]');if(hostCard){if(infraHost===hostCard.dataset.host)return;infraHost=hostCard.dataset.host;render();return;}
  const vt=e.target.closest('[data-vuln-target]');if(vt){if(vulnTarget===vt.dataset.vulnTarget)return;vulnTarget=vt.dataset.vulnTarget;vulnPage=1;renderVulnerabilities();return;}
  const vp=e.target.closest('[data-vuln-page]');if(vp){vulnPage+=vp.dataset.vulnPage==='next'?1:-1;resetTableScroll(vp);renderVulnerabilities({reuse:true});return;}
  const notify=e.target.closest('[data-notify]');if(notify){applyNotification(notify.dataset.notify);return;}
@@ -471,6 +553,7 @@ bindMapInteraction($('#world-map'),()=>({zoom,rotation}),value=>{zoom=value.zoom
 if(window.ResizeObserver)new window.ResizeObserver(()=>{if(!$('#map-section').hidden)renderMarkersOnly();}).observe($('#map-canvas'));
 $('#attack-filter').addEventListener('change',e=>{attackSelection=e.target.value;renderAttacks(selectEvents());});
 document.addEventListener('change',e=>{
+ if(e.target.id==='host'){infraHost=e.target.value;render();return;}
  if(e.target.id==='vuln-size'){vulnSize=+e.target.value;vulnPage=1;resetTableScroll(e.target);renderVulnerabilities({reuse:true});return;}
  if(e.target.id==='vuln-fixable'){vulnFixable=e.target.checked;vulnPage=1;renderVulnerabilities();return;}
 });
