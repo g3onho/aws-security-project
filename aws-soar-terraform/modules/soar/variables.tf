@@ -24,6 +24,11 @@ variable "mysql_auth_fail_threshold" { type = number }
 
 variable "monitored_instances" { type = map(string) }
 
+variable "enable_waf_finding" { type = bool }
+variable "waf_web_acl_name" { type = string }
+variable "waf_web_acl_arn" { type = string }
+variable "waf_block_alarm_threshold" { type = number }
+
 variable "tags" {
   type    = map(string)
   default = {}

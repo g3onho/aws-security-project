@@ -1,5 +1,5 @@
 ############################################
-# Lambda 2개 — correlator / asr_trigger
+# Lambda 3개 — correlator / asr_trigger / waf_finding(옵션)
 ############################################
 
 data "archive_file" "correlator" {
@@ -164,6 +164,69 @@ resource "aws_lambda_function" "asr_trigger" {
       DOC_DISABLE_KEY           = aws_ssm_document.automation["ASR-DisableExposedAccessKey"].name
       DOC_NGINX_HARDEN          = aws_ssm_document.command["ASR-HardenNginx"].name
       AUTOMATION_ROLE_ARN       = aws_iam_role.ssm_automation.arn
+    }
+  }
+
+  tags = var.tags
+}
+
+# --- waf_finding (SEC-08) --------------------------------------------------
+# WAF 차단 알람을 Security Hub finding 으로 가져온다. 대시보드는 finding 만 읽는다.
+data "archive_file" "waf_finding" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda_src/waf_finding"
+  output_path = "${path.module}/build/waf_finding.zip"
+}
+
+resource "aws_iam_role" "waf_finding" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  name               = "${var.name_prefix}-waf-finding-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "waf_finding_basic" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  role       = aws_iam_role.waf_finding[0].name
+  policy_arn = "arn:${var.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+data "aws_iam_policy_document" "waf_finding" {
+  statement {
+    sid     = "ImportOwnFindings"
+    actions = ["securityhub:BatchImportFindings"]
+    # 계정 자체 제품(default)으로만 가져온다.
+    resources = ["arn:${var.partition}:securityhub:${var.region}:${var.account_id}:product/${var.account_id}/default"]
+  }
+}
+
+resource "aws_iam_role_policy" "waf_finding" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  name   = "${var.name_prefix}-waf-finding-policy"
+  role   = aws_iam_role.waf_finding[0].id
+  policy = data.aws_iam_policy_document.waf_finding.json
+}
+
+resource "aws_lambda_function" "waf_finding" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  function_name = "${var.name_prefix}-waf-finding"
+  role          = aws_iam_role.waf_finding[0].arn
+  runtime       = "python3.12"
+  handler       = "handler.handler"
+  timeout       = 30
+  memory_size   = 128
+
+  filename         = data.archive_file.waf_finding.output_path
+  source_code_hash = data.archive_file.waf_finding.output_base64sha256
+
+  environment {
+    variables = {
+      ACCOUNT_ID  = var.account_id
+      WEB_ACL_ARN = var.waf_web_acl_arn
     }
   }
 

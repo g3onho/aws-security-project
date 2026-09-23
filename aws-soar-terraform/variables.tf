@@ -276,6 +276,12 @@ variable "mysql_auth_fail_threshold" {
   default     = 10
 }
 
+variable "waf_block_alarm_threshold" {
+  description = "WAF 규칙별 1분간 차단 요청 수 임계치 (SEC-08). ALB 80 은 인터넷에 열려 있어 봇 차단도 섞이므로 오탐이 많으면 올린다."
+  type        = number
+  default     = 10
+}
+
 variable "log_retention_days" {
   description = "CloudWatch Logs 보존 기간"
   type        = number

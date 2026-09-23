@@ -106,6 +106,47 @@ resource "aws_cloudwatch_metric_alarm" "mysql_bruteforce" {
 }
 
 ############################################
+# SEC-08 — WAF 차단 급증 탐지
+# 대시보드는 Security Hub finding 만 이벤트로 읽으므로, 알람 -> EventBridge ->
+# waf_finding Lambda 가 finding 으로 가져온다(eventbridge.tf ④).
+# Rule 차원 값은 alb.tf 각 규칙의 visibility_config.metric_name 이다.
+############################################
+
+locals {
+  waf_rules = var.enable_waf_finding ? {
+    sqli   = "SQLiRuleSet"
+    common = "CommonRuleSet"
+    rate   = "RateLimitPerIp"
+  } : {}
+}
+
+resource "aws_cloudwatch_metric_alarm" "waf_block" {
+  for_each = local.waf_rules
+
+  # 이름 끝(-waf-<key>)을 waf_finding Lambda 가 심각도·제목 매핑에 쓴다.
+  alarm_name          = "${var.name_prefix}-waf-${each.key}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "BlockedRequests"
+  namespace           = "AWS/WAFV2"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = var.waf_block_alarm_threshold
+  alarm_description   = "WAF ${each.value} blocked >= ${var.waf_block_alarm_threshold} requests in 1 min"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    WebACL = var.waf_web_acl_name
+    Region = var.region
+    Rule   = each.value
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(var.tags, { Scenario = "SEC-08" })
+}
+
+############################################
 # CloudWatch 대시보드 (인프라 모니터링 탭 백업 뷰)
 ############################################
 

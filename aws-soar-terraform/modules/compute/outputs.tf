@@ -24,6 +24,15 @@ output "alb_dns_name" {
   value = var.enable_alb ? aws_lb.main[0].dns_name : ""
 }
 
+# WAF 차단 -> Security Hub finding 경로(soar 모듈)가 쓴다. 꺼져 있으면 빈 문자열.
+output "waf_web_acl_name" {
+  value = var.enable_alb && var.enable_waf ? aws_wafv2_web_acl.main[0].name : ""
+}
+
+output "waf_web_acl_arn" {
+  value = var.enable_alb && var.enable_waf ? aws_wafv2_web_acl.main[0].arn : ""
+}
+
 output "ecr_repository_url" { value = aws_ecr_repository.app.repository_url }
 
 output "db_secret_name" { value = aws_secretsmanager_secret.db.name }

@@ -105,6 +105,12 @@ module "soar" {
 
   monitored_instances = module.compute.monitored_instances
 
+  # WAF 차단 -> Security Hub finding (SEC-08). count 조건은 plan 시점에 확정되는 bool 로만 준다.
+  enable_waf_finding        = var.enable_alb && var.enable_waf && var.enable_security_hub
+  waf_web_acl_name          = module.compute.waf_web_acl_name
+  waf_web_acl_arn           = module.compute.waf_web_acl_arn
+  waf_block_alarm_threshold = var.waf_block_alarm_threshold
+
   tags = local.common_tags
 }
 

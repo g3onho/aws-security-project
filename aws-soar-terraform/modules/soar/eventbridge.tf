@@ -3,6 +3,7 @@
 #  ① GuardDuty finding      -> correlator  (상관분석)
 #  ② GuardDuty finding      -> asr_trigger (IAM 키 노출 등 자동조치 판단)
 #  ③ Security Hub finding    -> asr_trigger (SG 노출 등 자동조치 판단)
+#  ④ WAF 차단 알람(ALARM)    -> waf_finding (Security Hub 로 가져오기, SEC-08)
 ############################################
 
 # ① GuardDuty -> correlator
@@ -111,4 +112,43 @@ resource "aws_lambda_permission" "sh_to_asr" {
   function_name = aws_lambda_function.asr_trigger.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.sh_to_asr[0].arn
+}
+
+# ④ WAF 차단 알람 -> waf_finding
+# ALARM 으로 "바뀌는 순간" 한 번만 온다. 공격이 이어지는 동안은 ALARM 에 머무르므로
+# 사고 1건 = finding 1건.
+resource "aws_cloudwatch_event_rule" "waf_alarm_to_finding" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  name        = "${var.name_prefix}-waf-finding"
+  description = "WAF block alarms to waf_finding Lambda"
+
+  event_pattern = jsonencode({
+    source        = ["aws.cloudwatch"]
+    "detail-type" = ["CloudWatch Alarm State Change"]
+    detail = {
+      alarmName = [{ prefix = "${var.name_prefix}-waf-" }]
+      state     = { value = ["ALARM"] }
+    }
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "waf_alarm_to_finding" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.waf_alarm_to_finding[0].name
+  target_id = "waf-finding"
+  arn       = aws_lambda_function.waf_finding[0].arn
+}
+
+resource "aws_lambda_permission" "waf_alarm_to_finding" {
+  count = var.enable_waf_finding ? 1 : 0
+
+  statement_id  = "AllowWafAlarmFinding"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.waf_finding[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.waf_alarm_to_finding[0].arn
 }
