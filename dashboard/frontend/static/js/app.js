@@ -193,6 +193,7 @@ function responseCard(rows){const pending=rows.filter(e=>e.status==='승인 대�
 const SERVICE_TEXT={UP:'정상',DEGRADED:'저하',DOWN:'장애',UNKNOWN:'확인 불가'};
 const SERVICE_COLOR={UP:'#32d4be',DEGRADED:'#d8ca78',DOWN:'#ef777f',UNKNOWN:'#8fa295'};
 const periodLabel=s=>s==null?'—':s>=3600?`${s/3600}시간`:`${s/60}분`;
+const pct=v=>v==null?'—':v+'%';
 const metricKo=m=>m==='cpu'?'CPU':'메모리';
 function servicePill(status){return `<span class="service-pill" style="color:${SERVICE_COLOR[status]||SERVICE_COLOR.UNKNOWN}"><i style="background:${SERVICE_COLOR[status]||SERVICE_COLOR.UNKNOWN}"></i>${SERVICE_TEXT[status]||status}</span>`;}
 function hostPicker(m){
@@ -200,7 +201,7 @@ function hostPicker(m){
  return `<label class="host-picker"><span>대상 호스트</span><select id="host">${m.hosts.map(h=>`<option value="${esc(h.id)}"${h.id===m.resource?' selected':''}>${esc(h.name)} · ${esc(h.id)} (${esc(h.type)})</option>`).join('')}</select></label>`;
 }
 function breachPanel(m,span){
- if(!m.breaches.length)return `<div class="context-note">선택 구간에 ${m.threshold.cpu}% 임계치를 넘은 표본이 없습니다. CPU 최대 ${m.summary.cpu.max}% · 메모리 최대 ${m.summary.memory.max}%.</div>`;
+ if(!m.breaches.length)return `<div class="context-note">선택 구간에 ${m.threshold.cpu}% 임계치를 넘은 표본이 없습니다. CPU 최대 ${pct(m.summary.cpu.max)} · 메모리 최대 ${pct(m.summary.memory.max)}.</div>`;
  return `<ul class="breach-list">${m.breaches.map(b=>`<li><span class="breach-metric" style="color:${b.metric==='cpu'?'#e7a064':'#ef777f'}">${metricKo(b.metric)}</span><span>${formatAt(b.from,span)} — ${formatAt(b.to,span)} KST</span><b>최고 ${b.peak}%</b><small>표본 ${b.samples}개 · 임계치 ${m.threshold[b.metric]}%</small></li>`).join('')}</ul>`;
 }
 function serviceFlow(svc){
@@ -217,8 +218,8 @@ function hostGrid(m,span){
   const bar=(v,limit)=>`<div class="host-bar"><div class="host-bar-fill" style="width:${Math.min(100,v)}%;background:${v>limit?'#e7a064':'#32d4be'}"></div><i style="left:${limit}%"></i></div>`;
   return `<button data-key="host-${esc(h.resource)}" class="host-card ${sel?'selected':''} ${over?'over':''}" data-host="${esc(h.resource)}" aria-pressed="${sel}">
    <div class="host-card-head"><strong>${esc(h.host.name)}</strong><small>${esc(h.host.type)}</small></div>
-   <div class="host-metric"><span>CPU</span><b>${h.cpu}%</b></div>${bar(h.cpu,h.threshold.cpu)}
-   <div class="host-metric"><span>메모리</span><b>${h.memory}%</b></div>${bar(h.memory,h.threshold.memory)}
+   <div class="host-metric"><span>CPU</span><b>${pct(h.cpu)}</b></div>${bar(h.cpu,h.threshold.cpu)}
+   <div class="host-metric"><span>메모리</span><b>${pct(h.memory)}</b></div>${bar(h.memory,h.threshold.memory)}
    <div class="host-card-foot">${over?`<span class="over-flag">임계 초과 ${over}구간</span>`:'<span>임계 초과 없음</span>'}<small>${esc(h.resource)}</small></div>
   </button>`;}).join('')}</div>`;
 }
@@ -231,8 +232,8 @@ function infrastructure(){
  <section class="panel">${header('운영 중인 서버',`${hosts}대 · 카드를 누르면 아래 상세 차트가 바뀝니다`)}${hostGrid(m,span)}
   <div class="context-note">리전에서 실행 중인 EC2 전체입니다. 실모드에서는 ec2:DescribeInstances 로 목록을 만듭니다.</div></section>
  <div class="infrastructure-grid">
-  <section class="panel">${header(`상세 · ${esc(m.host.name)}`,hostPicker(m))}<div class="metric-large">${canvas('metrics-chart',`CPU ${m.cpu}%, 메모리 ${m.memory}%, 임계치 ${m.threshold.cpu}%`)}</div>
-   <div class="metric-stats"><div><span>CPU 현재</span><b>${m.cpu}%</b></div><div><span>CPU 최대 / 평균</span><b>${m.summary.cpu.max}% / ${m.summary.cpu.avg}%</b></div><div><span>메모리 현재</span><b>${m.memory}%</b></div><div><span>메모리 최대 / 평균</span><b>${m.summary.memory.max}% / ${m.summary.memory.avg}%</b></div></div>
+  <section class="panel">${header(`상세 · ${esc(m.host.name)}`,hostPicker(m))}<div class="metric-large">${canvas('metrics-chart',`CPU ${pct(m.cpu)}, 메모리 ${pct(m.memory)}, 임계치 ${m.threshold.cpu}%`)}</div>
+   <div class="metric-stats"><div><span>CPU 현재</span><b>${pct(m.cpu)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(m.summary.cpu.max)} / ${pct(m.summary.cpu.avg)}</b></div><div><span>메모리 현재</span><b>${pct(m.memory)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(m.summary.memory.max)} / ${pct(m.summary.memory.avg)}</b></div></div>
    <div class="context-note">${esc(m.host.role)} · ${esc(m.resource)} — 선택 구간의 마지막 표본 기준입니다.</div></section>
   <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(m,span)}
    <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>

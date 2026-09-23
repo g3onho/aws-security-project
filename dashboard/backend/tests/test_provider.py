@@ -83,6 +83,23 @@ def test_aws_provider_reads_normalized_metrics_from_aws_clients():
     assert result["hosts"][0]["id"] == "i-1"
 
 
+def test_aws_provider_metrics_match_infrastructure_view_shape():
+    from datetime import datetime, timezone
+    ts = [datetime(2026, 9, 23, h, tzinfo=timezone.utc) for h in (3, 2, 1)]  # CloudWatch 는 최신순
+    cw = type("CW", (), {"get_metric_data": lambda self, **kw: {"MetricDataResults": [
+        {"Id": "cpu", "Timestamps": ts, "Values": [90.0, 95.0, 10.0]},
+        {"Id": "memory", "Timestamps": ts[:1], "Values": [40.0]}]}})()
+    session = FakeSession("ap-northeast-2")
+    session.client = lambda name, **kw: cw if name == "cloudwatch" else FakeSession.client(session, name)
+    m = AwsProvider("ap-northeast-2", session_factory=lambda region: session).metrics({"from": "0", "to": "9999999999999"})
+    assert m["resource"] == "i-1" and m["host"]["name"] == "i-1"
+    assert [p["cpu"] for p in m["points"]] == [10.0, 95.0, 90.0]  # 시간순 정렬
+    assert m["cpu"] == 90.0 and m["memory"] == 40.0
+    assert m["breaches"] == [{"metric": "cpu", "from": ts[1].timestamp() * 1000, "to": ts[0].timestamp() * 1000, "peak": 95.0, "samples": 2}]
+    assert m["summary"]["cpu"] == {"max": 95.0, "avg": 65.0} and m["summary"]["samples"] == 3
+    assert m["series"][0]["resource"] == "i-1"
+
+
 def test_aws_provider_findings_are_cached_and_time_filtered():
     hub = FakeSecurityHub()
     session = FakeSession("ap-northeast-2")

@@ -33,4 +33,24 @@ systemctl enable --now docker
 # 공식 교육용 DVWA 컨테이너. 반드시 관리자 IP / ALB 뒤에서만 노출합니다.
 retry docker run -d --restart unless-stopped -p 80:80 --name dvwa vulnerables/web-dvwa:latest
 
+# CloudWatch Agent — 메모리 지표(SEC-10 알람 · 대시보드 인프라 모니터링).
+# 리전 버킷을 쓴다(글로벌 엔드포인트는 S3 게이트웨이 엔드포인트로 라우팅되지 않음).
+# 모니터링 실패가 본 서비스 부트스트랩을 막지 않도록 전부 || true.
+retry curl -fsSL https://amazoncloudwatch-agent-${region}.s3.${region}.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/cwagent.deb || true
+dpkg -i -E /tmp/cwagent.deb || true
+mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+cat > /opt/aws/amazon-cloudwatch-agent/etc/cw.json <<CWJSON
+{
+  "agent": { "metrics_collection_interval": 60, "run_as_user": "root" },
+  "metrics": {
+    "namespace": "${project}/host",
+    "append_dimensions": { "InstanceId": "\$${aws:InstanceId}" },
+    "metrics_collected": {
+      "mem": { "measurement": [ { "name": "mem_used_percent", "rename": "MemoryUsedPercent" } ] }
+    }
+  }
+}
+CWJSON
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/cw.json || true
+
 echo "web-dvwa user-data done. 외부 0.0.0.0/0 노출 금지 - SG 로 관리자 IP·ALB 만 허용."

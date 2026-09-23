@@ -34,4 +34,24 @@ retry apt-get install -y ca-certificates curl unzip jq
 retry curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
 unzip -oq /tmp/awscliv2.zip -d /tmp && /tmp/aws/install --update
 
+# CloudWatch Agent — 메모리 지표(SEC-10 알람 · 대시보드 인프라 모니터링).
+# 리전 버킷을 쓴다(글로벌 엔드포인트는 S3 게이트웨이 엔드포인트로 라우팅되지 않음).
+# 모니터링 실패가 본 서비스 부트스트랩을 막지 않도록 전부 || true.
+retry curl -fsSL https://amazoncloudwatch-agent-${region}.s3.${region}.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/cwagent.deb || true
+dpkg -i -E /tmp/cwagent.deb || true
+mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+cat > /opt/aws/amazon-cloudwatch-agent/etc/cw.json <<CWJSON
+{
+  "agent": { "metrics_collection_interval": 60, "run_as_user": "root" },
+  "metrics": {
+    "namespace": "${project}/host",
+    "append_dimensions": { "InstanceId": "\$${aws:InstanceId}" },
+    "metrics_collected": {
+      "mem": { "measurement": [ { "name": "mem_used_percent", "rename": "MemoryUsedPercent" } ] }
+    }
+  }
+}
+CWJSON
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/cw.json || true
+
 echo "attacker host ready (base only). 점검 도구는 팀이 승인 후 직접 설치."

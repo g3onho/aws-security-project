@@ -369,6 +369,13 @@ resource "aws_iam_role_policy_attachment" "attacker_ssm" {
   policy_arn = local.ssm_core_policy
 }
 
+# 메모리 지표(CloudWatch Agent PutMetricData) — SEC-10 메모리 알람이 이 호스트도 본다.
+resource "aws_iam_role_policy_attachment" "attacker_cw" {
+  count      = var.enable_attacker_instance ? 1 : 0
+  role       = aws_iam_role.attacker[0].name
+  policy_arn = local.cw_agent_policy
+}
+
 resource "aws_iam_role_policy_attachment" "attacker_scan" {
   count      = var.enable_attacker_instance ? 1 : 0
   role       = aws_iam_role.attacker[0].name

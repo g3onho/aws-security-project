@@ -1,5 +1,6 @@
 """Data-provider boundary with no generated-observation fallback."""
 import hashlib
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -175,34 +176,76 @@ class AwsProvider:
         reservations = self._collect(self._client("ec2"), "describe_instances", "Reservations", **({"Filters": filters} if filters else {}))
         for reservation in reservations:
             for instance in reservation.get("Instances", []):
-                items.append({"id": instance["InstanceId"], "name": instance["InstanceId"],
+                tags = {t.get("Key"): t.get("Value") for t in instance.get("Tags", [])}
+                items.append({"id": instance["InstanceId"], "name": tags.get("Name") or instance["InstanceId"],
+                              "role": tags.get("Role") or "EC2",
                               "region": self.region, "accountId": None,
                               "state": (instance.get("State") or {}).get("Name", "unknown"),
                               "type": instance.get("InstanceType")})
         return {"items": items, "total": len(items), "mode": "live"}
 
+    THRESHOLDS = {"cpu": 80, "memory": 80}
+
+    @staticmethod
+    def _breaches(points, metric, limit):
+        """임계치를 연속으로 넘은 구간을 묶는다."""
+        runs, run = [], None
+        for p in points:
+            v = p.get(metric)
+            if v is not None and v > limit:
+                run = run or {"metric": metric, "from": p["at"], "peak": v, "samples": 0}
+                run.update(to=p["at"], peak=max(run["peak"], v), samples=run["samples"] + 1)
+            elif run:
+                runs.append(run); run = None
+        return runs + ([run] if run else [])
+
+    def _host_view(self, resource, raw, window):
+        points = sorted(raw["points"], key=lambda p: p["at"])
+        stats = {}
+        for metric in ("cpu", "memory"):
+            values = [p[metric] for p in points if p.get(metric) is not None]
+            stats[metric] = {"max": round(max(values), 1) if values else None,
+                             "avg": round(sum(values) / len(values), 1) if values else None,
+                             "last": round(values[-1], 1) if values else None}
+        return {"resource": resource["id"], "region": self.region, "period": raw["period"], "window": window,
+                "host": {"id": resource["id"], "name": resource["name"], "type": resource.get("type"), "role": resource.get("role", "EC2")},
+                "points": points, "cpu": stats["cpu"]["last"], "memory": stats["memory"]["last"],
+                "threshold": dict(self.THRESHOLDS),
+                "breaches": self._breaches(points, "cpu", self.THRESHOLDS["cpu"]) + self._breaches(points, "memory", self.THRESHOLDS["memory"]),
+                "summary": {"samples": len(points), "cpu": {k: stats["cpu"][k] for k in ("max", "avg")},
+                            "memory": {k: stats["memory"][k] for k in ("max", "avg")}}}
+
     def metrics(self, query=None):
+        """인프라 모니터링 화면 형식: 선택 호스트 상세 + 전체 호스트 카드(series)."""
         query = query or {}
-        resources = self.resources(query).get("items", [])
-        points_by_resource = []
-        for resource in resources:
-            raw = self.metric_for(resource, query)
-            points_by_resource.append({"resource": resource["id"], "region": self.region,
-                                       "period": raw["period"], "points": raw["points"]})
-        return {"hosts": resources, "series": points_by_resource, "thresholds": {"cpu": 80, "memory": 80},
+        window = {"from": int(query.get("from", self.as_of - 86400000)), "to": int(query.get("to", self.as_of))}
+        resources = [r for r in self.resources({}).get("items", []) if r["state"] == "running"]
+        series = [self._host_view(r, self.metric_for(r, query), window) for r in resources]
+        base = {"hosts": resources, "series": series, "thresholds": dict(self.THRESHOLDS),
                 "periodSeconds": int(query.get("periodSeconds", 300)), "dataMode": "live"}
+        if not series:
+            return base
+        selected = next((s for s in series if s["resource"] == query.get("resource")), series[0])
+        return {**selected, **base}
 
     def metric_for(self, resource, query=None):
         query = query or {}
         start = datetime.fromtimestamp(int(query.get("from", self.as_of - 86400000)) / 1000, tz=timezone.utc)
         end = datetime.fromtimestamp(int(query.get("to", self.as_of)) / 1000, tz=timezone.utc)
         period = int(query.get("periodSeconds", 300))
-        response = self._client("cloudwatch").get_metric_data(
-            MetricDataQueries=[{"Id": "cpu", "MetricStat": {"Metric": {"Namespace": "AWS/EC2", "MetricName": "CPUUtilization", "Dimensions": [{"Name": "InstanceId", "Value": resource["id"]}]}, "Period": period, "Stat": "Average"}, "ReturnData": True}],
-            StartTime=start, EndTime=end)
-        result = (response.get("MetricDataResults") or [{}])[0]
-        return {"period": period, "points": [{"at": int(ts.timestamp() * 1000), "cpu": value, "memory": None}
-                                                for ts, value in zip(result.get("Timestamps", []), result.get("Values", []))]}
+        dims = [{"Name": "InstanceId", "Value": resource["id"]}]
+        queries = [{"Id": "cpu", "MetricStat": {"Metric": {"Namespace": "AWS/EC2", "MetricName": "CPUUtilization", "Dimensions": dims}, "Period": period, "Stat": "Average"}, "ReturnData": True}]
+        # 메모리는 CloudWatch Agent 가 <NAME_PREFIX>/host 에 올린다(에이전트 없는 호스트는 비어 있음).
+        if os.getenv("NAME_PREFIX"):
+            queries.append({"Id": "memory", "MetricStat": {"Metric": {"Namespace": os.environ["NAME_PREFIX"] + "/host", "MetricName": "MemoryUsedPercent", "Dimensions": dims}, "Period": period, "Stat": "Average"}, "ReturnData": True})
+        response = self._client("cloudwatch").get_metric_data(MetricDataQueries=queries, StartTime=start, EndTime=end)
+        by_at = {}
+        for result in response.get("MetricDataResults") or []:
+            metric = result.get("Id", "cpu")
+            for ts, value in zip(result.get("Timestamps", []), result.get("Values", [])):
+                point = by_at.setdefault(int(ts.timestamp() * 1000), {"cpu": None, "memory": None})
+                point[metric] = value
+        return {"period": period, "points": [{"at": at, **values} for at, values in sorted(by_at.items())]}
 
     def vulnerabilities(self, query=None, events=None):
         rows = []
