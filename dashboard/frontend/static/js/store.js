@@ -1,120 +1,103 @@
-// Compatibility adapter for the unchanged frontend. New integrations use the
-// canonical API; this module alone translates its existing calls to /api/legacy.
-// environment 선택 UI 가 없다. 'production' 고정이면 environment 가 없는 AWS 이벤트가 전부 걸러진다.
-const defaults={view:'overview',region:'ap-northeast-2',resource:'',environment:'',hours:24,severity:'',status:'',source:'',search:'',endOffset:0,page:1,auto:false};
+// Browser client for the schema-v1 API. Presentation changes stay in this layer.
+const defaults={view:'overview',region:'all',resource:'',environment:'',hours:24,severity:'',status:'',source:'',search:'',endOffset:0,page:1,auto:false};
 export const state={...defaults};
-export let config={mode:'live',writeEnabled:false,role:'viewer'};
+export let config={mode:'live',writeEnabled:false,role:'viewer',dataSourceConnected:false};
 export let DATA_AS_OF=0;
 export const summary={};
-let rows=[],regional=[],metric=null,services=null,csrf='',generation=0,sessionEpoch=0,controller,initializing;
+let rows=[],regional=[],metric=null,infra=null,csrf='',generation=0,sessionEpoch=0,controller,initializing;
 const details=new Map();
-const statuses={NEW:'신규',PENDING_APPROVAL:'승인 대기',APPROVED:'승인됨',EXECUTING:'조치 실행 중',PENDING_VERIFICATION:'재검증 대기',VERIFYING:'재검증 중',RESOLVED:'해결',VERIFICATION_FAILED:'재검증 실패',EXECUTION_FAILED:'실행 실패'};
-const executionLabels={NOT_RUN:'미실행',RUNNING:'실행 중',SUCCEEDED:'성공',FAILED:'실패'};
-const verificationLabels={NOT_RUN:'미실행',CHECKING:'검사 중',PASSED:'통과',FAILED:'실패'};
-const actions=new Set(['approve','cancel','execute','verify']);
+const labels={PENDING_APPROVAL:'승인 대기',APPROVED:'승인됨',CANCELLED:'취소됨',QUEUED:'실행 대기',RUNNING:'조치 실행 중',EXECUTED:'실행 완료',EXECUTION_FAILED:'실행 실패',VERIFY_QUEUED:'재검증 대기',VERIFYING:'재검증 중',VERIFIED:'해결',VERIFICATION_FAILED:'재검증 실패',VERIFICATION_ERROR:'재검증 오류',RECONCILING:'상태 확인 중'};
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function requireContract(valid){if(!valid)throw Error('서버 데이터 형식이 올바르지 않습니다. 새로고침 후 다시 확인해주세요.');}
+const milliseconds=value=>value==null?null:Date.parse(value);
 function normalize(event){
- requireContract(object(event));
- requireContract(['id','title','resource','scenario','region','source','actionState'].every(key=>typeof event[key]==='string'&&event[key].length>0));
- requireContract(['CRITICAL','HIGH','MEDIUM','LOW'].includes(event.severity)&&Object.hasOwn(statuses,event.status));
- requireContract(['AUTO','MANUAL'].includes(event.mode)&&Object.hasOwn(executionLabels,event.execution)&&Object.hasOwn(verificationLabels,event.verification));
- requireContract(Number.isFinite(event.at)&&Number.isInteger(event.version)&&event.version>0&&typeof event.planHash==='string');
- requireContract(typeof event.actionable==='boolean'&&Array.isArray(event.allowedActions)&&event.allowedActions.every(action=>actions.has(action)));
- requireContract(Array.isArray(event.history)&&event.history.every(item=>object(item)&&Number.isFinite(item.at)&&typeof item.text==='string'));
- requireContract(event.before===null||object(event.before));
- return {...event,rawStatus:event.status,rawActionState:event.actionState,rawExecution:event.execution,rawVerification:event.verification,
-  severity:event.severity[0]+event.severity.slice(1).toLowerCase(),status:statuses[event.status],mode:event.mode==='AUTO'?'자동':'수동',
-  execution:executionLabels[event.execution],verification:verificationLabels[event.verification],
-  before:event.before?.value??null,beforeMeasure:event.before,allowedActions:[...event.allowedActions]};
+ requireContract(object(event)&&typeof event.id==='string'&&typeof event.title==='string'&&typeof event.resource==='string'&&typeof event.actionState==='string'&&typeof event.observedAt==='string'&&['CRITICAL','HIGH','MEDIUM','LOW','INFORMATIONAL','UNKNOWN'].includes(event.severity)&&Array.isArray(event.allowedActions));
+ const at=milliseconds(event.observedAt);requireContract(Number.isFinite(at)&&Object.hasOwn(labels,event.actionState));
+ return {...event,at,status:labels[event.actionState],severity:event.severity[0]+event.severity.slice(1).toLowerCase(),sourceIp:null};
 }
-function endpoint(url){
- if(url==='/health'||url.startsWith('/health?'))return url.replace('/health','/api/legacy/health');
- if(url.startsWith('/api/')&&!url.startsWith('/api/auth/')&&!url.startsWith('/api/legacy/'))return url.replace('/api/','/api/legacy/');
- return url;
-}
-function reset(){
- controller?.abort();generation++;sessionEpoch++;initializing=null;csrf='';DATA_AS_OF=0;
- rows=[];regional=[];metric=null;services=null;details.clear();
- for(const key of Object.keys(summary))delete summary[key];
- config={mode:'live',writeEnabled:false,role:'viewer'};Object.assign(state,defaults);
-}
+function reset(){controller?.abort();generation++;sessionEpoch++;initializing=null;csrf='';DATA_AS_OF=0;rows=[];regional=[];metric=null;infra=null;details.clear();for(const key of Object.keys(summary))delete summary[key];config={mode:'live',writeEnabled:false,role:'viewer',dataSourceConnected:false};Object.assign(state,defaults);}
 export async function request(url,options={}){
- const headers=new Headers(options.headers||{});headers.set('Content-Type','application/json');headers.set('X-CSRF-Token',csrf);
- const response=await fetch(endpoint(url),{...options,credentials:'same-origin',headers});
+ const headers=new Headers(options.headers||{});if(options.body)headers.set('Content-Type','application/json');if(csrf)headers.set('X-CSRF-Token',csrf);
+ const response=await fetch(url,{...options,credentials:'same-origin',headers});
  if(response.status===401){reset();location.assign('/login');throw Error('로그인이 필요합니다.');}
- let data;try{data=await response.json();}catch{throw Error('서버 응답을 읽을 수 없습니다. 다시 시도해주세요.');}
- if(!response.ok)throw Error(data?.title||data?.error?.message||'서버 요청에 실패했습니다.');
- return data;
+ let payload;try{payload=await response.json();}catch{throw Error('서버 응답을 읽을 수 없습니다.');}
+ if(!response.ok)throw Error(payload?.title||payload?.error?.message||'서버 요청에 실패했습니다.');
+ return payload;
 }
+function envelope(payload){requireContract(object(payload)&&object(payload.data)&&object(payload.meta)&&payload.meta.schemaVersion==='1');return payload;}
 export function query(){
  const to=Date.now()-state.endOffset*3600000;
- return new URLSearchParams({from:to-state.hours*3600000,to,region:state.region,resource:state.resource||'',environment:state.environment,
-  severity:state.severity.toUpperCase(),status:Object.keys(statuses).find(key=>statuses[key]===state.status)||'',source:state.source,q:state.search,view:state.view});
+ const q=new URLSearchParams({from:new Date(to-state.hours*3600000).toISOString(),to:new Date(to).toISOString()});
+ if(state.region&&state.region!=='all')q.set('region',state.region);
+ if(state.resource)q.set('resource',state.resource);
+ if(state.severity)q.set('severity',state.severity.toUpperCase());
+ const status=Object.keys(labels).find(key=>labels[key]===state.status);if(status)q.set('status',status);
+ return q;
 }
-async function collection(url){const data=await request(url);requireContract(object(data)&&Array.isArray(data.items));return data;}
+async function pages(path,q,signal){
+ const items=[];let cursor=null,meta=null,extra={};
+ do{
+  const params=new URLSearchParams(q);params.set('limit','200');if(cursor)params.set('cursor',cursor);
+  const response=envelope(await request(path+'?'+params,{signal}));
+  requireContract(Array.isArray(response.data.items));items.push(...response.data.items);
+  cursor=response.data.nextCursor||null;meta=response.meta;extra=response.data;
+ }while(cursor);
+ return {items,meta,extra};
+}
 function activeSession(epoch){if(epoch!==sessionEpoch)throw new DOMException('세션이 변경되었습니다.','AbortError');}
+function csvCell(value){let valueText=String(value??'');if(/^[\s]*[=+@-]/.test(valueText))valueText="'"+valueText;return '"'+valueText.replaceAll('"','""')+'"';}
 export const api={
  async init(){
   if(!initializing)initializing=(async()=>{
-   const epoch=sessionEpoch;
-   const session=await request('/api/auth/session');
-   activeSession(epoch);
+   const epoch=sessionEpoch,session=await request('/api/auth/session');activeSession(epoch);
    if(!session?.user){reset();location.assign('/login');throw Error('로그인이 필요합니다.');}
    requireContract(object(session.user)&&typeof session.user.name==='string'&&typeof session.csrfToken==='string');
-   csrf=session.csrfToken;
-   const loaded=await request('/api/config');
-   activeSession(epoch);
-   requireContract(object(loaded)&&loaded.mode==='live'&&typeof loaded.writeEnabled==='boolean'&&Number.isFinite(loaded.asOf));
-   requireContract(['viewer','approver','operator'].includes(loaded.role));
-   config={...loaded,user:session.user};DATA_AS_OF=loaded.asOf;
+   csrf=session.csrfToken;config={mode:'live',writeEnabled:false,role:session.user.role,user:session.user,dataSourceConnected:false};
   })().catch(error=>{initializing=null;throw error;});
   return initializing;
  },
  async load(){
-  if(!DATA_AS_OF)await this.init();
-  const current=++generation;controller?.abort();controller=new AbortController();
-  const options={signal:controller.signal},q=query(),mq=new URLSearchParams(q);
-  const wantServices=state.view==='infrastructure';if(wantServices)mq.set('scope','all');
-  const [snapshot,m,health,svc]=await Promise.all([request('/api/snapshot?'+q,options),request('/api/metrics?'+mq,options),request('/health',options),wantServices?request('/api/services?'+q,options):Promise.resolve(null)]);
+  await this.init();const current=++generation;controller?.abort();controller=new AbortController();const signal=controller.signal;
+  const q=query(),regionalQuery=new URLSearchParams(q),metricQuery=new URLSearchParams(q);
+  regionalQuery.delete('region');
+  metricQuery.delete('severity');metricQuery.delete('status');
+  const eventRequest=pages('/api/events',q,signal);
+  const regionalRequest=q.has('region')?pages('/api/events',regionalQuery,signal):eventRequest;
+  const requests=[eventRequest,regionalRequest,request('/api/summary?'+q,{signal}),request('/health',{signal})];
+  if(state.view==='infrastructure')requests.push(request('/api/metrics?'+metricQuery,{signal}),request('/api/infra/status?'+metricQuery,{signal}));
+  const [events,all,summaryResponse,health,metricsResponse,infraResponse]=await Promise.all(requests);
   if(current!==generation)return false;
-  requireContract(object(snapshot)&&Array.isArray(snapshot.items)&&Array.isArray(snapshot.regionalItems)&&object(snapshot.summary));
-  requireContract(object(health)&&object(health.checks));
-  requireContract(m===null||object(m));if(svc!==null)requireContract(object(svc)&&Array.isArray(svc.items));
-  const nextRows=snapshot.items.map(normalize),nextRegional=snapshot.regionalItems.map(normalize);
-  rows=nextRows;regional=nextRegional;metric=m?.resource?m:null;services=svc;
-  Object.assign(summary,snapshot.summary,{snapshot:snapshot.snapshot,asOf:snapshot.asOf,collectedAt:snapshot.collectedAt,health});
-  DATA_AS_OF=snapshot.asOf;
+  const standardSummary=envelope(summaryResponse).data,healthData=envelope(health).data;
+  rows=events.items.map(normalize);regional=all.items.map(normalize);
+  if(state.source){rows=rows.filter(e=>e.source===state.source);regional=regional.filter(e=>e.source===state.source);}
+  if(state.search){const term=state.search.toLocaleLowerCase(),matches=e=>[e.id,e.title,e.resource,e.scenario].some(v=>String(v||'').toLocaleLowerCase().includes(term));rows=rows.filter(matches);regional=regional.filter(matches);}
+  metric=metricsResponse?envelope(metricsResponse).data:null;infra=infraResponse?envelope(infraResponse).data:null;
+  const asOf=milliseconds(events.meta?.asOf)||Date.now();DATA_AS_OF=asOf;
+  const resolved=rows.filter(e=>e.actionState==='VERIFIED').length;
+  Object.assign(summary,{total:state.source||state.search?rows.length:standardSummary.totalEvents,resolved,
+   resolutionRate:rows.length?resolved/rows.length*100:null,asOf,collectedAt:asOf,snapshot:events.meta?.requestId,
+   health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}}});
+  config={...config,dataSourceConnected:healthData.dataSourceConnected,providerRegion:healthData.provider?.region};
   details.clear();for(const event of [...rows,...regional])details.set(event.id,event);
   return true;
  },
  get(id){return details.get(id);},
- async detail(id){const epoch=sessionEpoch,event=normalize(await request('/api/events/'+encodeURIComponent(id)));activeSession(epoch);details.set(id,event);return event;},
- async change(id,action,extra={}){
-  const event=details.get(id)||await this.detail(id);
-  const epoch=sessionEpoch;
-  if(!actions.has(action)||!event.allowedActions.includes(action))throw Error('현재 권한과 상태에서 허용되지 않는 조치입니다. 새로고침해주세요.');
-  const body={...extra,expected_status:event.rawStatus,plan_hash:event.planHash,expected_version:event.version};
-  const result=await request('/api/events/'+encodeURIComponent(id)+'/'+action,{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(body)});
-  activeSession(epoch);const updated=normalize(result.event||result);details.set(id,updated);return result;
- },
- async job(id,jobId){const result=await request('/api/events/'+encodeURIComponent(id)+'/executions/'+encodeURIComponent(jobId));requireContract(object(result)&&object(result.execution)&&['RUNNING','SUCCEEDED','FAILED'].includes(result.execution.status));return result;},
- async scenarios(){return collection('/api/scenarios?'+query());},
- async incidents(){return collection('/api/incidents?'+query());},
+ async detail(id){const event=details.get(id);if(!event)throw Error('현재 조회 범위에서 이벤트를 찾을 수 없습니다.');return event;},
+ async change(){throw Error('조치 공급자가 연결되지 않아 읽기 전용입니다.');},
+ async job(id,jobId){const q=query();q.set('jobId',jobId);const result=envelope(await request('/api/history?'+q)).data;return {execution:result.jobs.find(job=>job.jobId===jobId)};},
  async vulnerabilities({target='',fixableOnly=false}={}){
-  const q=query();if(target)q.set('resource',target);else q.delete('resource');if(fixableOnly)q.set('fixableOnly','1');
-  const data=await collection('/api/vulnerabilities?'+q);requireContract(Array.isArray(data.groups)&&object(data.summary)&&object(data.summary.bySeverity));return data;
+  const q=query();q.delete('status');if(target)q.set('resource',target);
+  if(state.source&&!['Inspector','Trivy'].includes(state.source))return {items:[],total:0};
+  if(state.source)q.set('source',state.source);
+  const result=await pages('/api/vulnerabilities',q);
+  let items=fixableOnly?result.items.filter(item=>item.fixedVersion):result.items;
+  if(state.search){const term=state.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
+  return {items,total:items.length};
  },
- async audit(){return collection('/api/audit');},
- async nacls(){return collection('/api/nacls?'+query());},
+ async history(){const q=query();q.delete('severity');q.delete('status');const result=await pages('/api/history',q);return {items:result.items,jobs:result.extra.jobs||[]};},
  async logout(){controller?.abort();generation++;await request('/api/auth/logout',{method:'POST',body:'{}'});reset();location.assign('/login');},
- async export(){
-  const response=await fetch(endpoint('/api/export/events.csv?'+query()),{credentials:'same-origin'});
-  if(response.status===401){reset();location.assign('/login');throw Error('로그인이 필요합니다.');}
-  if(!response.ok)throw Error('CSV 내보내기에 실패했습니다.');
-  const url=URL.createObjectURL(await response.blob()),anchor=document.createElement('a');anchor.href=url;anchor.download='events.csv';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
- }
+ async export(){const {items}=await pages('/api/events',query());const lines=[['ID','발생 시각','제목','위험도','리전','자원','탐지 소스','상태'],...items.map(e=>[e.id,e.observedAt,e.title,e.severity,e.region,e.resource,e.source,e.actionState])];const csv='\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const anchor=document.createElement('a');anchor.href=url;anchor.download='events.csv';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 };
 export function selectEvents({ignoreRegion=false}={}){return ignoreRegion?regional:rows;}
 export function metricsFor(){return metric;}
-export function servicesOf(){return services;}
+export function servicesOf(){return infra;}

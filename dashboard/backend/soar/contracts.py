@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 from .errors import Problem
 from .history_repository import HistoryRepository
+from .scope import matches as scope_matches
 from .store import encode, now_ms
 
 ACTION_STATES = {
@@ -133,16 +134,6 @@ def event_dto(event, allowed_actions):
             "verification": event.get("verification"), "dataMode": "live"}
 
 
-def scope_matches(event, principal):
-    scope = principal.get("scope") or {}
-    for field, key in (("accountId", "accounts"), ("region", "regions"), ("resource", "resources")):
-        permitted = scope.get(key)
-        value = event.get(field)
-        if permitted is not None and value not in permitted:
-            return False
-    return True
-
-
 def common_matches(row, q, timestamp, *, check_time=True):
     return (all(q.get(key) is None or q[key] == row.get(key) for key in ("region", "resource"))
             and (not check_time or (timestamp is not None and q["from"] <= timestamp < q["to"])))
@@ -240,10 +231,13 @@ class StandardService:
                     "observedAt": iso(self.provider.as_of)}
         if kind == "vulnerabilities":
             rows = []
-            allowed_targets = {event["resource"] for event in events}
             for scan in self.provider.vulnerabilities(q, events)["items"]:
                 observed = scan.get("foundAt")
-                if scan["resource"] not in allowed_targets or not common_matches(scan, q, observed):
+                if not scope_matches({"accountId": scan.get("accountId"), "region": scan.get("region"),
+                                      "resource": scan.get("resource")}, principal) or not common_matches(scan, q, observed):
+                    continue
+                if (q.get("severity") and scan.get("severity") != q["severity"]
+                        or q.get("source") and scan.get("source") != q["source"]):
                     continue
                 rows.append({"id": scan["id"], "cveId": scan["cveId"], "resource": scan["resource"],
                              "package": scan["package"], "severity": scan["severity"], "source": scan["source"],

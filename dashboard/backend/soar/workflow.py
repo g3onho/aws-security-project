@@ -9,6 +9,7 @@ import uuid
 
 from .domain import STATUSES, plan_hash, public_event
 from .errors import Problem
+from .scope import matches as scope_matches
 from .store import encode, now_ms
 
 APPROVABLE = {"NEW", "PENDING_APPROVAL", "EXECUTION_FAILED"}
@@ -41,10 +42,8 @@ class Workflow:
     def _authorize(event, principal, permission):
         if permission not in PERMISSIONS.get(principal["role"], set()):
             raise Problem(403, "이 작업을 수행할 권한이 없습니다.", "FORBIDDEN")
-        for key, field in (("accounts", "accountId"), ("regions", "region"), ("resources", "resource")):
-            allowed = principal["scope"].get(key)
-            if allowed is not None and event.get(field) not in allowed:
-                raise Problem(404, "허용 범위에서 이벤트를 찾을 수 없습니다.", "EVENT_NOT_FOUND")
+        if not scope_matches(event, principal):
+            raise Problem(404, "허용 범위에서 이벤트를 찾을 수 없습니다.", "EVENT_NOT_FOUND")
 
     def authorize_event(self, event, actor, permission="dashboard:read"):
         self._authorize(event, self.principal(actor), permission)

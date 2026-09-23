@@ -39,6 +39,7 @@ class AwsProvider:
         self._session_factory = session_factory
         self._session = None
         self._error = None
+        self.account_id = None
         self._clients = {}
         self._findings_cache = {}
         self._findings_lock = threading.Lock()
@@ -62,7 +63,7 @@ class AwsProvider:
                 kwargs["config"] = Config(connect_timeout=3, read_timeout=3, retries={"max_attempts": 1})
             except ImportError:
                 pass
-            self._session.client("sts", **kwargs).get_caller_identity()
+            self.account_id = self._session.client("sts", **kwargs).get_caller_identity().get("Account")
         except Exception as error:
             self._error = type(error).__name__
             self.connected = False
@@ -179,7 +180,7 @@ class AwsProvider:
                 tags = {t.get("Key"): t.get("Value") for t in instance.get("Tags", [])}
                 items.append({"id": instance["InstanceId"], "name": tags.get("Name") or instance["InstanceId"],
                               "role": tags.get("Role") or "EC2",
-                              "region": self.region, "accountId": None,
+                              "region": self.region, "accountId": self.account_id,
                               "state": (instance.get("State") or {}).get("Name", "unknown"),
                               "type": instance.get("InstanceType")})
         return {"items": items, "total": len(items), "mode": "live"}
@@ -254,9 +255,12 @@ class AwsProvider:
             package = (finding.get("packageVulnerabilityDetails") or {}).get("vulnerablePackages") or [{}]
             package = package[0]
             rows.append({"id": finding.get("findingArn"), "cveId": (finding.get("packageVulnerabilityDetails") or {}).get("vulnerabilityId"),
-                         "resource": finding.get("resourceId"), "package": package.get("name"),
+                          "resource": finding.get("resourceId") or (finding.get("resources") or [{}])[0].get("id"),
+                          "package": package.get("name"),
                          "severity": str(finding.get("severity", "UNKNOWN")).upper(), "source": "Inspector",
-                         "region": finding.get("region") or self.region, "foundAt": self._ms(finding.get("firstObservedAt")),
+                          "region": finding.get("region") or self.region,
+                          "accountId": finding.get("awsAccountId") or self.account_id,
+                          "foundAt": self._ms(finding.get("firstObservedAt")),
                          "fixedVersion": package.get("fixedInVersion"), "installedVersion": package.get("version"),
                          "cvss": ((finding.get("inspectorScoreDetails") or {}).get("adjustedCvss") or {}).get("score")})
         return {"items": rows, "total": len(rows), "mode": "live"}

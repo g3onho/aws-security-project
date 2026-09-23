@@ -1,17 +1,17 @@
 ﻿# 보안 관제 대시보드
 
-실제 데이터만 사용하는 대시보드입니다. 현재 실데이터 수집·조회 공급자는 연결되지 않았습니다. 로그인과 화면 자산은 제공하지만 데이터 API는 `503 DATA_SOURCE_NOT_CONFIGURED`를 반환하며 조치는 비활성 상태입니다. 미연결을 정상 0건으로 표시하지 않습니다.
+실제 데이터만 사용하는 대시보드입니다. 프론트엔드는 표준 API(`/api/events`, `/api/summary`, `/api/metrics`, `/api/vulnerabilities`, `/api/infra/status`, `/api/history`)를 사용합니다. 기본 설정에서는 조회 공급자가 연결되지 않아 데이터 API가 `503 DATA_SOURCE_NOT_CONFIGURED`를 반환합니다. 미연결을 정상 0건으로 표시하지 않으며 조치는 비활성 상태입니다.
 
 ## 구조
 
-- `backend/soar/`: 인증, API, 저장소, 조회·조치 계약, 공급자 경계
-- `frontend/`: 화면과 API 클라이언트
-- `backend/contracts/openapi.yaml`: 표준 API 계약
-- `backend/docs/DASHBOARD_DESIGN_STANDARD.md`: 설계 기준
+- `dashboard/backend/soar/`: 인증, API, 저장소, 조회·조치 계약, 공급자 경계
+- `dashboard/frontend/`: 화면과 API 클라이언트
+- `dashboard/backend/contracts/openapi.yaml`: 표준 API 계약
+- `dashboard/backend/docs/DASHBOARD_DESIGN_STANDARD.md`: 설계 기준
 
 ## 실행
 
-이 폴더에서 PowerShell로 실행합니다.
+`dashboard` 폴더에서 PowerShell로 실행합니다.
 
 ```powershell
 python -m venv backend/.venv
@@ -21,9 +21,9 @@ python -m venv backend/.venv
 ./frontend/start-dashboard.cmd
 ```
 
-실제 AWS 조회를 켜려면 `DATA_PROVIDER=aws`와 `AWS_REGION`을 설정합니다. Security Hub, EC2, CloudWatch CPU, Inspector 결과를 읽기 전용으로 제공하며 변경·실행 API는 비활성화되어 있습니다.
+실제 AWS 조회를 켜려면 `DATA_PROVIDER=aws`와 `AWS_REGION`을 설정합니다. Security Hub, EC2, CloudWatch CPU, Inspector 결과를 읽기 전용으로 제공하며 계정·리전·자원 접근 범위를 적용합니다. 변경·실행 API는 비활성화되어 있습니다.
 
-Terraform 담당 작업과 대시보드 배포 전 점검은 [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)에 구분해 정리했습니다.
+Terraform 담당 작업과 대시보드 배포 전 점검은 [DEPLOYMENT_CHECKLIST.md](dashboard/DEPLOYMENT_CHECKLIST.md)에 구분해 정리했습니다.
 
 접속: http://127.0.0.1:5051 . 계정과 저장소 파일은 `backend/instance/dashboard.sqlite3`입니다. 최초 계정 안내는 `backend/instance/initial-login.txt`에 있습니다.
 

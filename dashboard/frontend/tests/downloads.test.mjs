@@ -4,8 +4,8 @@ import {vulnerabilityCsv} from '../static/js/downloads.js';
 
 test('CVE export includes all filtered rows, quotes data and neutralizes spreadsheet formulas',()=>{
   const data={items:[
-    {target:'image-a',severity:'HIGH',cveId:'CVE-2026-1',package:'pkg,"quoted"',cvss:0},
-    {target:'image-b',severity:'LOW',cveId:'CVE-2026-2',package:'=HYPERLINK("test")'},
+    {resource:'image-a',severity:'HIGH',cveId:'CVE-2026-1',package:'pkg,"quoted"',cvss:0},
+    {resource:'image-b',severity:'LOW',cveId:'CVE-2026-2',package:'=HYPERLINK("test")'},
   ]};
   const csv=vulnerabilityCsv(data);
   assert.ok(csv.startsWith('\uFEFF"심각도"'));
