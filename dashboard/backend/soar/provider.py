@@ -1,5 +1,7 @@
 """Data-provider boundary with no generated-observation fallback."""
 import hashlib
+import threading
+import time
 from datetime import datetime, timezone
 from .errors import Problem
 from .store import now_ms
@@ -37,6 +39,8 @@ class AwsProvider:
         self._session = None
         self._error = None
         self._clients = {}
+        self._findings_cache = {}
+        self._findings_lock = threading.Lock()
         self.regions = (region,)
         self._check()
 
@@ -85,10 +89,13 @@ class AwsProvider:
         return self._clients[name]
 
     @staticmethod
-    def _collect(client, operation, key, **kwargs):
+    def _collect(client, operation, key, max_items=None, **kwargs):
         """Collect all pages while keeping small test clients compatible."""
         try:
-            pages = client.get_paginator(operation).paginate(**kwargs)
+            paginator = client.get_paginator(operation)
+            if max_items:
+                kwargs["PaginationConfig"] = {"MaxItems": max_items, "PageSize": 100}
+            pages = paginator.paginate(**kwargs)
         except (AttributeError, NotImplementedError):
             method = getattr(client, operation)
             return list(method(**kwargs).get(key, []))
@@ -99,21 +106,40 @@ class AwsProvider:
 
     @staticmethod
     def _ms(value):
+        if isinstance(value, str):  # Security Hub(ASFF) 날짜는 ISO 문자열이다.
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if isinstance(value, datetime):
             return int(value.astimezone(timezone.utc).timestamp() * 1000)
         return int(value or 0)
 
+    # GetFindings 한도는 계정당 초당 3회 수준. 화면 한 번에 여러 API 가 이 목록을 쓰고
+    # 30초 자동 새로고침까지 겹치면 TooManyRequests 로 전부 죽는다 — 최신 N건만, 잠깐 캐시.
+    # ponytail: 프로세스 메모리 캐시(60초). 워커를 여러 프로세스로 늘리면 공유 캐시로.
+    FINDINGS_TTL = 60
+    FINDINGS_MAX = 500
+
+    def _findings(self, region):
+        with self._findings_lock:
+            hit = self._findings_cache.get(region)
+            if hit and time.monotonic() - hit[0] < self.FINDINGS_TTL:
+                return hit[1]
+            filters = {"RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}]}
+            if region:
+                filters["Region"] = [{"Value": region, "Comparison": "EQUALS"}]
+            findings = self._collect(self._client("securityhub"), "get_findings", "Findings",
+                                     max_items=self.FINDINGS_MAX, Filters=filters,
+                                     SortCriteria=[{"Field": "UpdatedAt", "SortOrder": "desc"}])
+            self._findings_cache[region] = (time.monotonic(), findings)
+            return findings
+
     def observations(self, query=None):
         """Normalize Security Hub findings into the dashboard read DTO."""
         query = query or {}
-        filters = {}
-        if query.get("region") and query["region"] not in {"all", "global"}:
-            filters["Region"] = [{"Value": query["region"], "Comparison": "EQUALS"}]
+        region = query.get("region") if query.get("region") not in {None, "", "all", "global"} else None
+        findings = self._findings(region)
         if query.get("from"):
-            # Security Hub 는 Start 만 주면 InvalidInputException — End 를 함께 줘야 한다.
-            filters["UpdatedAt"] = [{"Start": datetime.fromtimestamp(int(query["from"]) / 1000, tz=timezone.utc).isoformat(),
-                                     "End": datetime.now(timezone.utc).isoformat()}]
-        findings = self._collect(self._client("securityhub"), "get_findings", "Findings", **({"Filters": filters} if filters else {}))
+            start = int(query["from"])
+            findings = [f for f in findings if self._ms(f.get("UpdatedAt") or f.get("CreatedAt")) >= start]
         rows = []
         for finding in findings:
             finding_id = str(finding.get("Id") or finding.get("ProductArn") or "finding")
