@@ -39,3 +39,5 @@ node --test frontend/tests/*.test.mjs frontend/tests/v2.1-projection-check.mjs
 ```
 
 테스트용 입력은 테스트 폴더 안에서만 사용하며 서버에 적재하거나 화면 데이터로 제공하지 않습니다. 실행 환경·계정·DB·캐시는 Git에 포함하지 않습니다.
+
+Terraform의 대시보드 배포 ZIP은 Git 추적 여부와 관계없이 로컬 `dashboard` 폴더를 읽습니다. 테스트는 `.pytest_cache`를 생성하지 않으며, 배포 ZIP은 가상환경·테스트·실행 데이터·프론트엔드 의존성 폴더를 제외합니다.

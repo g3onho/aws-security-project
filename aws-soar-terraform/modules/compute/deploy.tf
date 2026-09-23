@@ -11,7 +11,7 @@ locals {
   dashboard_src = "${path.module}/../../../dashboard"
 }
 
-# instance/ 는 제외한다 — 비밀번호 평문 파일 · SQLite DB · 세션키가 들어있다.
+# 실행·테스트 산출물은 배포 ZIP에서 제외한다. .gitignore는 archive_file에 적용되지 않는다.
 data "archive_file" "dashboard" {
   count = var.enable_dashboard_deploy ? 1 : 0
 
@@ -24,9 +24,13 @@ data "archive_file" "dashboard" {
     "backend/instance/local.sqlite3",
     "backend/instance/session.key",
     "backend/instance/initial-login.txt",
+    "backend/.venv",
+    "backend/.pytest_cache",
     "backend/__pycache__",
     "backend/app/__pycache__",
+    "backend/soar/__pycache__",
     "backend/tests",
+    "frontend/node_modules",
     "frontend/tests",
   ]
 }
