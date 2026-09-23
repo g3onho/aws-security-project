@@ -1,0 +1,523 @@
+openapi: 3.1.0
+info:
+  title: Local SOAR Dashboard API
+  version: 1.0.0
+  description: >-
+    실데이터용 API 계약. 공급자 연결 전에는 데이터 요청에 503 DATA_SOURCE_NOT_CONFIGURED를 반환한다.
+    /api/auth/session, /api/auth/login, /api/auth/logout은 별도 인증 부트스트랩이다.
+    기존 화면 호환 API는 /api/legacy 아래에 격리한다.
+    보호된 응답에는 Cache-Control no-store를 적용한다.
+    시각은 UTC ISO 8601, 범위는 [from,to), 최대 31일이다.
+    생략한 기간은 현재 서버 시각 직전 24시간이다.
+    cursor는 필터·현재 사용자 권한 범위에 결합한 서명 토큰이다.
+servers:
+  - url: http://127.0.0.1:5051
+security:
+  - session: []
+paths:
+  /health:
+    get:
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: 프로세스 생존 상태. AWS·보호 대상 상태를 뜻하지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HealthEnvelope'}
+  /api/events:
+    get:
+      operationId: listEvents
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/Region'}
+        - {$ref: '#/components/parameters/Resource'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Severity'}
+        - {$ref: '#/components/parameters/Status'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Cursor'}
+      responses:
+        '200':
+          description: 관측 시각 내림차순·ID 오름차순 이벤트 목록
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EventsEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/summary:
+    get:
+      operationId: getSummary
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/Region'}
+        - {$ref: '#/components/parameters/Resource'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Severity'}
+        - {$ref: '#/components/parameters/Status'}
+      responses:
+        '200':
+          description: 페이지와 무관한 필터 전체 집계. 분모가 0이면 해결률 null.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SummaryEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/metrics:
+    get:
+      operationId: getMetrics
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/Region'}
+        - {$ref: '#/components/parameters/Resource'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - name: periodSeconds
+          in: query
+          schema: {type: integer, enum: [60, 300, 3600], default: 300}
+      responses:
+        '200':
+          description: 명시한 집계 주기의 CPU·메모리 관측 시계열. 결측은 null.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MetricsEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/vulnerabilities:
+    get:
+      operationId: listVulnerabilities
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/Region'}
+        - {$ref: '#/components/parameters/Resource'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Severity'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Cursor'}
+        - name: source
+          in: query
+          schema: {type: string, enum: [Inspector, Trivy]}
+      responses:
+        '200':
+          description: 관측 시각 내림차순·ID 오름차순 정규화된 취약점
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VulnerabilitiesEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/infra/status:
+    get:
+      operationId: getInfrastructureStatus
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/Region'}
+        - {$ref: '#/components/parameters/Resource'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200':
+          description: 저장된 상태 증거 조회. 새 점검을 실행하지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InfrastructureEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/history:
+    get:
+      operationId: getHistory
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/Region'}
+        - {$ref: '#/components/parameters/Resource'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/Cursor'}
+        - {name: eventId, in: query, schema: {type: string}}
+        - {name: actionId, in: query, schema: {type: string}}
+        - {name: jobId, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: >-
+            불변 감사 기록과 현재 작업 상태. 지정 jobId의 jobs는 이력 페이지·기간과
+            독립적으로 반환하되 현재 사용자와 리소스 범위를 매번 확인한다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistoryEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/events/{eventId}/approve:
+    post:
+      operationId: approveEvent
+      x-permission: soar:approve
+      parameters:
+        - {$ref: '#/components/parameters/EventId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApproveRequest'}
+      responses:
+        '200':
+          description: 승인 저장. 실행 작업은 생성하지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApprovalEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/events/{eventId}/cancel:
+    post:
+      operationId: cancelApproval
+      x-permission: soar:cancel
+      parameters:
+        - {$ref: '#/components/parameters/EventId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CancelRequest'}
+      responses:
+        '200':
+          description: 실행 접수 전 취소. 실행 중단·인프라 원복과 다르다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CancelEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /execute:
+    post:
+      operationId: executeAction
+      x-permission: soar:execute
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExecuteRequest'}
+      responses:
+        '202':
+          description: 승인한 스냅샷으로 영속 작업 접수
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/QueuedEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /verify:
+    post:
+      operationId: verifyAction
+      x-permission: soar:verify
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VerifyRequest'}
+      responses:
+        '202':
+          description: 실행된 조치에 대해 동일 조건 검증 작업 접수
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VerifyQueuedEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: soar_session}
+  parameters:
+    Region: {name: region, in: query, description: 생략은 허용 전체 리전. global·unknown 허용., schema: {type: string}}
+    Resource: {name: resource, in: query, schema: {type: string}}
+    From: {name: from, in: query, description: 포함 시작 UTC 시각. to와 함께 지정., schema: {type: string, format: date-time}}
+    To: {name: to, in: query, description: 제외 종료 UTC 시각. from과 함께 지정., schema: {type: string, format: date-time}}
+    Severity: {name: severity, in: query, schema: {$ref: '#/components/schemas/Severity'}}
+    Status: {name: status, in: query, schema: {$ref: '#/components/schemas/ActionState'}}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+    Cursor: {name: cursor, in: query, schema: {type: string, maxLength: 4096}}
+    EventId: {name: eventId, in: path, required: true, schema: {type: string}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 200}}
+    CsrfToken: {name: X-CSRF-Token, in: header, required: true, schema: {type: string, minLength: 1}}
+  responses:
+    Error:
+      description: >-
+        400 형식·필터, 401 인증, 403 권한, 404 범위 내 대상 없음,
+        409 상태·버전·멱등성·승인만료, 422 업무 매개변수, 429 호출 제한,
+        503 의존성 불가, 500 내부 오류. 내부 예외·비밀값은 노출하지 않는다.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+  schemas:
+    Meta:
+      type: object
+      required: [requestId, schemaVersion, asOf, partial, warnings]
+      properties:
+        requestId: {type: string, minLength: 1}
+        schemaVersion: {type: string, const: '1'}
+        asOf: {type: string, format: date-time}
+        partial: {type: boolean}
+        warnings: {type: array, items: {type: string}}
+        dataMode: {type: string, const: live}
+    Envelope:
+      type: object
+      required: [data, meta]
+      additionalProperties: false
+      properties:
+        data: {type: object}
+        meta: {$ref: '#/components/schemas/Meta'}
+    ErrorEnvelope:
+      type: object
+      required: [error, meta]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            details: {type: object}
+        meta: {$ref: '#/components/schemas/Meta'}
+    Severity: {type: string, enum: [CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL, UNKNOWN]}
+    ActionState:
+      type: string
+      enum: [PENDING_APPROVAL, APPROVED, CANCELLED, QUEUED, RUNNING, EXECUTED, EXECUTION_FAILED, VERIFY_QUEUED, VERIFYING, VERIFIED, VERIFICATION_FAILED, VERIFICATION_ERROR, RECONCILING]
+    Measurement:
+      type: [object, 'null']
+      properties:
+        value: {type: [number, 'null']}
+        unit: {type: [string, 'null']}
+        observedAt: {type: [string, 'null'], format: date-time}
+        source: {type: string}
+        resource: {type: [string, 'null']}
+        criterionVersion: {type: [string, 'null']}
+    Event:
+      type: object
+      required: [id, title, severity, resource, actionState, version, allowedActions, updatedAt]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        severity: {$ref: '#/components/schemas/Severity'}
+        resource: {type: string}
+        region: {type: string}
+        accountId: {type: string}
+        actionState: {$ref: '#/components/schemas/ActionState'}
+        version: {type: integer, minimum: 1}
+        allowedActions: {type: array, uniqueItems: true, items: {type: string, enum: [approve, cancel, execute, verify]}}
+        updatedAt: {type: string, format: date-time}
+        observedAt: {type: string, format: date-time}
+        expiresAt: {type: [string, 'null'], format: date-time}
+        approvalId: {type: [string, 'null']}
+        actionId: {type: [string, 'null']}
+        beforeState: {$ref: '#/components/schemas/Measurement'}
+        afterState: {$ref: '#/components/schemas/Measurement'}
+    Evidence:
+      type: object
+      required: [eventId, actionId, jobId, actor, source, decision, playbookId, playbookVersion, parametersHash, beforeState, afterState, executionId, verification, createdAt, updatedAt, requestId]
+      properties:
+        eventId: {type: string}
+        actionId: {type: [string, 'null']}
+        jobId: {type: [string, 'null']}
+        actor: {type: [string, 'null']}
+        source: {type: string, enum: [manual, automatic]}
+        decision: {type: string}
+        playbookId: {type: [string, 'null']}
+        playbookVersion: {type: [string, 'null']}
+        parametersHash: {type: string}
+        beforeState: {$ref: '#/components/schemas/Measurement'}
+        afterState: {$ref: '#/components/schemas/Measurement'}
+        executionId: {type: [string, 'null']}
+        verification: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        requestId: {type: [string, 'null']}
+    HealthEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data: {type: object, required: [status, dataSourceConnected], additionalProperties: false, properties: {status: {type: string, const: ok}, dataSourceConnected: {type: boolean}}}
+    EventsEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items: {type: array, items: {$ref: '#/components/schemas/Event'}}
+                nextCursor: {type: [string, 'null']}
+    SummaryEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [totalEvents, bySeverity, pendingApproval, verifiedEvents, resolutionRate, scope]
+              properties:
+                totalEvents: {type: integer, minimum: 0}
+                bySeverity: {type: object, additionalProperties: {type: integer, minimum: 0}}
+                pendingApproval: {type: integer, minimum: 0}
+                verifiedEvents: {type: integer, minimum: 0}
+                resolutionRate: {type: [number, 'null'], minimum: 0, maximum: 100}
+                scope: {type: object}
+    MetricsEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [series, thresholds, periodSeconds]
+              properties:
+                periodSeconds: {type: integer, enum: [60, 300, 3600]}
+                thresholds: {type: object, required: [cpu, memory], properties: {cpu: {type: number}, memory: {type: number}}}
+                series:
+                  type: array
+                  items:
+                    type: object
+                    required: [resource, metric, unit, points]
+                    properties:
+                      resource: {type: string}
+                      metric: {type: string, enum: [cpu, memory]}
+                      unit: {type: string, const: '%'}
+                      points:
+                        type: array
+                        items:
+                          type: object
+                          required: [timestamp, value]
+                          properties:
+                            timestamp: {type: string, format: date-time}
+                            value: {type: [number, 'null']}
+    VulnerabilitiesEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                nextCursor: {type: [string, 'null']}
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, cveId, resource, package, severity, source, observedAt]
+                    properties:
+                      id: {type: string}
+                      cveId: {type: string}
+                      resource: {type: string}
+                      package: {type: string}
+                      severity: {$ref: '#/components/schemas/Severity'}
+                      source: {type: string, enum: [Inspector, Trivy]}
+                      observedAt: {type: string, format: date-time}
+    InfrastructureEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [components, dependencies]
+              properties:
+                dependencies: {type: array, items: {type: object, required: [from, to], properties: {from: {type: string}, to: {type: string}}}}
+                components:
+                  type: array
+                  items:
+                    type: object
+                    required: [id, status, observedAt, source]
+                    properties:
+                      id: {type: string}
+                      status: {type: string, enum: [healthy, degraded, unhealthy, unknown]}
+                      observedAt: {type: [string, 'null'], format: date-time}
+                      source: {type: string}
+    HistoryEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [items, jobs, nextCursor]
+              properties:
+                items: {type: array, items: {$ref: '#/components/schemas/Evidence'}}
+                jobs: {type: array, items: {$ref: '#/components/schemas/Evidence'}}
+                nextCursor: {type: [string, 'null']}
+    ApproveRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, reason, playbookId, parameters]
+      properties:
+        expectedVersion: {type: integer, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 1000}
+        playbookId: {type: string, minLength: 1}
+        parameters: {type: object, description: 서버가 제공한 계획의 매개변수와 정확히 일치해야 함}
+    CancelRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, reason]
+      properties:
+        expectedVersion: {type: integer, minimum: 1}
+        reason: {type: string, minLength: 1, maxLength: 1000}
+    ExecuteRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId, approvalId, expectedVersion]
+      properties:
+        eventId: {type: string, minLength: 1}
+        approvalId: {type: string, minLength: 1}
+        expectedVersion: {type: integer, minimum: 1}
+    VerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [eventId, actionId, expectedVersion]
+      properties:
+        eventId: {type: string, minLength: 1}
+        actionId: {type: string, minLength: 1}
+        expectedVersion: {type: integer, minimum: 1}
+    ActionResponse:
+      type: object
+      required: [eventId, actionId, actionState, version]
+      properties:
+        eventId: {type: string}
+        actionId: {type: string}
+        actionState: {$ref: '#/components/schemas/ActionState'}
+        version: {type: integer, minimum: 1}
+    ApprovalEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              allOf:
+                - {$ref: '#/components/schemas/ActionResponse'}
+                - required: [approvalId, expiresAt]
+                  properties:
+                    actionState: {const: APPROVED}
+                    approvalId: {type: string}
+                    expiresAt: {type: string, format: date-time}
+    CancelEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              allOf:
+                - {$ref: '#/components/schemas/ActionResponse'}
+                - properties: {actionState: {const: CANCELLED}}
+    QueuedEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              allOf:
+                - {$ref: '#/components/schemas/ActionResponse'}
+                - required: [jobId, statusUrl]
+                  properties:
+                    actionState: {const: QUEUED}
+                    jobId: {type: string}
+                    statusUrl: {type: string, pattern: '^/api/history\?jobId='}
+    VerifyQueuedEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              allOf:
+                - {$ref: '#/components/schemas/ActionResponse'}
+                - required: [jobId, statusUrl]
+                  properties:
+                    actionState: {const: VERIFY_QUEUED}
+                    jobId: {type: string}
+                    statusUrl: {type: string, pattern: '^/api/history\?jobId='}

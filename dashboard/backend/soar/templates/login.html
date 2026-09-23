@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AWS Security Operations · 로그인</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/local.css">
+  <script type="module" src="/static/js/login.js"></script>
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="eyebrow">AWS SECURITY OPERATIONS</div>
+    <h1>보안 관제 로그인</h1>
+    <p class="muted">보안 관제 계정으로 로그인하세요.</p>
+    <form id="login-form">
+      <label for="username">아이디</label>
+      <input id="username" autocomplete="username" required maxlength="64">
+      <label for="password">암호</label>
+      <input id="password" type="password" autocomplete="current-password" required maxlength="256">
+      <button class="primary-button" type="submit">로그인</button>
+      <p id="login-error" role="alert"></p>
+    </form>
+    <p class="muted">첫 실행 계정은 backend/instance/initial-login.txt에서 확인하세요.</p>
+  </main>
+</body>
+</html>

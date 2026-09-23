@@ -42,7 +42,7 @@ approx(clampPhi(-95), -80, 1e-6, 'clampPhi(-95)');
 //    this is the standard drag-to-rotate feel, and must match static/js/map.js exactly.
 {
   const R = 380 * 1; // BASE_R * zoom=1, must match map.js's internal BASE_R
-  const dxRight = 50; // simulated rightward mouse delta, px
+  const dxRight = 50; // test rightward mouse delta, px
   const lambda0AfterRightDrag = wrapLon(127 - (dxRight / R) * (180 / Math.PI));
   if (!(lambda0AfterRightDrag < 127)) throw new Error(`FAIL: rightward drag should decrease lambda0 (trackball feel), got ${lambda0AfterRightDrag}`);
   console.log(`ok rightward drag decreases lambda0 (127 -> ${lambda0AfterRightDrag.toFixed(2)}), matching trackball convention in map.js`);
@@ -66,7 +66,7 @@ approx(clampPhi(-95), -80, 1e-6, 'clampPhi(-95)');
 // 8) v2.2.1 bug fix: attack-line arcs are altitude-lifted (up to 8% beyond the flat globe
 //    radius), so a naive front-hemisphere-only clip (cosc>0) lets a lifted point near the
 //    horizon project OUTSIDE the drawn globe circle -- the reported "arrow poking out past the
-//    globe" bug. Simulate the same clip connectionMarkup() now applies and confirm no point of
+//    globe" bug. Apply the same clip connectionMarkup() now uses and confirm no point of
 //    a great-circle arc that grazes the horizon ever lands outside the visible rim.
 {
   const CX = 500, CY = 230, BASE_R = 380, zoom = 1.55; // a zoom where an arc plausibly crosses the horizon

@@ -1,38 +1,35 @@
 from pathlib import Path
+import socket
 import sys
+
 import pytest
-ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT))
-from run import create_app
-from app.auth import create_user
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from soar import create_app
+from soar.auth import create_user
+
 
 @pytest.fixture(autouse=True)
-def forbid_network(monkeypatch):
-    """The backend suite is offline, including live-mode integration tests."""
-    import socket
-    monkeypatch.setattr(socket.socket, 'connect', lambda *args: pytest.fail('Network access is forbidden in backend tests'))
+def no_network(monkeypatch):
+    def reject(*args, **kwargs):
+        raise AssertionError("A disconnected backend must not contact external services")
+    monkeypatch.setattr(socket.socket, "connect", reject)
+
 
 @pytest.fixture
-def demo_app(tmp_path):
-    app=create_app({'DATABASE':str(tmp_path/'db.sqlite3'),'TESTING':True,'USE_DEMO_DATA':True,'WRITE_ENABLED':True})
-    create_user(app.config['DATABASE'],'operator','test-password-123','operator')
-    create_user(app.config['DATABASE'],'reader','test-password-123','viewer')
+def app(tmp_path):
+    app = create_app({"TESTING": True, "DATABASE": str(tmp_path / "dashboard.sqlite3"),
+                      "SECRET_KEY": "unit-test-only", "WRITE_ENABLED": False})
+    create_user(app.extensions["store"], "operator", "test-password-123", "operator")
     return app
 
-def login(app,name='operator'):
-    c=app.test_client();token=c.get('/api/auth/session').json['csrfToken']
-    r=c.post('/api/auth/login',json={'username':name,'password':'test-password-123'},headers={'X-CSRF-Token':token})
-    assert r.status_code==200
-    c.environ_base['HTTP_X_CSRF_TOKEN']=r.json['csrfToken']
-    return c
 
 @pytest.fixture
-def client(demo_app):return login(demo_app)
-
-@pytest.fixture
-def readonly_app(demo_app):
-    demo_app.config['WRITE_ENABLED']=False
-    return demo_app
-
-@pytest.fixture
-def live_app(tmp_path):return create_app({'DATABASE':str(tmp_path/'live.sqlite3'),'TESTING':True,'USE_DEMO_DATA':False})
+def client(app):
+    client = app.test_client()
+    token = client.get('/api/auth/session').json['csrfToken']
+    response = client.post('/api/auth/login', json={"username": "operator", "password": "test-password-123"},
+                           headers={"X-CSRF-Token": token})
+    assert response.status_code == 200
+    client.environ_base['HTTP_X_CSRF_TOKEN'] = response.json['csrfToken']
+    return client

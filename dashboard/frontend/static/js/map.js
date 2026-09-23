@@ -3,7 +3,7 @@
 // as arcs over the globe surface rather than flat lines. Replaces the v2.0 flat "2.5D overview"
 // projection. This is a hand-rolled, dependency-free implementation (no D3/WebGL): country and
 // attack-line paths are clipped to the front hemisphere per-point (not true spherical polygon
-// clipping), which is a deliberate simplification for a demo dashboard — edges right at the
+// clipping), which is a deliberate simplification for the dashboard — edges right at the
 // horizon can show a minor straight-line seam.
 const CX=500, CY=230, BASE_R=380, D2R=Math.PI/180, PHI_LIMIT=80;
 export const ZOOM_MIN=1, ZOOM_MAX=3.2, DEFAULT_ZOOM=1, REGION_ZOOM=2.6; // v2.2.1: default view now 1.0x (user request) -- the globe rim is visible at this zoom, which is expected
@@ -27,13 +27,13 @@ export function project(lon,lat,rotation,zoom,altScale=1){
 
 // Builds a (possibly multi-segment) SVG path from a lon/lat ring, breaking the path wherever it
 // crosses to the far side of the globe (front-only clip, see file header).
-export function ringPath(ring,rotation,zoom){
+export function ringPath(ring,rotation,zoom,close=true){
  let d='',open=false;
  for(const p of ring){
   const [x,y,vis]=project(p[0],p[1],rotation,zoom);
   if(vis>0){d+=(open?'L':'M')+x.toFixed(2)+','+y.toFixed(2);open=true;}else open=false;
  }
- return d?d+'Z':'';
+ return d?(close?d+'Z':d):'';
 }
 export function polygonPath(coords,rotation,zoom){
  return coords.map(ring=>ringPath(ring,rotation,zoom)).join('');
@@ -42,43 +42,82 @@ export function polygonPath(coords,rotation,zoom){
 export function globeArtwork(rotation,zoom){
  const R=BASE_R*zoom;
  const lines=[];
- for(let lat=-60;lat<=60;lat+=30){const pts=[];for(let lon=-180;lon<=180;lon+=4)pts.push([lon,lat]);lines.push(ringPath(pts,rotation,zoom));}
- for(let lon=-150;lon<=150;lon+=30){const pts=[];for(let lat=-85;lat<=85;lat+=4)pts.push([lon,lat]);lines.push(ringPath(pts,rotation,zoom));}
+ // Sample the graticule densely so each parallel and meridian follows the
+ // orthographic sphere smoothly instead of looking like a faceted polygon.
+ for(let lat=-75;lat<=75;lat+=15){const pts=[];for(let lon=-180;lon<=180;lon+=2)pts.push([lon,lat]);lines.push(ringPath(pts,rotation,zoom,false));}
+ for(let lon=-165;lon<=165;lon+=15){const pts=[];for(let lat=-90;lat<=90;lat+=2)pts.push([lon,lat]);lines.push(ringPath(pts,rotation,zoom,false));}
  return {
   base:`<defs><radialGradient id="ocean-depth" cx="43%" cy="36%" r="68%"><stop offset="0" stop-color="#25332e"/><stop offset=".65" stop-color="#19251f"/><stop offset="1" stop-color="#0c1511"/></radialGradient><radialGradient id="surface-shade" cx="43%" cy="36%" r="66%"><stop offset=".25" stop-color="#7fb49a" stop-opacity=".03"/><stop offset=".75" stop-color="#020c07" stop-opacity=".02"/><stop offset="1" stop-color="#020c07" stop-opacity=".55"/></radialGradient><marker id="attack-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#e7a064"/></marker></defs><circle class="globe-rim" cx="${CX}" cy="${CY}" r="${R.toFixed(2)}" fill="url(#ocean-depth)"/><g class="graticule">${lines.filter(Boolean).map(d=>`<path d="${d}"/>`).join('')}</g>`,
   shade:`<circle cx="${CX}" cy="${CY}" r="${R.toFixed(2)}" fill="url(#surface-shade)" pointer-events="none"/>`
  };
 }
 
-export function bindMapInteraction(svg,get,set){
- let drag=null,suppress=false;
- svg.addEventListener('pointerdown',e=>{if(e.button!==0)return;drag={client:[e.clientX,e.clientY],rotation:[...get().rotation],id:e.pointerId,moved:false};});
- svg.addEventListener('pointermove',e=>{
-  if(!drag||e.pointerId!==drag.id)return;
-  if(Math.hypot(e.clientX-drag.client[0],e.clientY-drag.client[1])>4){drag.moved=true;svg.setPointerCapture(e.pointerId);svg.classList.add('dragging');}
-  if(!drag.moved)return;
-  const s=get();const R=BASE_R*s.zoom;
-  const dx=e.clientX-drag.client[0],dy=e.clientY-drag.client[1];
-  // Trackball-style "grab the surface" rotation: the point under the cursor at drag-start keeps
-  // following the cursor (drag right -> the globe surface, and whatever was centered, moves right
-  // with your hand; new content enters from the left) — the standard feel for drag-to-rotate globes.
-  const lambda0=wrapLon(drag.rotation[0]-(dx/R)*(180/Math.PI));
-  const phi0=clampPhi(drag.rotation[1]+(dy/R)*(180/Math.PI));
-  set({zoom:s.zoom,rotation:[lambda0,phi0]});
+// Use the SVG's screen transform: CSS pixels and viewBox units differ on smaller screens.
+export function mapPoint(svg,clientX,clientY){
+ try{
+  const inverse=svg.getScreenCTM()?.inverse();
+  if(inverse)return [inverse.a*clientX+inverse.c*clientY+inverse.e,inverse.b*clientX+inverse.d*clientY+inverse.f];
+ }catch{/* Detached/hidden SVGs can have no invertible screen transform. */}
+ const rect=svg.getBoundingClientRect(),box=svg.viewBox?.baseVal;
+ const [x,y,width,height]=box?.width?[box.x,box.y,box.width,box.height]:(svg.getAttribute('viewBox')||'0 0 1000 460').split(/[\s,]+/).map(Number);
+ if(!rect.width||!rect.height)return [clientX,clientY];
+ const aspect=svg.getAttribute('preserveAspectRatio')||'xMidYMid meet';
+ if(aspect.includes('none'))return [x+(clientX-rect.left)*width/rect.width,y+(clientY-rect.top)*height/rect.height];
+ const scale=(aspect.includes('slice')?Math.max:Math.min)(rect.width/width,rect.height/height);
+ const align=(axis)=>aspect.includes(`${axis}Min`)?0:aspect.includes(`${axis}Max`)?1:.5;
+ return [x+(clientX-rect.left-(rect.width-width*scale)*align('x'))/scale,y+(clientY-rect.top-(rect.height-height*scale)*align('Y'))/scale];
+}
+
+export function bindMapInteraction(svg,get,set,{onInteraction=()=>{}}={}){
+ let drag=null,suppress=null;
+ const view=svg.ownerDocument.defaultView||svg;
+ const listeners=[];
+ const listen=(target,type,handler,options)=>{target.addEventListener(type,handler,options);listeners.push(()=>target.removeEventListener(type,handler,options));};
+ const stop=e=>{
+  if(!drag||(e&&e.pointerId!==undefined&&e.pointerId!==drag.id))return;
+  const previous=drag;drag=null;svg.classList.remove('dragging');
+  if(previous.moved)suppress={id:previous.id,until:Date.now()+750};
+  if(svg.hasPointerCapture?.(previous.id))svg.releasePointerCapture(previous.id);
+ };
+ listen(svg,'pointerdown',e=>{
+  if(e.button!==0||e.isPrimary===false||drag)return;
+  suppress=null;onInteraction();
+  drag={client:[e.clientX,e.clientY],point:mapPoint(svg,e.clientX,e.clientY),rotation:[...get().rotation],zoom:get().zoom,id:e.pointerId,moved:false};
  });
- const stop=e=>{if(!drag)return;suppress=drag.moved;drag=null;svg.classList.remove('dragging');if(svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId);setTimeout(()=>suppress=false,0);};
- svg.addEventListener('pointerup',stop);svg.addEventListener('pointercancel',stop);svg.addEventListener('lostpointercapture',()=>{drag=null;svg.classList.remove('dragging');});
- svg.addEventListener('click',e=>{if(suppress){e.preventDefault();e.stopPropagation();suppress=false;}},true);
- svg.addEventListener('wheel',e=>{
-  e.preventDefault();const s=get();const amount=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?460:1);
-  const z=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,s.zoom*Math.exp(-amount*.0015)));
-  set({zoom:z,rotation:s.rotation});
+ // Window listeners retain a gesture when the cursor briefly leaves the SVG before capture.
+ listen(view,'pointermove',e=>{
+  if(!drag||e.pointerId!==drag.id)return;
+  if(!drag.moved&&Math.hypot(e.clientX-drag.client[0],e.clientY-drag.client[1])>4){
+   drag.moved=true;svg.classList.add('dragging');
+   try{svg.setPointerCapture?.(e.pointerId);}catch{/* Pointer already ended. */}
+  }
+  if(!drag.moved)return;
+  e.preventDefault();
+  const point=mapPoint(svg,e.clientX,e.clientY),R=BASE_R*drag.zoom;
+  const dx=point[0]-drag.point[0],dy=point[1]-drag.point[1];
+  set({zoom:drag.zoom,rotation:[wrapLon(drag.rotation[0]-(dx/R)*(180/Math.PI)),clampPhi(drag.rotation[1]+(dy/R)*(180/Math.PI))]});
  },{passive:false});
- svg.addEventListener('keydown',e=>{
+ listen(view,'pointerup',stop);listen(view,'pointercancel',stop);
+ listen(svg,'lostpointercapture',stop);
+ listen(view,'blur',()=>stop());
+ listen(svg,'click',e=>{
+  // Keep suppression through the following click; clearing it in a zero-delay timer races
+  // delayed synthesized clicks. A new pointerdown resets it, so a new click still works.
+  if(suppress&&e.detail!==0&&Date.now()<=suppress.until&&(e.pointerId===undefined||e.pointerId===suppress.id)){
+   e.preventDefault();e.stopImmediatePropagation();suppress=null;
+  }
+ },true);
+ listen(svg,'wheel',e=>{
+  e.preventDefault();stop();onInteraction();const s=get();
+  const amount=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?svg.getBoundingClientRect().height||460:1);
+  set({zoom:Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,s.zoom*Math.exp(-amount*.0015))),rotation:[...s.rotation]});
+ },{passive:false});
+ listen(svg,'keydown',e=>{
   const arrows={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
-  if(arrows[e.key]){e.preventDefault();const s=get(),d=arrows[e.key],step=6/s.zoom;
+  if(arrows[e.key]){e.preventDefault();stop();onInteraction();const s=get(),d=arrows[e.key],step=6/s.zoom;
    set({zoom:s.zoom,rotation:[wrapLon(s.rotation[0]+d[0]*step),clampPhi(s.rotation[1]-d[1]*step)]});}
  });
+ return {destroy(){stop();listeners.forEach(remove=>remove());suppress=null;}};
 }
 
 // v2.2: point-in-polygon lookup used to find and highlight the country a selected AWS region
@@ -150,6 +189,6 @@ export function connectionMarkup(events,regions,escape,rotation,zoom){
   if(!visibleAny)return '';
   const [ox,oy,ovis]=project(o.lon,o.lat,rotation,zoom);
   const label=ovis>0?`<circle class="attack-origin" cx="${ox.toFixed(2)}" cy="${oy.toFixed(2)}" r="4"/><text class="attack-ip" x="${(ox+8).toFixed(2)}" y="${(oy-10).toFixed(2)}">${o.country?escape(o.country)+' · ':''}${escape(e.sourceIp)}</text>`:'';
-  return `<g class="attack-connection" data-event="${e.id}" role="button" tabindex="0" aria-label="${escape(e.sourceIp)} → ${escape(r.name)}, ${escape(e.id)} 상세"><title>${escape(e.sourceIp)} (${escape(o.city)}, 모의 위치) → ${escape(r.name)} / ${escape(e.id)}</title><path class="attack-hit" d="${d}"/><path class="attack-line" d="${d}" marker-end="url(#attack-arrow)"/><path class="attack-motion" d="${d}"/>${label}</g>`;
+  return `<g class="attack-connection" data-event="${e.id}" role="button" tabindex="0" aria-label="${escape(e.sourceIp)} → ${escape(r.name)}, ${escape(e.id)} 상세"><title>${escape(e.sourceIp)} (${escape(o.city)}) → ${escape(r.name)} / ${escape(e.id)}</title><path class="attack-hit" d="${d}"/><path class="attack-line" d="${d}" marker-end="url(#attack-arrow)"/><path class="attack-motion" d="${d}"/>${label}</g>`;
  }).join('');
 }

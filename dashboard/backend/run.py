@@ -1,127 +1,75 @@
-"""Local dashboard server and persistent simulation worker. No static-only fallback."""
+"""Local CLI. The default server runs its durable worker in the same process."""
 import argparse
 import getpass
+import logging
 import os
 import secrets
-import time
 from pathlib import Path
 
-BACKEND=Path(__file__).resolve().parent
-FRONTEND=BACKEND.parent/'frontend'
+from soar import create_app
+from soar.auth import create_user, set_password
 
 
-def create_app(overrides=None):
-    from flask import Flask,render_template,redirect,session
-    from app.config import Config
-    from app.storage import migrate
-    from app.api import bp
-    from app.api.errors import register
-    from app.auth import install
-    app=Flask(__name__,template_folder=str(FRONTEND/'templates'),static_folder=str(FRONTEND/'static'))
-    app.config.from_object(Config)
-    instance=Path(os.environ.get('DASHBOARD_INSTANCE',str(BACKEND/'instance')))
-    instance.mkdir(parents=True,exist_ok=True)
-    app.config.update(USE_DEMO_DATA=os.environ.get('USE_DEMO_DATA','true').lower()=='true',
-        WRITE_ENABLED=os.environ.get('WRITE_ENABLED','true').lower()=='true',DATABASE=str(instance/'local.sqlite3'),
-        SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SAMESITE='Strict',SESSION_COOKIE_SECURE=False,
-        PERMANENT_SESSION_LIFETIME=3600,MAX_CONTENT_LENGTH=64*1024)
-    app.config.update(overrides or {})
-    key_file=instance/'session.key'
-    if not key_file.exists():
-        try:
-            with key_file.open('x',encoding='utf-8') as f:f.write(secrets.token_hex(32))
-            key_file.chmod(0o600)
-        except FileExistsError:pass
-    app.secret_key=os.environ.get('FLASK_SECRET_KEY') or key_file.read_text(encoding='utf-8')
-    migrate(app.config['DATABASE'])
-    if app.config['USE_DEMO_DATA']:
-        from app.adapters.local import LocalAdapter
-        adapter=LocalAdapter(app.config['DATABASE'])
-    else:
-        from types import SimpleNamespace
-        from app.adapters.live_service import LiveService
-        # 실모드 쓰기는 기본 꺼짐. 실제 AWS 리소스를 바꾸므로 명시적으로 켜야 한다.
-        # 데모 모드와 달리 기본값이 false 인 것이 핵심이다.
-        app.config['WRITE_ENABLED']=(overrides or {}).get('WRITE_ENABLED',os.environ.get('WRITE_ENABLED','false').lower()=='true')
-        adapter=LiveService(SimpleNamespace(**app.config),app.config['DATABASE'])
-    app.extensions['dashboard_adapter']=adapter
-    register(app);install(app);app.register_blueprint(bp)
-
-    @app.get('/')
-    def index():
-        if not session.get('user'):return redirect('/login')
-        return render_template('index.html')
-
-    @app.get('/login')
-    def login():return render_template('login.html')
-
-    @app.get('/health')
-    def health():
-        checks=adapter.health_checks()
-        healthy=bool(checks) and all(value=='ok' for value in checks.values())
-        return dict(status='ok' if healthy else 'degraded',mode=adapter.mode,
-            aws_connected=adapter.mode=='live' and healthy,
-            version=app.config['VERSION'],write_enabled=app.config['WRITE_ENABLED'],checks=checks)
-
-    @app.after_request
-    def headers(response):
-        response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
-            'X-Frame-Options':'DENY','Referrer-Policy':'same-origin',
-            'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"})
-        return response
-    return app
-
-
-def worker(app,once=False):
-    adapter=app.extensions['dashboard_adapter']
-    while True:
-        adapter.work_once()
-        if once:return
-        time.sleep(.5)
-
-
-if __name__=='__main__':
-    parser=argparse.ArgumentParser()
-    parser.add_argument('--port',type=int,default=5050)
-    # 기본은 이 PC 에서만. --lan 을 줘야 같은 공유기 안의 다른 기기가 접속한다.
-    # 인터넷에는 열리지 않는다(공유기 NAT 뒤). 실제 AWS 취약점 목록을 보여주는
-    # 화면이라 기본값을 넓히지 않는다.
-    parser.add_argument('--lan',action='store_true',help='같은 네트워크에 공개')
-    parser.add_argument('--worker',action='store_true')
-    parser.add_argument('--once',action='store_true')
-    parser.add_argument('--init-admin',action='store_true')
-    parser.add_argument('--add-user')
-    parser.add_argument('--set-password',metavar='USER',help='기존 계정의 암호 변경')
-    parser.add_argument('--role',choices=['viewer','operator'],default='viewer')
-    args=parser.parse_args();app=create_app()
-    if args.set_password:
-        from app.auth import set_password
-        set_password(app.config['DATABASE'],args.set_password,
-                     getpass.getpass('새 암호: '))
-        print(f'{args.set_password} 암호를 변경했습니다.')
-    elif args.init_admin or args.add_user:
-        from app.auth import create_user
-        from app.storage import connect
-        if args.init_admin:
-            with connect(app.config['DATABASE']) as db:
-                exists=db.execute('SELECT 1 FROM users LIMIT 1').fetchone()
-            if not exists:
-                password=secrets.token_urlsafe(18)
-                create_user(app.config['DATABASE'],'operator',password,'operator')
-                path=Path(app.config['DATABASE']).parent/'initial-login.txt'
-                path.write_text('주소: http://127.0.0.1:'+str(args.port)+'/login\n아이디: operator\n암호: '+password+'\n',encoding='utf-8')
-                path.chmod(0o600)
-                print('초기 로그인 정보: '+str(path))
-            else:print('계정이 이미 있습니다. 기존 계정을 유지합니다.')
-        else:create_user(app.config['DATABASE'],args.add_user,getpass.getpass('Password (12+ characters): '),args.role)
-    elif args.worker:worker(app,args.once)
+def main():
+    parser = argparse.ArgumentParser(description="Security operations dashboard")
+    parser.add_argument("--host", default=os.getenv("DASHBOARD_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("DASHBOARD_PORT", "5051")))
+    operations = parser.add_mutually_exclusive_group()
+    operations.add_argument("--init-admin", action="store_true")
+    operations.add_argument("--add-user", metavar="NAME")
+    operations.add_argument("--set-password", metavar="NAME")
+    operations.add_argument("--worker", action="store_true")
+    parser.add_argument("--role", choices=["operator", "approver", "viewer"], default="viewer")
+    parser.add_argument("--once", action="store_true", help="Process at most one job (requires --worker)")
+    parser.add_argument("--no-worker", action="store_true", help="Run HTTP only; use a separate --worker process")
+    args = parser.parse_args()
+    if not 1 <= args.port <= 65535:
+        parser.error("--port must be between 1 and 65535")
+    if args.once and not args.worker:
+        parser.error("--once requires --worker")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    app = create_app()
+    store, worker = app.extensions["store"], app.extensions["worker"]
+    if args.init_admin:
+        with store.connect() as db:
+            exists = db.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+        if exists:
+            print("Existing accounts preserved; use --set-password if needed.")
+            return
+        password = secrets.token_urlsafe(20)
+        create_user(store, "operator", password, "operator")
+        path = Path(app.config["DATABASE"]).parent / "initial-login.txt"
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(f"URL: http://127.0.0.1:{args.port}/login\nUsername: operator\nPassword: {password}\n")
+        print(f"Initial login details: {path}")
+    elif args.add_user:
+        create_user(store, args.add_user, getpass.getpass("Password (12-256 characters): "), args.role)
+        print("Account created.")
+    elif args.set_password:
+        set_password(store, args.set_password, getpass.getpass("New password (12-256 characters): "))
+        print("Password updated; previous sessions invalidated.")
+    elif args.worker:
+        app.extensions["provider"].require_ready()
+        if args.once:
+            worker.run_once()
+        else:
+            try:
+                worker._loop()
+            except KeyboardInterrupt:
+                pass
     else:
         from waitress import serve
-        host='0.0.0.0' if args.lan else '127.0.0.1'
-        if args.lan:
-            import socket
-            lan_ip=socket.gethostbyname(socket.gethostname())
-            print(f'LAN dashboard: http://{lan_ip}:{args.port}  (같은 네트워크 전용)',flush=True)
-        else:
-            print(f'Local dashboard: http://127.0.0.1:{args.port}',flush=True)
-        serve(app,host=host,port=args.port,threads=4)
+        if not args.no_worker and app.extensions["provider"].connected:
+            worker.start()
+        print(f"Dashboard: http://127.0.0.1:{args.port}", flush=True)
+        try:
+            serve(app, host=args.host, port=args.port, threads=4)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            worker.stop()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,35 +1,10 @@
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-crash.log
-crash.*.log
-tfplan*
-*.tfplan
-plan.txt
-*.tfvars
-!*.tfvars.example
-backend.hcl
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-.terraformrc
-terraform.rc
-
-# 자격증명 / 키
-*.pem
-*.ppk
-*.key
-.env
-credentials
-
-# Python
-.venv/
-dashboard/backend/instance/
-__pycache__/
+﻿dashboard/backend/instance/
+dashboard/backend/.venv/
+dashboard/backend/__pycache__/
+dashboard/backend/.pytest_cache/
+dashboard/frontend/node_modules/
+dashboard/__pycache__/
 *.pyc
-
-# git 이력 백업 (과거 커밋 전체를 담고 있어 저장소에 넣지 않습니다)
-*.bundle
-aws-security-project/
+.env
+.env.*
+!.env.example

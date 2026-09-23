@@ -1,3 +1,2 @@
-# 서버 코드는 ../backend/ 로 옮겼다. 의존성도 그쪽이 정본이다.
-# 이 파일은 `pip install -r requirements.txt` 를 쓰던 기존 절차를 깨지 않으려고 남겨둔 포인터다.
+# The redesigned backend owns runtime dependencies.
 -r ../backend/requirements.txt
