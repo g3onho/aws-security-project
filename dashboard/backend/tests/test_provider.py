@@ -23,7 +23,17 @@ class FakeSession:
             return type("EC2", (), {"describe_instances": lambda self: {"Reservations": [{"Instances": [{"InstanceId": "i-1", "State": {"Name": "running"}, "InstanceType": "t3.micro"}]}]}})()
         if name == "cloudwatch":
             return type("CloudWatch", (), {"get_metric_data": lambda self, **kwargs: {"MetricDataResults": [{"Timestamps": [], "Values": []}]}})()
+        if name == "securityhub":
+            return FakeSecurityHub()
         raise AssertionError(name)
+
+
+class FakeSecurityHub:
+    def get_findings(self, **kwargs):
+        # 실제 API 와 같은 규칙: UpdatedAt 필터는 Start/End 를 함께 요구한다.
+        for f in kwargs.get("Filters", {}).get("UpdatedAt", []):
+            assert "DateRange" in f or {"Start", "End"} <= f.keys(), f
+        return {"Findings": []}
 
 
 def test_unconfigured_provider_has_no_data_fallback():
@@ -61,3 +71,8 @@ def test_aws_provider_reads_normalized_metrics_from_aws_clients():
     result = provider.metrics({})
     assert result["dataMode"] == "live"
     assert result["hosts"][0]["id"] == "i-1"
+
+
+def test_aws_provider_time_filter_is_accepted_by_security_hub():
+    provider = AwsProvider("ap-northeast-2", session_factory=lambda region: FakeSession(region))
+    assert provider.observations({"from": "1790000000000"}) == []

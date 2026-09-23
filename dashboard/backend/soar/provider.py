@@ -110,7 +110,9 @@ class AwsProvider:
         if query.get("region") and query["region"] not in {"all", "global"}:
             filters["Region"] = [{"Value": query["region"], "Comparison": "EQUALS"}]
         if query.get("from"):
-            filters["UpdatedAt"] = [{"Start": datetime.fromtimestamp(int(query["from"]) / 1000, tz=timezone.utc).isoformat()}]
+            # Security Hub 는 Start 만 주면 InvalidInputException — End 를 함께 줘야 한다.
+            filters["UpdatedAt"] = [{"Start": datetime.fromtimestamp(int(query["from"]) / 1000, tz=timezone.utc).isoformat(),
+                                     "End": datetime.now(timezone.utc).isoformat()}]
         findings = self._collect(self._client("securityhub"), "get_findings", "Findings", **({"Filters": filters} if filters else {}))
         rows = []
         for finding in findings:
