@@ -15,10 +15,10 @@ admin_cidr = ""
 ############################################
 # 비용 토글 — 발표/시연 직전에만 켜세요.
 ############################################
-enable_nat_gateway   = false  # 부트스트랩 시에만 true, 끝나면 false
+enable_nat_gateway   = true   # 끄면 Private EC2(대시보드) 설치 실패
 enable_vpc_endpoints = true   # SSM 접속용 (NAT 대신)
-enable_alb           = false  # SEC-08(WAF) 시연 시 true
-enable_waf           = false  # enable_alb=true 와 함께
+enable_alb           = true   # 대시보드 접속(ALB :8080) + SEC-08(WAF)
+enable_waf           = true   # enable_alb=true 와 함께 (SEC-08)
 enable_dvwa_instance = true
 enable_attacker_instance = false  # 내부 공격 재현 시 true
 

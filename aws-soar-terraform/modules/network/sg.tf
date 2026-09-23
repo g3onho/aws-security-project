@@ -307,3 +307,15 @@ resource "aws_vpc_security_group_ingress_rule" "alb_dashboard" {
   to_port           = 8080
   cidr_ipv4         = var.dashboard_ingress_cidr
 }
+
+# DVWA 전용 포트(8081). 취약 앱이라 관리자 IP 만 — 절대 0.0.0.0/0 금지.
+resource "aws_vpc_security_group_ingress_rule" "alb_dvwa" {
+  count = var.enable_alb ? 1 : 0
+
+  security_group_id = aws_security_group.alb.id
+  description       = "DVWA via ALB - admin IP only"
+  ip_protocol       = "tcp"
+  from_port         = 8081
+  to_port           = 8081
+  cidr_ipv4         = var.admin_cidr
+}

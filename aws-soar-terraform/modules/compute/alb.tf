@@ -134,30 +134,21 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-locals {
-  primary_listener_arn = var.enable_alb ? (
-    local.has_certificate ? aws_lb_listener.https[0].arn : aws_lb_listener.http[0].arn
-  ) : ""
-}
-
-resource "aws_lb_listener_rule" "dvwa" {
+# DVWA 컨테이너는 / 에서 서비스한다. ALB 는 경로 재작성을 못 해서 /dvwa 규칙으로는
+# 404 가 난다 — 대시보드(8080)처럼 포트로 가른다. WAF 는 ALB 단위라 8081 에도 적용된다.
+resource "aws_lb_listener" "dvwa" {
   count = var.enable_alb && var.enable_dvwa_instance ? 1 : 0
 
-  listener_arn = local.primary_listener_arn
-  priority     = 100
+  load_balancer_arn = aws_lb.main[0].arn
+  port              = 8081
+  protocol          = "HTTP"
 
-  action {
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.dvwa[0].arn
   }
 
-  condition {
-    path_pattern {
-      values = ["/dvwa", "/dvwa/*"]
-    }
-  }
-
-  tags = merge(var.tags, { Scenario = "SEC-08" })
+  tags = merge(var.tags, { Name = "${var.name_prefix}-dvwa-listener", Scenario = "SEC-08" })
 }
 
 ############################################

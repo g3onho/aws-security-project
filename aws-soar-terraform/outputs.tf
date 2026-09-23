@@ -18,6 +18,17 @@ output "web_url" {
   )
 }
 
+# apply 출력은 이름순이라 website_urls 가 맨 마지막 줄에 뜬다.
+output "website_urls" {
+  description = "접속 주소 모음 — 대시보드 / DVWA"
+  value = {
+    dashboard = var.enable_alb ? "http://${module.compute.alb_dns_name}:8080" : "ALB 미사용 — dashboard_ssm_port_forward 로 접속"
+    dvwa = var.enable_dvwa_instance ? (
+      var.enable_alb ? "http://${module.compute.alb_dns_name}:8081" : "http://${module.compute.web_dvwa_public_ip}"
+    ) : "DVWA 비활성"
+  }
+}
+
 output "alb_dns_name" {
   value = module.compute.alb_dns_name
 }
@@ -90,7 +101,7 @@ output "target_security_groups" {
 output "cost_warning" {
   description = "현재 켜져 있는 유료 리소스"
   value = join("\n", compact([
-    var.enable_nat_gateway ? "NAT Gateway — 시간당+데이터 처리 과금. 부트스트랩 후 false 로." : "",
+    var.enable_nat_gateway ? "NAT Gateway — 시간당+데이터 처리 과금. (끄면 대시보드 설치 실패)" : "",
     var.enable_vpc_endpoints ? "VPC 인터페이스 엔드포인트 3개 — 엔드포인트당 시간당 과금(NAT 보다 저렴)." : "",
     var.enable_alb ? "ALB — 시간당+LCU 과금." : "",
     var.enable_waf ? "WAFv2 Web ACL — Web ACL/룰/요청 과금." : "",

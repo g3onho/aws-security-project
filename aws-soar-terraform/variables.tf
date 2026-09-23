@@ -85,13 +85,13 @@ variable "admin_cidr" {
 }
 
 ############################################
-# 비용 토글 — 기본값은 전부 '끔'
+# 비용 토글 — NAT/ALB 는 기본 '켬' (끄면 대시보드가 설치·접속되지 않음)
 ############################################
 
 variable "enable_nat_gateway" {
-  description = "NAT Gateway. Private EC2 부트스트랩이 끝나면 false 로 되돌려 apply 하세요."
+  description = "NAT Gateway. 끄면 Private EC2(대시보드·DB)의 user_data 가 apt/pip 에서 멈춰 대시보드가 설치되지 않습니다."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_vpc_endpoints" {
@@ -101,15 +101,15 @@ variable "enable_vpc_endpoints" {
 }
 
 variable "enable_alb" {
-  description = "ALB 생성 여부. true 면 Public 서브넷 2 AZ 가 사용됩니다."
+  description = "ALB 생성 여부. true 면 Public 서브넷 2 AZ 가 사용되고, 대시보드가 ALB :8080 으로 열립니다."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_waf" {
   description = "WAFv2 Web ACL 및 ALB 연결. enable_alb = true 일 때만 의미가 있습니다. (SEC-08)"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_dvwa_instance" {
