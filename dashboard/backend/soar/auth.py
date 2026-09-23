@@ -9,7 +9,7 @@ from .errors import Problem
 from .store import now_ms
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
-MIN_PASSWORD = 12
+MIN_PASSWORD = 8
 DUMMY_HASH = generate_password_hash("no-such-local-account")
 
 
@@ -17,7 +17,7 @@ def create_user(store, name, password, role="operator", scope=None):
     if not isinstance(name, str) or not name.strip() or len(name) > 64 or name != name.strip():
         raise ValueError("User name must contain 1–64 characters without surrounding spaces")
     if not isinstance(password, str) or not MIN_PASSWORD <= len(password) <= 256:
-        raise ValueError("Password must contain 12–256 characters")
+        raise ValueError("Password must contain 8–256 characters")
     if role not in {"operator", "approver", "viewer"}:
         raise ValueError("Role must be operator, approver or viewer")
     password_hash = generate_password_hash(password)
@@ -39,7 +39,7 @@ def create_user(store, name, password, role="operator", scope=None):
 
 def set_password(store, name, password):
     if not isinstance(password, str) or not MIN_PASSWORD <= len(password) <= 256:
-        raise ValueError("Password must contain 12–256 characters")
+        raise ValueError("Password must contain 8–256 characters")
     password_hash = generate_password_hash(password)
     with store.connect(write=True) as db:
         result = db.execute("UPDATE users SET password_hash=?, auth_version=auth_version+1 WHERE name=?",

@@ -3,7 +3,6 @@ import argparse
 import getpass
 import logging
 import os
-import secrets
 from pathlib import Path
 
 from soar import create_app
@@ -36,18 +35,20 @@ def main():
         if exists:
             print("Existing accounts preserved; use --set-password if needed.")
             return
-        password = secrets.token_urlsafe(20)
-        create_user(store, "operator", password, "operator")
+        # 팀 공용 고정 계정. 환경변수로 덮어쓸 수 있다.
+        name = os.getenv("DASHBOARD_ADMIN_USER", "admin")
+        password = os.getenv("DASHBOARD_ADMIN_PASSWORD", "rapa6074!")
+        create_user(store, name, password, "operator")
         path = Path(app.config["DATABASE"]).parent / "initial-login.txt"
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(f"URL: http://127.0.0.1:{args.port}/login\nUsername: operator\nPassword: {password}\n")
+            handle.write(f"URL: http://127.0.0.1:{args.port}/login\nUsername: {name}\nPassword: {password}\n")
         print(f"Initial login details: {path}")
     elif args.add_user:
-        create_user(store, args.add_user, getpass.getpass("Password (12-256 characters): "), args.role)
+        create_user(store, args.add_user, getpass.getpass("Password (8-256 characters): "), args.role)
         print("Account created.")
     elif args.set_password:
-        set_password(store, args.set_password, getpass.getpass("New password (12-256 characters): "))
+        set_password(store, args.set_password, getpass.getpass("New password (8-256 characters): "))
         print("Password updated; previous sessions invalidated.")
     elif args.worker:
         app.extensions["provider"].require_ready()
