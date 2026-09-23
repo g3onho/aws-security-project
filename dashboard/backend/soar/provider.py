@@ -1,5 +1,6 @@
 """Data-provider boundary with no generated-observation fallback."""
 import hashlib
+import logging
 import os
 import threading
 import time
@@ -9,6 +10,16 @@ from .errors import Problem
 from .store import now_ms
 
 THRESHOLDS = {"cpu": 80, "memory": 80}  # 기획서 80% · CloudWatch 알람 임계치와 같게
+
+
+def classify(finding):
+    """탐지 소스(실제 AWS 서비스)와 화면 분류. Security Hub 는 모든 finding 을 모으므로
+    source 를 'Security Hub' 하나로 두면 GuardDuty·설정 점검·WAF 가 구분되지 않는다."""
+    product = finding.get("ProductName") or "Security Hub"
+    if finding.get("GeneratorId") == "soar-waf-alarm":  # soar/lambda_src/waf_finding
+        return {"source": "WAF", "scenario": "SEC-08 웹 공격 차단"}
+    return {"source": product, "scenario": {"GuardDuty": "위협 탐지", "Security Hub": "보안 설정 점검",
+                                            "Config": "설정 규칙 위반", "Inspector": "취약점"}.get(product, product)}
 
 
 def remote_ip(product_fields):
@@ -158,7 +169,15 @@ class AwsProvider:
             hit = self._findings_cache.get(region)
             if hit and time.monotonic() - hit[0] < self.FINDINGS_TTL:
                 return hit[1]
-            filters = {"RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}]}
+            # Inspector CVE 는 취약점 점검 화면(inspector2 직접 조회)에서 본다. 여기 섞이면
+            # ACTIVE 1060건 중 1000건 가까이가 CVE 라 탐지 이벤트가 묻히고 FINDINGS_MAX 에 잘린다(실측 2026-09-23).
+            # 통과해 RESOLVED 된 점검(289건)과 INFORMATIONAL 경고(237건)도 탐지가 아니다 — 남는 것은
+            # 실패한 점검·위협 탐지 약 90건(실측 2026-09-23). 같은 필드의 NOT_EQUALS 는 AND 로 묶인다.
+            filters = {"RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}],
+                       "ProductName": [{"Value": "Inspector", "Comparison": "NOT_EQUALS"}],
+                       "WorkflowStatus": [{"Value": "RESOLVED", "Comparison": "NOT_EQUALS"},
+                                          {"Value": "SUPPRESSED", "Comparison": "NOT_EQUALS"}],
+                       "SeverityLabel": [{"Value": "INFORMATIONAL", "Comparison": "NOT_EQUALS"}]}
             if region:
                 filters["Region"] = [{"Value": region, "Comparison": "EQUALS"}]
             findings = self._collect(self._client("securityhub"), "get_findings", "Findings",
@@ -188,8 +207,8 @@ class AwsProvider:
             event_id = "SH-" + hashlib.sha1(finding_id.encode()).hexdigest()[:16].upper()
             rows.append({
                 "id": event_id, "title": finding.get("Title") or finding.get("Description") or finding_id,
-                "scenario": "SECURITY_HUB", "region": region, "environment": "unknown",
-                "resource": resource_id, "source": "Security Hub", "severity": severity,
+                **classify(finding), "region": region, "environment": "unknown",
+                "resource": resource_id, "severity": severity,
                 "status": "PENDING_APPROVAL", "actionState": "PENDING_APPROVAL", "mode": "MANUAL",
                 "execution": "NOT_RUN", "verification": "NOT_RUN", "at": at, "version": 1,
                 "planHash": hashlib.sha256(finding_id.encode()).hexdigest(), "actionable": False,
@@ -199,6 +218,9 @@ class AwsProvider:
                 "accountId": finding.get("AwsAccountId"),
                 "observedAt": at, "externalFindingId": finding_id,
                 **remote_ip(finding.get("ProductFields")),
+                # GuardDuty create-sample-findings 결과. ASFF 최상위 Sample 필드(실측 2026-09-23).
+                # 샘플 좌표는 (0,0) 가짜 위치라 지도에서 파란 점선으로 구분한다.
+                "sourceSample": finding.get("Sample") is True,
             })
         return rows
 
@@ -287,25 +309,61 @@ class AwsProvider:
     # 화면은 200건씩 페이지를 받는데 페이지마다 Inspector 전체(수천 건, 수십 초)를 다시 긁으면
     # 취약점 탭이 끝없이 "불러오는 중"이다. ACTIVE 만, 5분 캐시(스캔 결과는 자주 안 바뀐다).
     INSPECTOR_TTL = 300
+    # list_findings 는 한 페이지 100건이 상한이라 ACTIVE 4933건 = 51페이지 순차 22초(실측 2026-09-23).
+    # 심각도별로 나눠 병렬로 받으면 가장 큰 묶음(UNTRIAGED 2481건) 시간인 약 11초로 준다.
+    INSPECTOR_SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFORMATIONAL", "UNTRIAGED")
+
+    def _fetch_inspector(self):
+        from concurrent.futures import ThreadPoolExecutor
+        client = self._client("inspector2")
+
+        def part(severity):
+            return self._collect(client, "list_findings", "findings", filterCriteria={
+                "findingStatus": [{"comparison": "EQUALS", "value": "ACTIVE"}],
+                "severity": [{"comparison": "EQUALS", "value": severity}]})
+        with ThreadPoolExecutor(len(self.INSPECTOR_SEVERITIES)) as pool:
+            findings = [f for rows in pool.map(part, self.INSPECTOR_SEVERITIES) for f in rows]
+        self._findings_cache["__inspector__"] = (time.monotonic(), findings)
+        return findings
+
+    def _refresh_inspector(self):
+        try:
+            self._fetch_inspector()
+        except Exception:  # noqa: BLE001 — 백그라운드 갱신 실패는 이전 캐시를 계속 쓴다
+            logging.getLogger(__name__).exception("inspector refresh failed")
+        finally:
+            self._inspector_refreshing = False
+
+    def warm(self):
+        """앱 기동 직후 취약점 목록을 미리 받아 둔다. 첫 사용자가 11초를 기다리지 않게."""
+        if not getattr(self, "_inspector_refreshing", False):
+            self._inspector_refreshing = True
+            threading.Thread(target=self._refresh_inspector, daemon=True).start()
 
     def _inspector_findings(self):
+        # 만료된 캐시는 그대로 돌려주고 뒤에서 갱신한다(stale-while-revalidate).
+        # ponytail: 프로세스 메모리 캐시. 워커를 여러 프로세스로 늘리면 공유 캐시로.
         with self._findings_lock:
             hit = self._findings_cache.get("__inspector__")
-            if hit and time.monotonic() - hit[0] < self.INSPECTOR_TTL:
-                return hit[1]
-            findings = self._collect(self._client("inspector2"), "list_findings", "findings",
-                                     filterCriteria={"findingStatus": [{"comparison": "EQUALS", "value": "ACTIVE"}]})
-            self._findings_cache["__inspector__"] = (time.monotonic(), findings)
-            return findings
+            if hit and time.monotonic() - hit[0] >= self.INSPECTOR_TTL:
+                self.warm()
+            return hit[1] if hit else self._fetch_inspector()
 
     def vulnerabilities(self, query=None, events=None):
         rows = []
         findings = self._inspector_findings()
+        # 화면은 4933건을 200건씩 25페이지로 받는다. 페이지마다 같은 캐시를 다시 가공하지 않는다.
+        memo = getattr(self, "_vuln_rows", None)
+        if memo and memo[0] is findings:
+            return {"items": memo[1], "total": len(memo[1]), "mode": "live"}
         for finding in findings:
             package = (finding.get("packageVulnerabilityDetails") or {}).get("vulnerablePackages") or [{}]
             package = package[0]
+            first = (finding.get("resources") or [{}])[0]
             rows.append({"id": finding.get("findingArn"), "cveId": (finding.get("packageVulnerabilityDetails") or {}).get("vulnerabilityId"),
-                          "resource": finding.get("resourceId") or (finding.get("resources") or [{}])[0].get("id"),
+                          "resource": finding.get("resourceId") or first.get("id"),
+                          # 화면이 i-0581… 대신 서버 이름으로 묶는다. Inspector 가 EC2 태그를 같이 준다.
+                          "resourceName": (first.get("tags") or {}).get("Name"),
                           "package": package.get("name"),
                          "severity": str(finding.get("severity", "UNKNOWN")).upper(), "source": "Inspector",
                           "region": finding.get("region") or self.region,
@@ -313,6 +371,7 @@ class AwsProvider:
                           "foundAt": self._ms(finding.get("firstObservedAt")),
                          "fixedVersion": package.get("fixedInVersion"), "installedVersion": package.get("version"),
                          "cvss": ((finding.get("inspectorScoreDetails") or {}).get("adjustedCvss") or {}).get("score")})
+        self._vuln_rows = (findings, rows)
         return {"items": rows, "total": len(rows), "mode": "live"}
 
     def services(self, query=None, events=None):

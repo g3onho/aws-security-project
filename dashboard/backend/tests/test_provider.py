@@ -1,4 +1,4 @@
-from soar.provider import AwsProvider, UnconfiguredProvider, remote_ip
+from soar.provider import AwsProvider, UnconfiguredProvider, classify, remote_ip
 
 
 class FakeSts:
@@ -41,7 +41,7 @@ class FakeSecurityHub:
             assert "DateRange" in f or {"Start", "End"} <= f.keys(), f
         # 실제 ASFF 처럼 날짜는 문자열이다.
         return {"Findings": [
-            {"Id": "new", "Title": "new", "UpdatedAt": "2026-09-23T02:00:00.000Z"},
+            {"Id": "new", "Title": "new", "UpdatedAt": "2026-09-23T02:00:00.000Z", "Sample": True},
             {"Id": "old", "Title": "old", "UpdatedAt": "2020-01-01T00:00:00Z"},
         ]}
 
@@ -117,22 +117,27 @@ def test_aws_provider_findings_are_cached_and_time_filtered():
     rows = provider.observations({"from": "1790000000000"})  # 2026-09-21
     assert [r["externalFindingId"] for r in rows] == ["new"]
     assert rows[0]["at"] == 1790128800000
+    assert rows[0]["sourceSample"] is True  # ASFF Sample -> 지도 파란 점선
     assert len(provider.observations({})) == 2
     assert hub.calls == 1  # 두 번 조회해도 Security Hub 호출은 한 번
 
 
 def test_aws_provider_inspector_findings_are_active_only_and_cached():
     calls = []
+    # 심각도별 병렬 조회 — 자기 심각도 묶음만 돌려준다(실제 API 의 severity 필터처럼).
     inspector = type("Inspector", (), {"list_findings": lambda self, **kw: calls.append(kw) or {"findings": [
         {"findingArn": "arn:f1", "severity": "HIGH", "resourceId": "i-1",
-         "packageVulnerabilityDetails": {"vulnerabilityId": "CVE-1", "vulnerablePackages": [{"name": "openssl"}]}}]}})()
+         "resources": [{"id": "i-1", "tags": {"Name": "docker-host"}}],
+         "packageVulnerabilityDetails": {"vulnerabilityId": "CVE-1", "vulnerablePackages": [{"name": "openssl"}]}}]
+        if kw["filterCriteria"]["severity"][0]["value"] == "HIGH" else []}})()
     session = FakeSession("ap-northeast-2")
     session.client = lambda name, **kw: inspector if name == "inspector2" else FakeSession.client(session, name)
     provider = AwsProvider("ap-northeast-2", session_factory=lambda region: session)
-    assert provider.vulnerabilities({})["items"][0]["cveId"] == "CVE-1"
+    items = provider.vulnerabilities({})["items"]
+    assert [(v["cveId"], v["resourceName"]) for v in items] == [("CVE-1", "docker-host")]
     provider.vulnerabilities({})  # 화면이 다음 페이지를 요청해도 AWS 는 다시 호출하지 않는다
-    assert len(calls) == 1
-    assert calls[0]["filterCriteria"]["findingStatus"][0]["value"] == "ACTIVE"
+    assert sorted(c["filterCriteria"]["severity"][0]["value"] for c in calls) == sorted(AwsProvider.INSPECTOR_SEVERITIES)
+    assert all(c["filterCriteria"]["findingStatus"][0]["value"] == "ACTIVE" for c in calls)
 
 
 def test_remote_ip_reads_guardduty_slash_keys_for_map_arcs():
@@ -144,3 +149,9 @@ def test_remote_ip_reads_guardduty_slash_keys_for_map_arcs():
     # 좌표가 없으면 지도에 선을 긋지 않는다(NaN 방지). IP 가 없으면 전부 비운다.
     assert remote_ip({base + "ipAddressV4": "198.51.100.7", base + "country/countryName": "NL"})["sourceLocation"] is None
     assert remote_ip({"aws/securityhub/ProductName": "Config"})["sourceIp"] is None
+
+
+def test_classify_names_the_real_detector_instead_of_security_hub():
+    assert classify({"ProductName": "GuardDuty"}) == {"source": "GuardDuty", "scenario": "위협 탐지"}
+    assert classify({"ProductName": "Default", "GeneratorId": "soar-waf-alarm"})["scenario"] == "SEC-08 웹 공격 차단"
+    assert classify({})["source"] == "Security Hub"

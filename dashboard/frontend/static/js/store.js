@@ -13,7 +13,9 @@ const milliseconds=value=>value==null?null:Date.parse(value);
 function normalize(event){
  requireContract(object(event)&&typeof event.id==='string'&&typeof event.title==='string'&&typeof event.resource==='string'&&typeof event.actionState==='string'&&typeof event.observedAt==='string'&&['CRITICAL','HIGH','MEDIUM','LOW','INFORMATIONAL','UNKNOWN'].includes(event.severity)&&Array.isArray(event.allowedActions));
  const at=milliseconds(event.observedAt);requireContract(Number.isFinite(at)&&Object.hasOwn(labels,event.actionState));
- return {...event,at,status:labels[event.actionState],severity:event.severity[0]+event.severity.slice(1).toLowerCase()};
+ // 플레이북이 없는 탐지(actionable:false)는 승인할 수 없다 — '승인 대기' 대신 '탐지됨'.
+ const status=event.actionable===false&&event.actionState==='PENDING_APPROVAL'?'탐지됨':labels[event.actionState];
+ return {...event,at,status,severity:event.severity[0]+event.severity.slice(1).toLowerCase()};
 }
 function reset(){controller?.abort();generation++;sessionEpoch++;initializing=null;csrf='';DATA_AS_OF=0;rows=[];regional=[];metric=null;infra=null;details.clear();for(const key of Object.keys(summary))delete summary[key];config={mode:'live',writeEnabled:false,role:'viewer',dataSourceConnected:false};Object.assign(state,defaults);}
 export async function request(url,options={}){
@@ -90,7 +92,7 @@ export const api={
   if(state.source&&!['Inspector','Trivy'].includes(state.source))return {items:[],total:0};
   if(state.source)q.set('source',state.source);
   const result=await pages('/api/vulnerabilities',q);
-  let items=fixableOnly?result.items.filter(item=>item.fixedVersion):result.items;
+  let items=fixableOnly?result.items.filter(item=>item.fixedVersion&&!/pending/i.test(item.fixedVersion)):result.items; // '(pending)' 은 수정본 미배포
   if(state.search){const term=state.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
   return {items,total:items.length};
  },

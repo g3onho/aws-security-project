@@ -134,7 +134,10 @@ def event_dto(event, allowed_actions):
             "verification": event.get("verification"),
             # 통합 관제 지도의 공격 흐름선. GuardDuty 출발지가 없으면 null.
             "sourceIp": event.get("sourceIp"), "sourceLocation": event.get("sourceLocation"),
-            "geoStatus": event.get("geoStatus"), "dataMode": "live"}
+            "geoStatus": event.get("geoStatus"), "sourceSample": bool(event.get("sourceSample")),
+            # 플레이북이 없는 탐지(대부분의 Security Hub finding)는 승인 대상이 아니다 — 화면이 '탐지됨'으로 표시.
+            "actionable": bool(event.get("actionable")),
+            "dataMode": "live"}
 
 
 def common_matches(row, q, timestamp, *, check_time=True):
@@ -243,6 +246,7 @@ class StandardService:
                         or q.get("source") and scan.get("source") != q["source"]):
                     continue
                 rows.append({"id": scan["id"], "cveId": scan["cveId"], "resource": scan["resource"],
+                             "resourceName": scan.get("resourceName"),
                              "package": scan["package"], "severity": scan["severity"], "source": scan["source"],
                              "region": scan["region"], "observedAt": iso(observed), "fixedVersion": scan.get("fixedVersion"),
                              "installedVersion": scan.get("installedVersion"), "cvss": scan.get("cvss"), "dataMode": "live", "_sortAt": observed})

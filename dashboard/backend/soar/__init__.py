@@ -30,6 +30,8 @@ def create_app(overrides=None):
     store = Store(settings["DATABASE"])
     provider = (AwsProvider(settings["AWS_REGION"])
                 if settings["DATA_PROVIDER"] == "aws" else UnconfiguredProvider())
+    if provider.connected and not settings.get("TESTING"):
+        provider.warm()  # 취약점 목록(Inspector 수천 건)을 기동 직후 미리 받아 둔다
     workflow = Workflow(store, provider, settings["APPROVAL_TTL_SECONDS"])
     worker = Worker(store, provider, settings["WORKER_LEASE_SECONDS"])
     app.extensions.update(store=store, provider=provider, workflow=workflow,

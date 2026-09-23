@@ -163,3 +163,50 @@ html{scrollbar-gutter:stable}
 #load-state:not(.error){pointer-events:none}
 .panel-loading,.panel-error{padding:12px 16px;margin:0;color:#9eb5a5;font-size:12px}
 .panel-error{color:#ef9292}
+/* 지도 공격 흐름선 — GuardDuty 샘플 finding 은 파란 점선으로 실제 공격(주황 실선)과 구분 */
+.attack-connection.sample .attack-line{stroke:#8fb3ff;stroke-dasharray:5 4}
+.attack-connection.sample .attack-origin{fill:#8fb3ff;stroke:#d6e2ff}
+.attack-connection.sample .attack-ip{fill:#b9ccff}
+.attack-connection.sample .attack-motion{stroke:#d6e2ff}
+.attack-connection.sample:focus .attack-line,.attack-connection.sample:hover .attack-line{stroke:#d6e2ff}
+/* 보안 이벤트 표 — 위험도 알약, 분류 태그, 짧은 자원 ID, 탐지 소스 테두리 태그 */
+.sev-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.sev-pill i{width:6px;height:6px;border-radius:50%;display:inline-block}
+.event-link small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:3px}
+.scenario-tag{padding:1px 6px;border-radius:3px;background:#2f3736;color:#c4d7cb;font-size:11px}
+.resource-id{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#9baaa6}
+.source-tag{display:inline-block;padding:2px 7px;border:1px solid;border-radius:4px;font-size:11px;white-space:nowrap}
+/* 취약점 점검 — 요약 카드와 서버·패키지 묶음 */
+.vuln-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 0 14px}
+.vuln-summary div{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:#252929;border:1px solid #353c3b;border-radius:6px}
+.vuln-summary span{font-size:11px;color:#9baaa6}.vuln-summary b{font-size:20px;color:#e7eeec}
+.cve-groups{display:grid;gap:8px;padding:10px 16px}
+.cve-group{background:#1f2424;border:1px solid #353c3b;border-radius:6px}
+.cve-group[open]{border-color:#4a5a55}
+.cve-group summary{display:grid;grid-template-columns:minmax(180px,1.4fr) 70px minmax(200px,2fr) minmax(150px,1fr);gap:14px;align-items:center;padding:12px 14px;cursor:pointer;list-style:none}
+.cve-group summary::-webkit-details-marker{display:none}
+.vg-main{display:flex;flex-direction:column;gap:3px;min-width:0}.vg-main strong{color:#e7eeec;font-size:14px}.vg-main small{color:#9baaa6;font-size:11px}
+.vg-count{text-align:center}.vg-count b{display:block;font-size:20px;color:#e7eeec}.vg-count span{font-size:11px;color:#9baaa6}
+.vg-sev{display:flex;flex-direction:column;gap:6px;min-width:0}
+.sev-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#2f3736}.sev-bar i{display:block;height:100%}
+.vg-chips{display:flex;flex-wrap:wrap;gap:4px}
+.sev-chip{display:inline-flex;gap:4px;align-items:center;padding:1px 7px;border:1px solid;border-radius:999px;font-size:11px;white-space:nowrap}
+.vg-meta{display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:11px;color:#9baaa6}.vg-meta b{color:#e7eeec}
+.fix-state{padding:1px 7px;border-radius:3px;background:#3a3a2a;color:#d8ca78}.fix-state.ok{background:#1b302a;color:#32d4be}.fix-state.wait{background:#2f3736;color:#9baaa6}
+.cve-group .table-scroll{padding:0 14px 6px}.vg-more{padding:0 14px 12px;margin:0;font-size:11px}
+@media(max-width:720px){.cve-group summary{grid-template-columns:1fr auto}.vg-sev,.vg-meta{grid-column:1/-1;align-items:flex-start}}
+/* 패키지 토글 안 — 영향받는 서버 목록 */
+.server-count{color:#e7eeec;font-weight:600}
+.vg-servers{padding:0 14px 10px}.vg-servers h3{margin:0 0 6px;font-size:12px;color:#9baaa6;font-weight:600}
+.vg-servers ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.vg-servers li{display:grid;grid-template-columns:minmax(160px,1.5fr) 1fr 90px auto;gap:10px;align-items:center;padding:6px 10px;background:#252929;border-radius:4px;font-size:12px;color:#c4d7cb}
+@media(max-width:720px){.vg-servers li{grid-template-columns:1fr auto}}
+.vg-servers li .link-button{justify-self:start;text-align:left}
+.cve-hosts{display:flex;flex-wrap:wrap;gap:4px}.cve-hosts span{padding:1px 6px;border-radius:3px;background:#2f3736;color:#c4d7cb;font-size:11px;white-space:nowrap}
+/* 보안 이벤트 — 같은 제목 묶음(펼치면 자원별 줄) */
+.group-caret{display:inline-block;width:14px;color:#9baaa6}
+.group-count{padding:1px 6px;border-radius:3px;background:#1b302a;color:#32d4be;font-size:11px}
+.event-group-row.open{background:#1f2626}
+.event-sub-row td{background:#1b2020;border-top:0}
+.event-sub-row td:nth-child(2){padding-left:30px}
+.event-sub-row .event-link small{color:#7d8a86;word-break:break-all}

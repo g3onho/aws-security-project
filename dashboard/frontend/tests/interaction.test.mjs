@@ -21,6 +21,7 @@ test('canonical events, vulnerabilities, history and actual incident data render
  click('nav [data-view="vulnerabilities"]');
  await until(()=>$('#vulns')?.textContent.includes('CVE-2026-0001'),'vulnerability view did not render');
  assert($('#vulns').textContent.includes('Inspector'));
+ assert($('#vulns .cve-group'),'CVE 는 서버×패키지 묶음으로 보여야 한다');
  click('nav [data-view="incidents"]');
  await until(()=>$('#incidents')?.textContent.includes('SECURITY_HUB'));
  assert($('#incidents').textContent.includes('표준 API에서 제공되지 않습니다'));

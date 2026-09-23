@@ -318,6 +318,10 @@ components:
             country: {type: [string, 'null']}
             city: {type: [string, 'null']}
         geoStatus: {type: [string, 'null'], enum: [located, country-only, unknown, null]}
+        sourceSample: {type: boolean, description: GuardDuty create-sample-findings 로 만든 시연용 finding}
+        actionable: {type: boolean, description: 승인·실행할 플레이북이 있는지. false 면 탐지 기록}
+        source: {type: string, description: 실제 탐지 서비스(GuardDuty·Security Hub·Config·WAF)}
+        scenario: {type: string}
     Evidence:
       type: object
       required: [eventId, actionId, jobId, actor, source, decision, playbookId, playbookVersion, parametersHash, beforeState, afterState, executionId, verification, createdAt, updatedAt, requestId]
@@ -412,6 +416,7 @@ components:
                       id: {type: string}
                       cveId: {type: string}
                       resource: {type: string}
+                      resourceName: {type: [string, 'null'], description: EC2 Name 태그(Inspector 제공)}
                       package: {type: string}
                       severity: {$ref: '#/components/schemas/Severity'}
                       source: {type: string, enum: [Inspector, Trivy]}
