@@ -100,6 +100,15 @@ def test_aws_provider_metrics_match_infrastructure_view_shape():
     assert m["series"][0]["resource"] == "i-1"
 
 
+def test_aws_provider_services_have_fields_the_view_reads():
+    svc = AwsProvider("ap-northeast-2", session_factory=lambda region: FakeSession(region)).services({})
+    assert svc["overall"] == "UP" and svc["intervalSec"] and svc["target"]
+    for item in svc["items"]:
+        for key in ("tier", "port", "latencyMs", "errorRate", "probe", "blockers", "detail", "source"):
+            assert key in item, key
+        assert item["blockers"] == []
+
+
 def test_aws_provider_findings_are_cached_and_time_filtered():
     hub = FakeSecurityHub()
     session = FakeSession("ap-northeast-2")

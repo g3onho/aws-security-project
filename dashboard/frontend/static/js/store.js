@@ -1,6 +1,7 @@
 // Compatibility adapter for the unchanged frontend. New integrations use the
 // canonical API; this module alone translates its existing calls to /api/legacy.
-const defaults={view:'overview',region:'ap-northeast-2',resource:'',environment:'production',hours:24,severity:'',status:'',source:'',search:'',endOffset:0,page:1,auto:false};
+// environment 선택 UI 가 없다. 'production' 고정이면 environment 가 없는 AWS 이벤트가 전부 걸러진다.
+const defaults={view:'overview',region:'ap-northeast-2',resource:'',environment:'',hours:24,severity:'',status:'',source:'',search:'',endOffset:0,page:1,auto:false};
 export const state={...defaults};
 export let config={mode:'live',writeEnabled:false,role:'viewer'};
 export let DATA_AS_OF=0;
