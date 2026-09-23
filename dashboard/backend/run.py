@@ -35,17 +35,18 @@ def main():
         if exists:
             print("Existing accounts preserved; use --set-password if needed.")
             return
-        # 팀 공용 고정 계정. 환경변수로 덮어쓸 수 있다.
-        name = os.getenv("DASHBOARD_ADMIN_USER", "admin")
-        password = os.getenv("DASHBOARD_ADMIN_PASSWORD", "rapa6074!")
-        # 기본 scope 는 accounts=[](아무 계정도 못 봄)라 그대로 두면 모든 화면이 0건이다.
-        # 초기 관리자는 전체 범위(None = 제한 없음)로 만든다.
-        create_user(store, name, password, "operator",
-                    scope={"accounts": None, "regions": None, "resources": None})
+        # 팀 공용 고정 계정: 조치 담당(operator) + 조회 전용(viewer). 환경변수로 덮어쓸 수 있다.
+        # 기본 scope 는 accounts=[](아무 계정도 못 봄)라 그대로 두면 모든 화면이 0건이다 — 전체 범위로 만든다.
+        accounts = [(os.getenv("DASHBOARD_ADMIN_USER", "admin"), os.getenv("DASHBOARD_ADMIN_PASSWORD", "rapa6074!"), "operator"),
+                    (os.getenv("DASHBOARD_VIEWER_USER", "user"), os.getenv("DASHBOARD_VIEWER_PASSWORD", "rapa6074!"), "viewer")]
+        for name, password, role in accounts:
+            create_user(store, name, password, role, scope={"accounts": None, "regions": None, "resources": None})
         path = Path(app.config["DATABASE"]).parent / "initial-login.txt"
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(f"URL: http://127.0.0.1:{args.port}/login\nUsername: {name}\nPassword: {password}\n")
+            handle.write(f"URL: http://127.0.0.1:{args.port}/login\n")
+            for name, password, role in accounts:
+                handle.write(f"{role}: {name} / {password}\n")
         print(f"Initial login details: {path}")
     elif args.add_user:
         create_user(store, args.add_user, getpass.getpass("Password (8-256 characters): "), args.role)

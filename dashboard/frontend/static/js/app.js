@@ -399,7 +399,7 @@ async function refresh(options={}){
   if(serial!==refreshSerial)return;
   box.hidden=true;content.removeAttribute('data-stale');
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
-  $('#session-user').textContent=config.user.name+' · 조회 전용';
+  $('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');
   applyModeLabels();
   $('#worker-state').textContent=summary.health.checks.worker==='ok'?'작업 처리기 정상':'조치 처리기 미연결 또는 중지';
  }catch(e){
