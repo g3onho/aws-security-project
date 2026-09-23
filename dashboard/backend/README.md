@@ -8,13 +8,12 @@ Flask·Waitress와 SQLite를 사용합니다. 패키지는 `soar`입니다. 인�
 
 - `/health`: 프로세스 생존 상태와 `dataSourceConnected: false`
 - `/api/auth/*`: 계정 로그인·로그아웃·세션·CSRF
-- `/api/legacy/config`: 실제 연결 여부, 비활성 조치 상태
-- `/api/legacy/health`: 데이터 소스 미연결·워커 비활성 상태
+- `/api/legacy/*`: 이전 클라이언트 호환용으로만 유지. 현재 화면은 호출하지 않음
 - 표준 데이터 API와 화면 데이터 API: 연결 전 503
 - `DATA_PROVIDER=aws`: `AWS_REGION`에서 AWS 보안·자원·지표 결과를 읽기 전용 조회
 - 쓰기는 기본 비활성화. 환경변수만 켜도 공급자 없이 실행할 수 없음
 
-`standard_api.py`와 `api.py`는 HTTP 경계, `contracts.py`·`readmodel.py`는 조회 계약, `workflow.py`는 승인·멱등성·작업 접수, `worker.py`는 공급자 결과를 저장하는 처리 구조입니다. 실제 수집·실행·재검증 공급자 구현과 범위 검증은 후속 작업입니다.
+`standard_api.py`와 `api.py`는 HTTP 경계, `contracts.py`·`readmodel.py`는 조회 계약, `workflow.py`는 승인·멱등성·작업 접수, `worker.py`는 공급자 결과를 저장하는 처리 구조입니다. `scope.py`의 계정·리전·자원 접근 범위 판정을 표준 API와 남은 legacy 조회에 함께 적용합니다. 실제 조치·재검증 공급자 구현은 후속 작업입니다.
 
 ## 설치·실행
 

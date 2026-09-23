@@ -19,6 +19,6 @@ export const regions = [
   {id:'eu-north-1',name:'스톡홀름',en:'STOCKHOLM',lon:18.07,lat:59.33},
   {id:'sa-east-1',name:'상파울루',en:'SAO PAULO',lon:-46.63,lat:-23.55},
 ];
-export const severityColors = {Critical:'#EF777F',High:'#E7A064',Medium:'#D8CA78',Low:'#32D4BE'};
+export const severityColors = {Critical:'#EF777F',High:'#E7A064',Medium:'#D8CA78',Low:'#32D4BE',Informational:'#85B1D5',Unknown:'#8FA295'};
 export const sources = ['GuardDuty','Security Hub','Config','Inspector','Trivy','CloudWatch'];
-export const statuses = ['신규','승인 대기','조치 실행 중','재검증 대기','재검증 중','해결','재검증 실패'];
+export const statuses = ['승인 대기','승인됨','취소됨','실행 대기','조치 실행 중','실행 완료','실행 실패','재검증 대기','재검증 중','해결','재검증 실패','재검증 오류','상태 확인 중'];

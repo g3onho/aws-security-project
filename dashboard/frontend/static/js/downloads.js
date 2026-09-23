@@ -6,9 +6,9 @@ function cell(value) {
 }
 
 export function vulnerabilityCsv(data,target='') {
-  const columns=['심각도','CVSS','CVE','패키지','설치 버전','수정 버전','대상','계열'];
-  const rows=data.items.filter(item=>!target||item.target===target).map(item=>
-    [item.severity,item.cvss,item.cveId,item.package,item.installedVersion,item.fixedVersion,item.target,item.family]);
+  const columns=['심각도','CVSS','CVE','패키지','설치 버전','수정 버전','대상','출처'];
+  const rows=data.items.filter(item=>!target||item.resource===target).map(item=>
+    [item.severity,item.cvss,item.cveId,item.package,item.installedVersion,item.fixedVersion,item.resource,item.source]);
   return '\uFEFF'+[columns,...rows].map(row=>row.map(cell).join(',')).join('\r\n');
 }
 

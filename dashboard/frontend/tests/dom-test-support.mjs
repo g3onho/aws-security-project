@@ -26,73 +26,48 @@ export async function until(predicate, message = 'condition was not reached') {
   }
 }
 
+const envelope = data => ({data, meta: {schemaVersion: '1', asOf: new Date().toISOString(), requestId: 'fixture'}});
 export function snapshot(title = 'Contract test event') {
-  const event = {
-    id: 'EVT-0003', title, scenario: 'SEC-03', severity: 'HIGH', source: 'Config',
-    region: 'ap-northeast-2', environment: 'production', resource: 'sg-fixture-db',
-    at: NOW - 3600000, status: 'PENDING_APPROVAL', actionState: 'PENDING_APPROVAL', mode: 'MANUAL',
-    execution: 'NOT_RUN', verification: 'NOT_RUN', actionable: true,
-    before: {value: 1}, history: [], sourceIp: null, notification: null,
-    planHash: 'fixture-plan', version: 1, allowedActions: ['approve', 'cancel', 'execute', 'verify'], afterValue: null,
-  };
-  return {
-    items: [event], regionalItems: [event], snapshot: title, asOf: NOW, collectedAt: NOW,
-    summary: {total: 1, resolved: 0, regions: {'ap-northeast-2': 1}},
-  };
+ const observedAt=new Date().toISOString();
+ return envelope({items:[{id:'EVT-0003',title,scenario:'SECURITY_HUB',severity:'HIGH',
+  source:'Security Hub',region:'ap-northeast-2',resource:'i-fixture',
+  observedAt,updatedAt:observedAt,actionState:'PENDING_APPROVAL',version:1,
+  allowedActions:[],beforeState:null,afterState:null,verification:'NOT_RUN'}],nextCursor:null});
 }
-
 export function vulnerabilities(marker = 'initial') {
-  const items = Array.from({length: 75}, (_, index) => ({
-    target: 'ecr/fixture:1', severity: 'HIGH', cveId: `CVE-2026-${String(index + 1).padStart(5, '0')}`,
-    cvss: 7.5, package: 'fixture-package', installedVersion: '1.0', fixedVersion: '1.1', family: 'linux',
-  }));
-  return {
-    items, total: items.length, catalogVersion: marker,
-    summary: {bySeverity: {CRITICAL: 0, HIGH: 75, MEDIUM: 0, LOW: 0}, uniqueCves: 75, fixable: 75, targets: 1},
-    groups: [{target: 'ecr/fixture:1', kind: 'IMAGE', source: 'Trivy', bySeverity: {HIGH: 75},
-      total: 75, fixable: 75, scannedAt: NOW, actionable: true, eventId: 'EVT-0003', eventStatus: 'PENDING_APPROVAL'}],
-  };
+ return envelope({items:[{id:'v-'+marker,cveId:'CVE-2026-0001',resource:'i-fixture',
+  severity:'HIGH',source:'Inspector',region:'ap-northeast-2',
+  observedAt:new Date().toISOString(),package:'fixture-package',cvss:7.5,
+  installedVersion:'1.0',fixedVersion:'1.1'}],nextCursor:null});
 }
-
 export function makeFetchMock() {
-  const calls = [];
-  const holds = new Map();
-  const defaults = {
-    '/api/auth/session': () => ({user: {name: 'operator', role: 'operator'}, csrfToken: 'fixture-csrf'}),
-    '/api/config': () => ({mode: 'live', role: 'operator', writeEnabled: true, asOf: NOW}),
-    '/api/snapshot': () => snapshot(),
-    '/api/metrics': () => ({resource: null}),
-    '/health': () => ({mode: 'live', checks: {worker: 'ok'}, aws_connected: false}),
-    '/static/data/countries.geojson': () => ({features: []}),
-    '/api/scenarios': () => ({items: [], catalogVersion: 'initial'}),
-    '/api/vulnerabilities': () => vulnerabilities(),
-    '/api/audit': () => ({items: []}),
-    '/api/incidents': () => ({items: [], incidentCatalogVersion: 'initial'}),
-  };
-  const response = data => ({ok: true, status: 200, json: async () => structuredClone(data)});
-  return {
-    calls,
-    count: pathname => calls.filter(call => call.pathname === pathname).length,
-    respond(pathname, factory) { defaults[pathname] = typeof factory === 'function' ? factory : () => factory; },
-    hold(pathname) { const pending = []; holds.set(pathname, pending); return pending; },
-    release(pathname) { holds.delete(pathname); },
-    async fetch(url, options = {}) {
-      const parsed = new URL(String(url), 'http://localhost/');
-      parsed.pathname = parsed.pathname === '/api/legacy/health' ? '/health' : parsed.pathname.replace(/^\/api\/legacy\//, '/api/');
-      const call = {pathname: parsed.pathname, url: parsed, options};
-      calls.push(call);
-      if (holds.has(parsed.pathname)) {
-        // Deliberately ignore AbortSignal: correctness must not depend on transport cancellation.
-        return new Promise((resolve, reject) => {
-          holds.get(parsed.pathname).push({
-            ...call, resolve: data => resolve(response(data)), reject,
-          });
-        });
-      }
-      if (!defaults[parsed.pathname]) throw new Error(`Unexpected fixture request: ${parsed.pathname}`);
-      return response(defaults[parsed.pathname](call));
-    },
-  };
+ const calls=[],holds=new Map();
+ const defaults={
+  '/api/auth/session':()=>({user:{name:'operator',role:'operator'},csrfToken:'fixture-csrf'}),
+  '/api/events':()=>snapshot(),
+  '/api/summary':()=>envelope({totalEvents:1,verifiedEvents:0,resolutionRate:0}),
+  '/api/metrics':()=>envelope({series:[],periodSeconds:300,thresholds:{cpu:80,memory:80}}),
+  '/api/infra/status':()=>envelope({components:[],dependencies:[]}),
+  '/api/vulnerabilities':()=>vulnerabilities(),
+  '/api/history':()=>envelope({items:[],jobs:[],nextCursor:null}),
+  '/health':()=>envelope({status:'ok',dataSourceConnected:true}),
+  '/static/data/countries.geojson':()=>({features:[]}),
+ };
+ const response=data=>({ok:true,status:200,json:async()=>structuredClone(data)});
+ return {calls,count:pathname=>calls.filter(call=>call.pathname===pathname).length,
+  respond(pathname,factory){defaults[pathname]=typeof factory==='function'?factory:()=>factory;},
+  hold(pathname){const pending=[];holds.set(pathname,pending);return pending;},
+  release(pathname){holds.delete(pathname);},
+  async fetch(url,options={}){
+   const parsed=new URL(String(url),'http://localhost/');
+   const call={pathname:parsed.pathname,url:parsed,options};calls.push(call);
+   if(holds.has(parsed.pathname))return new Promise((resolve,reject)=>holds.get(parsed.pathname).push({
+    ...call,resolve:data=>resolve(response(data)),reject,
+   }));
+   if(!defaults[parsed.pathname])throw Error('Unexpected fixture request: '+parsed.pathname);
+   return response(defaults[parsed.pathname](call));
+  },
+ };
 }
 
 export function appDOM(fetchMock) {

@@ -1,10 +1,12 @@
 ﻿# 보안 관제 화면
 
-`../backend/`가 HTML과 정적 자산을 제공합니다. `static/js/store.js`는 서버 API를 호출하는 단일 클라이언트이며, 화면 호출을 `/api/legacy/*`에 연결합니다. 인증은 `/api/auth/*`를 사용합니다.
+`../backend/`가 HTML과 정적 자산을 제공합니다. `static/js/store.js`는 표준 API(`/api/events`, `/api/summary`, `/api/metrics`, `/api/vulnerabilities`, `/api/infra/status`, `/api/history`)를 호출합니다. 인증은 `/api/auth/*`를 사용합니다. Store가 `{data, meta}` 응답, UTC ISO 시각, 커서 페이지네이션을 처리합니다.
 
 `static/js/data.js`에는 리전 지리 좌표와 화면용 열거값만 있습니다. 이벤트, 자원 ID, 공격 출발지, 취약점, 지표는 API에서 받아야 합니다.
 
 현재 데이터 소스는 미연결 상태입니다. 로그인 후 오류 안내와 재시도 버튼을 표시하고 가상의 탐지 건수·지표·조치 성공 결과를 만들지 않습니다.
+
+침해사례 탭은 실제 이벤트를 시나리오별로 묶어 보여줍니다. 시나리오 배선·공격 재현 절차·조치 계획 등 표준 API에 없는 정보는 표시하지 않습니다. 이벤트 상세는 표준 목록 응답이 제공하는 필드만 보여줍니다. 조치 공급자는 비활성화되어 화면은 읽기 전용입니다.
 
 ## 실행
 
