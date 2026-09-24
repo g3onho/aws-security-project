@@ -7,10 +7,15 @@ import {ROOT, until, snapshot, makeFetchMock, appDOM} from './dom-test-support.m
 test('refresh keeps previous content on failure and accepts the next canonical response',async t=>{
  const network=makeFetchMock(),{dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
+ // v20.3: GET 은 네트워크 오류 시 백오프 재시도한다. 테스트는 대기 없이 돌린다(app 과 같은 모듈 URL).
+ const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=local-2');
+ client.setTimers({sleep:async()=>{}});
  await until(()=>$('#content').textContent.includes('Contract test event'));
+ const before=network.count('/api/events');
  network.respond('/api/events',()=>{throw Error('fixture unavailable');});
  click('#refresh');
- await until(()=>!$('#load-state').hidden&&$('#load-state').textContent.includes('fixture unavailable'));
+ await until(()=>!$('#load-state').hidden&&$('#load-state').textContent.includes('서버에 연결할 수 없습니다'));
+ assert.equal(network.count('/api/events')-before,1+client.RETRY.retries,'network errors are retried a bounded number of times');
  assert($('#content').textContent.includes('Contract test event'));
  network.respond('/api/events',()=>snapshot('Recovered event'));
  click('#retry');

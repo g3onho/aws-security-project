@@ -1,19 +1,24 @@
 import {globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './map.js?v=local-4';
-import {regions,sources,statuses,severityColors} from './data.js?v=local-1';
-import {state,selectEvents,api as storeApi,config,summary,DATA_AS_OF,metricsFor,servicesOf} from './store.js?v=local-1';
+import {regions,sources,statuses,severityColors} from './data.js?v=local-2';
+import {store} from './store.js?v=local-2';
+// UI 는 Store 의 actions·selectors 만 쓴다(설계 2.1). state 는 읽기 전용 필터 화면 모델이고, 바꿀 때는 setFilters.
+const {actions:storeApi,selectors}=store;
+const state=selectors.filters(),summary=selectors.summary(),config=()=>selectors.config();
+const selectEvents=options=>selectors.events(options),metricsFor=()=>selectors.metrics(),servicesOf=()=>selectors.services();
+const setFilters=patch=>storeApi.setFilters(patch);
 import {patchMarkup} from './rendering.js?v=local-2';
 import {createMarkerLayer,createCameraController} from './map-ui.js?v=local-4';
 import {createNotificationPopover} from './notifications.js?v=local-4';
-import {vulnerabilityCsv,downloadCsv} from './downloads.js?v=local-4';
+import {eventCsv,vulnerabilityCsv,downloadCsv} from './downloads.js?v=local-5';
 import {animateLayout} from './layout-motion.js?v=local-5';
 import {createRequestActivity} from './request-activity.js?v=local-5';
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
 const activity=createRequestActivity($('#network-activity'));
 // Track UI requests without changing either backend adapter or synchronous cache reads.
-const api=Object.fromEntries(Object.entries(storeApi).map(([name,method])=>[
- name,name==='get'?method.bind(storeApi):(...args)=>activity.run(()=>method.apply(storeApi,args)),
-]));
+const REQUEST_ACTIONS=['init','load','detail','change','job','vulnerabilities','history','logout','exportEvents'];
+const api=Object.fromEntries(REQUEST_ACTIONS.map(name=>[name,(...args)=>activity.run(()=>storeApi[name](...args))]));
+api.get=id=>storeApi.get(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const format=(time,short=false)=>time==null?'데이터 없음':new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',...(short?{}:{month:'2-digit',day:'2-digit'}),hour:'2-digit',minute:'2-digit',hour12:false}).format(time);
 // 구간이 하루를 넘으면 시:분만 찍힌 x축은 읽을 수 없다. 창 길이를 보고 날짜를 붙인다.
@@ -136,11 +141,11 @@ function renderAttacks(rows){
 
 function chooseRegion(id,move=true){
  const changed=state.region!==id||state.resource!=='';
- state.region=id;state.resource='';$('#region').value=id;panelOpen=true;
+ setFilters({region:id,resource:''});$('#region').value=id;panelOpen=true;
  updateSelectedCountry(id);if(mapReady)renderCountries();
  if(move){const r=regions.find(r=>r.id===id);animateTo(r?.lon!==undefined?[r.lon,clampPhi(r.lat)]:DEFAULT_ROTATION,r?.lon!==undefined?REGION_ZOOM:DEFAULT_ZOOM);}
  if(!changed){if(state.view==='overview')mapRender(selectEvents());return;}
- vulnTarget='';vulnPage=1;selected.clear();state.page=1;refresh();
+ vulnTarget='';vulnPage=1;selected.clear();setFilters({page:1});refresh();
 }
 function mapRender(rows){
  if(!mapReady)return;
@@ -149,7 +154,7 @@ function mapRender(rows){
  $('#region-panel').hidden=!panelOpen;$('#open-region').hidden=panelOpen;
  const r=regions.find(r=>r.id===state.region);const unresolved=rows.filter(e=>e.status!=='해결').length;
  patchAnimated($('#region-panel'),`<button id="close-region" class="region-close" aria-label="지역 상세 닫기">×</button><div class="region-kicker">SELECTED REGION</div><h3 class="region-title">${r?.en||'ALL REGIONS'}</h3><div class="region-code">${r?.id==='global'?'글로벌 서비스 / 위치 미상':r?`${r.name} · ${r.id}`:'전체 AWS 리전'}</div><div class="region-total"><strong>${String(rows.length).padStart(2,'0')}</strong><span>탐지 이벤트</span></div><div class="region-stats"><span>미해결 <b>${unresolved}</b></span><span>영향 자원 <b>${new Set(rows.map(e=>e.resource)).size}</b></span></div><div class="spark">${canvas('region-spark',`현재 시간 범위의 이벤트 ${rows.length}건 추세`)}</div><div class="region-events">${rows.slice(0,2).map(e=>`<button data-event="${e.id}"><i style="background:${severityColors[e.severity]}"></i>${esc(e.title)}</button>`).join('')||'<span class="muted">데이터 없음</span>'}</div><button class="nongeo-button" data-region="global">글로벌 / 위치 미상 ${cachedAll.filter(e=>e.region==='global').length}건 ↗</button>`);
- const end=DATA_AS_OF-state.endOffset*3600000,start=end-state.hours*3600000,values=Array(12).fill(0);rows.forEach(e=>values[Math.min(11,Math.floor((e.at-start)/(end-start)*12))]++);
+ const end=selectors.asOf()-state.endOffset*3600000,start=end-state.hours*3600000,values=Array(12).fill(0);rows.forEach(e=>values[Math.min(11,Math.floor((e.at-start)/(end-start)*12))]++);
  drawChart('region-spark','line',{labels:values.map((_,i)=>format(start+(i+.5)*(end-start)/12,true)),datasets:[{label:'탐지 건수',data:values,borderColor:'#32d4be',backgroundColor:'#32d4be10',fill:true,pointRadius:0,tension:.35,borderWidth:1.5}]},{scales:{x:{display:false},y:{display:false,beginAtZero:true}}});
 }
 function gauge(value,label,color='#32d4be'){
@@ -180,7 +185,7 @@ function eventGroupRows(g){
   +(open?g.items.map(x=>`<tr data-key="sub-${esc(x.id)}" class="event-sub-row"><td>${badge(x)}</td><td><button class="event-link" data-event="${esc(x.id)}"><span class="resource-id" title="${esc(x.resource)}">${esc(shortResource(x.resource))}</span><small>${esc(x.resource)}</small></button></td><td></td><td>${format(x.at,state.hours<=24)}</td><td>${statusBadge(x.status)}</td></tr>`).join(''):'');
 }
 function table(rows,full=false){
- const groups=eventGroups(rows),total=rows.length,pages=Math.max(1,Math.ceil(groups.length/15));state.page=Math.min(state.page,pages);
+ const groups=eventGroups(rows),total=rows.length,pages=Math.max(1,Math.ceil(groups.length/15));if(state.page>pages)setFilters({page:pages});
  const page=groups.slice((state.page-1)*15,state.page*15);
  const title=state.view==='responses'?'대응 이력':state.view==='vulnerabilities'?'취약점 점검 결과':'최근 보안 이벤트';
  const tools='<button id="export" class="text-button">↓ CSV 내보내기</button>';
@@ -333,9 +338,9 @@ function renderVulnerabilities({reuse=false}={}){
 }
 // CVE 수천 건을 한 줄씩 나열하지 않고 "서버 × 패키지"로 묶는다. 실측(2026-09-23) 4933건 중
 // 대부분이 서버마다 linux-image-aws 하나라, 한 줄 = 한 번의 업데이트로 사라지는 묶음이 된다.
-const SEV_ORDER=['CRITICAL','HIGH','MEDIUM','LOW','INFORMATIONAL','UNTRIAGED'];
-const SEV_KO={CRITICAL:'긴급',HIGH:'높음',MEDIUM:'보통',LOW:'낮음',INFORMATIONAL:'정보',UNTRIAGED:'미분류'};
-const SEV_COLOR={CRITICAL:'#EF777F',HIGH:'#E7A064',MEDIUM:'#D8CA78',LOW:'#32D4BE',INFORMATIONAL:'#85B1D5',UNTRIAGED:'#8FA295'};
+const SEV_ORDER=['CRITICAL','HIGH','MEDIUM','LOW','INFORMATIONAL','UNTRIAGED','UNKNOWN'];
+const SEV_KO={CRITICAL:'긴급',HIGH:'높음',MEDIUM:'보통',LOW:'낮음',INFORMATIONAL:'정보',UNTRIAGED:'미분류',UNKNOWN:'알 수 없음'};
+const SEV_COLOR={CRITICAL:'#EF777F',HIGH:'#E7A064',MEDIUM:'#D8CA78',LOW:'#32D4BE',INFORMATIONAL:'#85B1D5',UNTRIAGED:'#8FA295',UNKNOWN:'#8FA295'};
 const VULN_PREVIEW=20;
 const fixableNow=v=>!!v.fixedVersion&&!/pending/i.test(v.fixedVersion);
 function sevChip(sev,n){const c=SEV_COLOR[sev]||SEV_COLOR.UNTRIAGED;return `<span class="sev-chip" style="color:${c};background:${c}1f;border-color:${c}55">${SEV_KO[sev]||esc(sev)} <b>${n}</b></span>`;}
@@ -440,7 +445,7 @@ function syncTimeRange(){
  const step=state.hours>=168?6:state.hours>=24?1:1;
  const max=Math.max(state.hours*3,24);
  input.step=step;input.max=max;
- if(state.endOffset>max){state.endOffset=max;}
+ if(state.endOffset>max)setFilters({endOffset:max});
  input.value=state.endOffset;
  $('#range-max').textContent=`${Math.round(max/24*10)/10}일 전`;
  $('#range-mid').textContent=`${Math.round(max/48*10)/10}일 전`;
@@ -459,10 +464,10 @@ async function eventDialog(id,ask=false){
 }
 function currentDetail(id,serial){return serial===detailSerial&&activeId===id&&$('#event-dialog').open;}
 function applyModeLabels(){
- $('#data-mode').textContent=config.dataSourceConnected?'실데이터':'데이터 소스 미연결';
+ $('#data-mode').textContent=config().dataSourceConnected?'실데이터':'데이터 소스 미연결';
  $('#aws-state').textContent=summary.health?.aws_connected?'AWS 연동 정상':'AWS 미연결';
  $('#env-label').textContent='실데이터 전용';
- $('#env-sub').textContent=config.writeEnabled?'조치 활성화':'읽기 전용';
+ $('#env-sub').textContent=config().writeEnabled?'조치 활성화':'읽기 전용';
 }
 function drawDetail(e){
  const measure=value=>value?.value==null?'측정값 없음':esc(value.value)+(value.unit?' '+esc(value.unit):'');
@@ -479,16 +484,13 @@ function closeDialog(fromHistory=false){
  if($('#event-dialog').open)$('#event-dialog').close();
 }
 
-let autoTimer=null;
 function setAuto(on){
- state.auto=on;
  const button=$('#auto-refresh');
  button.textContent=on?'자동 새로고침 30초':'자동 새로고침 꺼짐';
  button.setAttribute('aria-pressed',String(on));
  button.classList.toggle('active',on);
- clearInterval(autoTimer);autoTimer=null;
- // 상세 창이 열려 있거나 탭이 숨겨져 있으면 건너뛴다. 읽는 중에 화면이 갈아엎히면 안 된다.
- if(on)autoTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('#event-dialog').open&&!operationBusy&&!$('#content').hasAttribute('aria-busy'))refresh();},30000);
+ // 타이머는 Store 가 하나만 관리한다(탭이 숨으면 멈춤). 화면은 상세 창·작업 중·불러오는 중일 때 건너뛰라고만 알린다.
+ storeApi.setAutoRefresh(on,{refresh:()=>refresh(),canRun:()=>!$('#event-dialog').open&&!operationBusy&&!$('#content').hasAttribute('aria-busy')});
 }
 async function dialogAction(action){if(action==='close')closeDialog();}
 // ── 주소창 상태 동기화 ────────────────────────────────────
@@ -513,22 +515,23 @@ function syncUrl(push=false){
  try{window.history[push?'pushState':'replaceState']({},'',next);}catch(error){/* 주소 갱신 실패는 화면을 막지 않는다 */}
 }
 function applyUrl(){
- const p=new URLSearchParams(window.location.search);
+ const p=new URLSearchParams(window.location.search),next={};
  for(const [key,param] of Object.entries(URL_KEYS)){
-  if(!p.has(param)){state[key]=URL_DEFAULTS[key];continue;}
+  if(!p.has(param)){next[key]=URL_DEFAULTS[key];continue;}
   const raw=p.get(param);
   const value=typeof URL_DEFAULTS[key]==='number'?Number(raw):raw;
-  state[key]=(typeof URL_DEFAULTS[key]==='number'&&!Number.isFinite(value))?URL_DEFAULTS[key]:value;
+  next[key]=(typeof URL_DEFAULTS[key]==='number'&&!Number.isFinite(value))?URL_DEFAULTS[key]:value;
  }
- if(!titles[state.view])state.view=URL_DEFAULTS.view;      // 주소에 잘못된 화면이 와도 죽지 않는다
- if(!['all',...regions.map(r=>r.id)].includes(state.region)&&!/^[a-z]{2}(?:-[a-z]+)+-\d$/.test(state.region))state.region=URL_DEFAULTS.region;
- if(!['','Critical','High','Medium','Low'].includes(state.severity))state.severity='';
- if(!['',...statuses,'승인됨','실행 실패'].includes(state.status))state.status='';
- if(!['',...sources].includes(state.source))state.source='';
- if(![.25,1,24,168].includes(state.hours))state.hours=24;
- state.endOffset=Math.max(0,Math.min(Math.max(state.hours*3,24),Math.floor(state.endOffset)));
- state.page=Math.max(1,Math.floor(state.page));
- state.search=state.search.slice(0,200);
+ if(!titles[next.view])next.view=URL_DEFAULTS.view;      // 주소에 잘못된 화면이 와도 죽지 않는다
+ if(!['all',...regions.map(r=>r.id)].includes(next.region)&&!/^[a-z]{2}(?:-[a-z]+)+-\d$/.test(next.region))next.region=URL_DEFAULTS.region;
+ if(!['','Critical','High','Medium','Low'].includes(next.severity))next.severity='';
+ if(!['',...statuses,'승인됨','실행 실패'].includes(next.status))next.status='';
+ if(!['',...sources].includes(next.source))next.source='';
+ if(![.25,1,24,168].includes(next.hours))next.hours=24;
+ next.endOffset=Math.max(0,Math.min(Math.max(next.hours*3,24),Math.floor(next.endOffset)));
+ next.page=Math.max(1,Math.floor(next.page));
+ next.search=String(next.search).slice(0,200);
+ setFilters(next);
  return p.get('event')||'';
 }
 function navigateView(view){
@@ -536,7 +539,7 @@ function navigateView(view){
  camera.cancel();
  notifications.close();selected.clear();
  if(activeId)closeDialog(true);
- state.view=view;state.resource='';state.page=1;
+ setFilters({view,resource:'',page:1});
  window.scrollTo({top:0,behavior:'auto'});
  refresh({push:true});
 }
@@ -563,13 +566,13 @@ async function refresh(options={}){
   if(serial!==refreshSerial)return;
   box.hidden=true;content.removeAttribute('data-stale');
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
-  $('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');
+  $('#session-user').textContent=config().user.name+' · '+(config().role==='operator'?'조치 담당':'조회 전용');
   applyModeLabels();
-  $('#worker-state').textContent=(summary.health.checks.worker==='ok'?'작업 처리기 정상':'조치 처리기 미연결 또는 중지')+(summary.warnings?.length?' · ⚠ '+summary.warnings.join(' · '):'');
+  $('#worker-state').textContent=(summary.health.checks.worker==='ok'?'작업 처리기 정상':'조치 실행 비활성 · 조회 전용')+(summary.warnings?.length?' · ⚠ '+summary.warnings.join(' · '):'');
  }catch(e){
   if(serial!==refreshSerial||e.name==='AbortError')return;
   applyModeLabels();
-  if(config.user)$('#session-user').textContent=config.user.name;
+  if(config().user)$('#session-user').textContent=config().user.name;
   content.setAttribute('data-stale','true');box.hidden=false;box.classList.add('error');
   box.innerHTML=`${esc(e.message)}${content.hasChildNodes()?' · 이전 데이터를 표시하고 있습니다.':''} <button id="retry">다시 시도</button>`;
  }finally{
@@ -580,10 +583,10 @@ async function refresh(options={}){
 $('#region').innerHTML='<option value="all">전체 리전</option>'+regions.map(r=>`<option value="${r.id}">${r.name}${r.id==='global'?'':` · ${r.id}`}</option>`).join('');$('#region').value=state.region;
 let searchTimer;
  $('#status').insertAdjacentHTML('beforeend',statuses.map(s=>`<option>${s}</option>`).join(''));$('#source').insertAdjacentHTML('beforeend',sources.map(s=>`<option>${s}</option>`).join(''));
-['severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{state[key]=e.target.value;state.page=1;refresh();}));
+['severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{setFilters({[key]:e.target.value,page:1});refresh();}));
 $('#region').addEventListener('change',e=>chooseRegion(e.target.value));
-$('#search').addEventListener('input',e=>{state.search=e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,220);});
-$('#time-range').addEventListener('input',e=>{state.endOffset=+e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,120);});
+$('#search').addEventListener('input',e=>{setFilters({search:e.target.value,page:1});clearTimeout(searchTimer);searchTimer=setTimeout(refresh,220);});
+$('#time-range').addEventListener('input',e=>{setFilters({endOffset:+e.target.value,page:1});clearTimeout(searchTimer);searchTimer=setTimeout(refresh,120);});
 $('#event-dialog').addEventListener('cancel',e=>{e.preventDefault();closeDialog();});
 $('#event-dialog').addEventListener('close',()=>{
  // closeDialog owns cleanup synchronously; a queued close event can belong to
@@ -604,7 +607,7 @@ document.addEventListener('click',e=>{
  const notify=e.target.closest('[data-notify]');if(notify){applyNotification(notify.dataset.notify);return;}
  const event=e.target.closest('[data-event]');if(event){eventDialog(event.dataset.event);return;}
  const action=e.target.closest('[data-action]');if(action){dialogAction(action.dataset.action);return;}
- const hours=e.target.closest('[data-hours]');if(hours){if(state.hours===+hours.dataset.hours)return;state.hours=+hours.dataset.hours;state.page=1;refresh();return;}
+ const hours=e.target.closest('[data-hours]');if(hours){if(state.hours===+hours.dataset.hours)return;setFilters({hours:+hours.dataset.hours,page:1});refresh();return;}
  const id=e.target.closest('button')?.id;
  if(id==='refresh'||id==='retry')refresh();
  if(id==='close-region'){panelOpen=false;$('#region-panel').hidden=true;$('#open-region').hidden=false;$('#open-region').focus();}
@@ -612,16 +615,16 @@ document.addEventListener('click',e=>{
  if(id==='zoom-in'){animateTo(rotation,Math.min(ZOOM_MAX,zoom+.3),300);}
  if(id==='zoom-out'){animateTo(rotation,Math.max(ZOOM_MIN,zoom-.3),300);}
  if(id==='zoom-reset'){animateTo(DEFAULT_ROTATION,DEFAULT_ZOOM,500);}
- if(id==='clear-filters'){Object.assign(state,{resource:'',severity:'',status:'',source:'',search:'',endOffset:0,hours:24,page:1});vulnTarget='';vulnFixable=false;vulnPage=1;selected.clear();syncControls();refresh();toast('대상·검색·위험도·상태·소스·시간 필터를 초기화했습니다.');}
+ if(id==='clear-filters'){setFilters({resource:'',severity:'',status:'',source:'',search:'',endOffset:0,hours:24,page:1});vulnTarget='';vulnFixable=false;vulnPage=1;selected.clear();syncControls();refresh();toast('대상·검색·위험도·상태·소스·시간 필터를 초기화했습니다.');}
  if(id==='auto-refresh')setAuto(!state.auto);
- if(id==='export')api.export().catch(e=>toast(e.message));
+ if(id==='export')api.exportEvents().then(({items})=>downloadCsv('events.csv',eventCsv(items))).catch(e=>toast(e.message));
  if(id==='export-vulns'){
   if(!vulnData||vulnDataKey!==vulnKey()||$('#vulns').hasAttribute('aria-busy')){toast('목록 갱신이 완료된 후 다시 내보내주세요.');return;}
   downloadCsv('vulnerabilities.csv',vulnerabilityCsv(vulnData,vulnTarget));
  }
  if(id==='logout'){setAuto(false);api.logout().catch(e=>toast(e.message));}
  const eventGroup=e.target.closest('[data-event-group]');if(eventGroup){const k=eventGroup.dataset.eventGroup;openEventGroups.has(k)?openEventGroups.delete(k):openEventGroups.add(k);render();return;}
- const pager=e.target.closest('[data-page]');if(pager){state.page+=pager.dataset.page==='next'?1:-1;resetTableScroll(pager);render();}
+ const pager=e.target.closest('[data-page]');if(pager){setFilters({page:state.page+(pager.dataset.page==='next'?1:-1)});resetTableScroll(pager);render();}
 
 });
 window.addEventListener('popstate',async()=>{
@@ -645,9 +648,9 @@ function applyNotification(key){
  const map={'승인 대기':{view:'events',status:'승인 대기'},'재검증 실패':{view:'responses',status:'재검증 실패'},
             '재검증 대기':{view:'responses',status:'재검증 대기'},'임계치 경보 (CloudWatch)':{view:'infrastructure',status:'',source:'CloudWatch'}};
  const target=map[key];if(!target)return;
- state.view=target.view;state.status=target.status;state.source=target.source||'';state.resource='';selected.clear();
+ setFilters({view:target.view,status:target.status,source:target.source||'',resource:''});selected.clear();
  $('#status').value=state.status;$('#source').value=state.source;
- state.page=1;refresh({push:true});
+ setFilters({page:1});refresh({push:true});
 }
 document.addEventListener('keydown',e=>{
  if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.isComposing||$('#event-dialog').open||e.target.closest('input,select,textarea,[contenteditable="true"]'))return;

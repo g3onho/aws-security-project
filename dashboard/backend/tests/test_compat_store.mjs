@@ -3,7 +3,8 @@ import test from 'node:test';
 
 const storeUrl=new URL('../../frontend/static/js/store.js',import.meta.url);
 let serial=0;
-const fresh=()=>import(`${storeUrl.href}?test=${serial++}`);
+// store/ 하위 모듈(상태)은 한 번만 로드된다 — 테스트마다 처음 상태로 되돌린다.
+const fresh=async()=>{const store=await import(`${storeUrl.href}?test=${serial++}`);store.resetStore();return store;};
 const at=new Date(Date.now()-60000).toISOString();
 const event=(id='a')=>({id,title:'Observed '+id,resource:'i-1',region:'ap-northeast-2',
  source:'Security Hub',scenario:'SECURITY_HUB',severity:'HIGH',actionState:'PENDING_APPROVAL',

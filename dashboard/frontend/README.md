@@ -2,6 +2,14 @@
 
 `../backend/`가 HTML과 정적 자산을 제공합니다. `static/js/store.js`는 표준 API(`/api/events`, `/api/summary`, `/api/metrics`, `/api/vulnerabilities`, `/api/infra/status`, `/api/history`)를 호출합니다. 인증은 `/api/auth/*`를 사용합니다. Store가 `{data, meta}` 응답, UTC ISO 시각, 커서 페이지네이션을 처리합니다.
 
+Store 구조(v20.3, 설계 2.1·2.2): 화면(`app.js`)은 `store.actions`·`store.selectors`만 사용합니다.
+
+- `store/api/client.js`: fetch·CSRF·시간 제한 30초. **GET만** 429·502·503·504·네트워크 오류를 최대 3회 지수 백오프+지터로 재시도, 변경 요청은 재시도하지 않음
+- `store/api/endpoints.js`·`validators.js`: API 경로, 응답 계약 검증(해석할 수 없는 응답은 빈 목록으로 바꾸지 않고 오류)
+- `store/adapters/`: DTO → 화면 모델(순수 함수). 잘못된 행만 빼고 건수를 경고로, 모르는 심각도는 UNKNOWN
+- `store/state.js`·`selectors.js`·`actions.js`: 상태, 읽기, 요청·필터 변경(`setFilters`)
+- `store/polling.js`: 자동 새로고침 타이머 하나, 탭이 숨으면 정지
+
 `static/js/data.js`에는 리전 지리 좌표와 화면용 열거값만 있습니다. 이벤트, 자원 ID, 공격 출발지, 취약점, 지표는 API에서 받아야 합니다.
 
 현재 데이터 소스는 미연결 상태입니다. 로그인 후 오류 안내와 재시도 버튼을 표시하고 가상의 탐지 건수·지표·조치 성공 결과를 만들지 않습니다.

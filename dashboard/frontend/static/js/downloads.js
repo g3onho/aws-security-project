@@ -5,6 +5,12 @@ function cell(value) {
   return '"'+text.replaceAll('"','""')+'"';
 }
 
+export function eventCsv(items) {
+  const columns=['ID','발생 시각','제목','위험도','리전','자원','탐지 소스','상태'];
+  const rows=items.map(e=>[e.id,e.observedAt,e.title,e.severity,e.region,e.resource,e.source,e.actionState]);
+  return '\uFEFF'+[columns,...rows].map(row=>row.map(cell).join(',')).join('\r\n');
+}
+
 export function vulnerabilityCsv(data,target='') {
   const columns=['심각도','CVSS','CVE','패키지','설치 버전','수정 버전','대상','출처'];
   const rows=data.items.filter(item=>!target||item.resource===target).map(item=>

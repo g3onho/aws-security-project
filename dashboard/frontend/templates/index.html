@@ -8,7 +8,7 @@
  <link rel="stylesheet" href="/static/css/tailwind.css">
  <link rel="stylesheet" href="/static/css/app.css?v=local-5">
  <script defer src="/static/vendor/chart.umd.js"></script>
- <script type="module" src="/static/js/app.js?v=local-5"></script>
+ <script type="module" src="/static/js/app.js?v=local-6"></script>
  <link rel="stylesheet" href="/static/css/local.css?v=local-5">
 </head>
 <body>
@@ -45,7 +45,7 @@
   <div class="map-stage">
    <div class="map-canvas" id="map-canvas"><svg id="world-map" tabindex="0" aria-describedby="map-help" viewBox="0 0 1000 460" role="group" aria-label="AWS 리전별 이벤트 지도"><defs><pattern id="grid" width="62.5" height="57.5" patternUnits="userSpaceOnUse"><path d="M 62.5 0 L 0 0 0 57.5" fill="none" stroke="#263130" stroke-width=".5"/></pattern><radialGradient id="glow"><stop stop-color="#32D4BE" stop-opacity=".12"/><stop offset="1" stop-color="#32D4BE" stop-opacity="0"/></radialGradient></defs><g id="map-transform"><g id="globe-base"></g><g id="countries"></g><g id="globe-shade"></g><g id="attack-paths"></g><g id="markers"></g></g></svg>
     <div class="attack-toolbar"><label class="sr-only" for="attack-filter">공격 흐름 선택</label><select id="attack-filter"><option value="all">전체 공격 흐름</option></select><span id="attack-summary" role="status"></span></div><div class="map-help" id="map-help">드래그 회전 · 휠 확대/축소 · 방향키 회전 <span id="zoom-label">1.0×</span></div><div class="map-controls"><button id="zoom-in" aria-label="지도 확대">+</button><button id="zoom-out" aria-label="지도 축소">−</button><button id="zoom-reset" aria-label="지도 초기화">⌖</button></div>
-    <div class="map-legend"><span class="mint-dot"></span>원 크기: 탐지 건수 <span class="legend-separator">/</span> 리전 · 출발 IP는 표준 API에서 제공되지 않음 <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a></div>
+    <div class="map-legend"><span class="mint-dot"></span>원 크기: 탐지 건수 <span class="legend-separator">/</span> 리전 · 선: GuardDuty가 확인한 공격 출발 IP 위치 → 대상 리전(위치 미상은 선 없음) <a href="https://www.naturalearthdata.com/about/terms-of-use/" target="_blank" rel="noreferrer">Natural Earth</a></div>
     <button id="open-region" class="subtle-button open-region" hidden>지역 상세 열기 →</button>
    </div>
    <aside id="region-panel" aria-label="선택 지역 상세"></aside>
