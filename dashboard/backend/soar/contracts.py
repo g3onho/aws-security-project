@@ -251,7 +251,10 @@ class StandardService:
         if kind == "vulnerabilities":
             rows = []
             for scan in self.provider.vulnerabilities(q, events)["items"]:
-                observed = scan.get("foundAt")
+                # 기간 기준 = 가장 최근 탐지 시각(Inspector lastObservedAt). Inspector 는 같은 서버·CVE·패키지를
+                # 기록 1건으로 두고 다시 탐지될 때마다 이 시각만 갱신한다. 최초 발견 시각(firstObservedAt)으로
+                # 거르면 처음 발견 뒤 시간이 지나면 계속 탐지되는 CVE도 기간 보기에서 사라진다(v20.1).
+                observed = scan.get("lastSeenAt") or scan.get("foundAt")
                 if not scope_matches({"accountId": scan.get("accountId"), "region": scan.get("region"),
                                       "resource": scan.get("resource")}, principal) or not common_matches(scan, q, observed):
                     continue
@@ -261,7 +264,8 @@ class StandardService:
                 rows.append({"id": scan["id"], "cveId": scan["cveId"], "resource": scan["resource"],
                              "resourceName": scan.get("resourceName"),
                              "package": scan["package"], "severity": scan["severity"], "source": scan["source"],
-                             "region": scan["region"], "observedAt": iso(observed), "fixedVersion": scan.get("fixedVersion"),
+                             "region": scan["region"], "observedAt": iso(observed),
+                             "firstObservedAt": iso(scan.get("foundAt")), "fixedVersion": scan.get("fixedVersion"),
                              "installedVersion": scan.get("installedVersion"), "cvss": scan.get("cvss"), "dataMode": "live", "_sortAt": observed})
             return self._page(rows, q, binding, marker)
         if kind == "history":

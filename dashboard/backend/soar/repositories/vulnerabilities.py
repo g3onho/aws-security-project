@@ -29,6 +29,7 @@ class VulnerabilityRepository:
                          "region": finding.get("region") or self._region,
                          "accountId": finding.get("awsAccountId") or self._session.account_id,
                          "foundAt": to_ms(finding.get("firstObservedAt")),
+                         "lastSeenAt": to_ms(finding.get("lastObservedAt")) if finding.get("lastObservedAt") else None,
                          "fixedVersion": package.get("fixedInVersion"), "installedVersion": package.get("version"),
                          "cvss": ((finding.get("inspectorScoreDetails") or {}).get("adjustedCvss") or {}).get("score")})
         self._memo = (findings, rows)

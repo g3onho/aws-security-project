@@ -387,7 +387,7 @@ function vulnerabilityMarkup(data){
  <div class="vuln-summary">${SEV_ORDER.filter(s=>counts[s]).map(s=>`<div style="border-color:${SEV_COLOR[s]}55"><span>${SEV_KO[s]}</span><b style="color:${SEV_COLOR[s]}">${counts[s]}</b></div>`).join('')}<div><span>지금 업데이트 가능</span><b class="mint">${fixable}</b></div><div><span>수정본 대기</span><b>${rows.length-fixable}</b></div></div>
  <section class="panel full-panel">${header('패키지별 취약점',`<label class="page-size">표시 <select id="vuln-size">${[25,50,100,200,0].map(n=>`<option value="${n}"${n===vulnSize?' selected':''}>${n?n+'개씩':'전체'}</option>`).join('')}</select></label><button id="export-vulns" class="text-button">↓ CVE CSV 내보내기</button>`)}
  <div class="vuln-toolbar">${vulnTarget?`<button class="text-button" data-vuln-target="">전체 서버 보기 ←</button>`:'<span class="muted-mini">패키지를 누르면 영향받는 서버와 CVE가 펼쳐집니다. 서버 이름을 누르면 그 서버만 봅니다.</span>'}<label class="vuln-check"><input type="checkbox" id="vuln-fixable"${vulnFixable?' checked':''}> 지금 업데이트 가능한 항목만</label></div>
- ${page.length?`<div class="cve-groups">${page.map(vulnGroupMarkup).join('')}</div>`:empty('조회 기간에 취약점 결과가 없습니다.')}
+ ${page.length?`<div class="cve-groups">${page.map(vulnGroupMarkup).join('')}</div>`:empty('선택한 기간에 탐지된 취약점이 없습니다.')}
  <div class="table-footer"><span>패키지 ${groups.length}개 · CVE ${rows.length}건(서버별 합계)</span><span>정렬: 긴급 → 높음 개수, 최고 CVSS 순</span></div>
  <div class="table-pager"><button data-vuln-page="prev" ${vulnPage<=1?'disabled':''}>← 이전</button><span>${vulnPage} / ${pages}</span><button data-vuln-page="next" ${vulnPage>=pages?'disabled':''}>다음 →</button></div></section>`;
 }

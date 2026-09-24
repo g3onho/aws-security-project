@@ -98,7 +98,9 @@ paths:
           schema: {type: string, enum: [Inspector, Trivy]}
       responses:
         '200':
-          description: 관측 시각 내림차순·ID 오름차순 정규화된 취약점
+          description: >-
+            관측 시각 내림차순·ID 오름차순 정규화된 취약점(현재 ACTIVE). 기간 필터는 가장 최근 탐지 시각
+            (observedAt = Inspector lastObservedAt)이 [from, to) 안인 결과다.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/VulnerabilitiesEnvelope'}
@@ -432,7 +434,8 @@ components:
                       package: {type: string}
                       severity: {$ref: '#/components/schemas/Severity'}
                       source: {type: string, enum: [Inspector, Trivy]}
-                      observedAt: {type: string, format: date-time}
+                      observedAt: {type: string, format: date-time, description: 가장 최근 탐지 시각(기간 필터 기준)}
+                      firstObservedAt: {type: [string, 'null'], format: date-time, description: 최초 탐지 시각(선택)}
     InfrastructureEnvelope:
       allOf:
         - {$ref: '#/components/schemas/Envelope'}
