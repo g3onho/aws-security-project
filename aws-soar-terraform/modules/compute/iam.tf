@@ -45,6 +45,11 @@ locals {
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}",
     # 조치 이력 finding_id 인덱스 조회(modules/soar storage.tf 의 finding_id-created_at GSI). 읽기 전용.
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}/index/*",
+    # 탐지·취약점 적재 테이블(v21, modules/soar finding_sync)과 기간 조회 인덱스. 읽기 전용.
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.findings_table}",
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.findings_table}/index/*",
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.vulnerabilities_table}",
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.vulnerabilities_table}/index/*",
   ]
 }
 

@@ -16,7 +16,8 @@ def read(kind):
     # 서비스가 붙인 경고·부분 결과 표시를 meta 로 옮긴다(설계 2.3 원칙 6).
     warnings = data.pop("_warnings", []) if isinstance(data, dict) else []
     partial = data.pop("_partial", False) if isinstance(data, dict) else False
-    return jsonify(envelope(data, g.request_id, partial=partial, warnings=warnings))
+    as_of = data.pop("_asOf", None) if isinstance(data, dict) else None  # 적재 데이터면 마지막 대조 시각
+    return jsonify(envelope(data, g.request_id, as_of=as_of, partial=partial, warnings=warnings))
 
 
 def command(action, event_id=None):

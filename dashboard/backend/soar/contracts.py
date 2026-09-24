@@ -229,6 +229,17 @@ class StandardService:
                 and (not q.get("status") or action_state(event) == q["status"])]
 
     def read(self, kind, raw, actor):
+        result = self._read(kind, raw, actor)
+        # 탐지·취약점을 DynamoDB 적재에서 읽으면 마지막 대조 시각을 asOf 로, 지연·실패를 경고로 싣는다(v21).
+        sync_status = getattr(self.provider, "sync_status", None) if kind in {"events", "summary", "vulnerabilities"} else None
+        fresh = sync_status(kind) if sync_status else None
+        if fresh:
+            result["_warnings"] = list(result.get("_warnings", [])) + fresh["warnings"]
+            if fresh["asOf"] is not None:
+                result["_asOf"] = fresh["asOf"]
+        return result
+
+    def _read(self, kind, raw, actor):
         self.provider.require_ready()
         principal = self.workflow.principal(actor)
         q, binding, marker = self._query(kind, raw, principal)

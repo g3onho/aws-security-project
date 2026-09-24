@@ -10,6 +10,7 @@ Flask·Waitress와 SQLite를 사용합니다. 패키지는 `soar`입니다. 인�
 - `/api/auth/*`: 계정 로그인·로그아웃·세션·CSRF
 - 표준 데이터 API와 화면 데이터 API: 연결 전 503
 - `DATA_PROVIDER=aws`: `AWS_REGION`에서 AWS 보안·자원·지표 결과를 읽기 전용 조회
+- `EVENT_SOURCE`(`securityhub`|`dynamodb`)·`VULNERABILITY_SOURCE`(`inspector`|`dynamodb`)·`FINDINGS_TABLE`·`VULNERABILITIES_TABLE` (v21): 탐지·취약점을 AWS에서 직접 조회할지, `modules/soar` finding_sync Lambda가 적재한 DynamoDB에서 읽을지. 기본값은 직접 조회. `dynamodb`를 고르면 해당 테이블 이름이 필수(없으면 기동 실패). 적재에서 읽을 때 `meta.asOf`는 마지막 대조 시각, 20분 넘은 지연·실패·건수 불일치는 `meta.warnings`. 배포(Terraform)는 `dynamodb`가 기본
 - `REMEDIATION_ACTIONS_TABLE`·`CORRELATED_FINDINGS_TABLE`: Terraform `modules/soar`의 DynamoDB 테이블. 자동조치 판정 기록을 `/api/history`(source=automatic)에, 상관분석 위험도 상향을 이벤트에 붙인다. 없으면 `meta.warnings`로 알림
 - 쓰기는 기본 비활성화. 환경변수만 켜도 공급자 없이 실행할 수 없음
 

@@ -57,6 +57,82 @@ resource "aws_dynamodb_table" "actions" {
 }
 
 ############################################
+# 탐지·취약점 (v21, PR-4) — finding_sync Lambda 가 적재하고 대시보드가 읽는다.
+# finding 1건 = 1행(원본 갱신 시각이 새로울 때만 덮어씀). view_state 로 목록에 보일 행을 가른다.
+# 동기화 상태 행(키 "__sync__")은 view_state 가 없어 인덱스에 들어가지 않는다.
+############################################
+
+# Security Hub 탐지(Inspector 제외). view_state = OPEN(대시보드 목록) / CLOSED(해결·보관·정보성)
+resource "aws_dynamodb_table" "findings" {
+  name         = var.findings_table
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "finding_id"
+
+  attribute {
+    name = "finding_id"
+    type = "S"
+  }
+  attribute {
+    name = "view_state"
+    type = "S"
+  }
+  attribute {
+    name = "updated_at"
+    type = "S"
+  }
+
+  # 기간 조회: 열린 탐지를 마지막 갱신 시각(대시보드 기간 기준 UpdatedAt) 순으로.
+  global_secondary_index {
+    name            = "view_state-updated_at"
+    hash_key        = "view_state"
+    range_key       = "updated_at"
+    projection_type = "ALL"
+  }
+
+  # CLOSED 가 되면 finding_ttl_days 뒤 삭제 → 해결 이력 보존 기간. 열린 행에는 expires_at 이 없다.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  tags = merge(var.tags, { Purpose = "securityhub-findings" })
+}
+
+# Inspector 취약점. view_state = ACTIVE / CLOSED. 기간 기준은 가장 최근 탐지(lastObservedAt, v20.1).
+resource "aws_dynamodb_table" "vulnerabilities" {
+  name         = var.vulnerabilities_table
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "finding_arn"
+
+  attribute {
+    name = "finding_arn"
+    type = "S"
+  }
+  attribute {
+    name = "view_state"
+    type = "S"
+  }
+  attribute {
+    name = "last_observed_at"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "view_state-last_observed_at"
+    hash_key        = "view_state"
+    range_key       = "last_observed_at"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  tags = merge(var.tags, { Purpose = "inspector-vulnerabilities" })
+}
+
+############################################
 # S3 — 수동 점검 결과(nmap / ZAP / Trivy) 적재
 ############################################
 

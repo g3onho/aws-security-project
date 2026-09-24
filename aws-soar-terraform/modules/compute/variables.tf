@@ -48,6 +48,29 @@ variable "log_group_mysql" { type = string }
 
 variable "correlated_findings_table" { type = string }
 variable "remediation_actions_table" { type = string }
+
+# 탐지·취약점 적재 테이블(v21, modules/soar finding_sync). 대시보드 읽기 권한·env 에 쓴다.
+variable "findings_table" { type = string }
+variable "vulnerabilities_table" { type = string }
+
+# 대시보드가 탐지·취약점을 어디서 읽을지. 문제가 생기면 securityhub / inspector 로 되돌린다.
+variable "dashboard_event_source" {
+  type    = string
+  default = "dynamodb"
+  validation {
+    condition     = contains(["securityhub", "dynamodb"], var.dashboard_event_source)
+    error_message = "dashboard_event_source 는 securityhub 또는 dynamodb 입니다."
+  }
+}
+
+variable "dashboard_vulnerability_source" {
+  type    = string
+  default = "dynamodb"
+  validation {
+    condition     = contains(["inspector", "dynamodb"], var.dashboard_vulnerability_source)
+    error_message = "dashboard_vulnerability_source 는 inspector 또는 dynamodb 입니다."
+  }
+}
 variable "scan_results_bucket" { type = string }
 
 variable "tags" {

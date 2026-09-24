@@ -11,12 +11,14 @@ from .integrations.aws.dynamodb import DynamoTable
 from .integrations.aws.inspector import InspectorFindings
 from .integrations.aws.securityhub import SecurityHubFindings
 from .integrations.aws.session import AwsSession
+from .integrations.aws.stored import StoredFindings, StoredVulnerabilities
 from .repositories import infra
 from .repositories.actions import ActionRepository
 from .repositories.correlations import CorrelationRepository
 from .repositories.findings import FindingRepository, classify, remote_ip  # noqa: F401 — 기존 import 경로 유지
 from .repositories.metrics import MetricRepository
 from .repositories.resources import ResourceRepository
+from .repositories.sync import freshness
 from .repositories.vulnerabilities import VulnerabilityRepository
 from .store import now_ms
 
@@ -53,7 +55,9 @@ class AwsProvider:
     INSPECTOR_TTL = InspectorFindings.TTL
     INSPECTOR_SEVERITIES = InspectorFindings.SEVERITIES
 
-    def __init__(self, region, session_factory=None, actions_table=None, correlated_table=None):
+    def __init__(self, region, session_factory=None, actions_table=None, correlated_table=None,
+                 findings_table=None, vulnerabilities_table=None, event_source="securityhub",
+                 vulnerability_source="inspector"):
         self.region = region
         self.regions = (region,)
         self._aws = AwsSession(region, session_factory)
@@ -61,8 +65,17 @@ class AwsProvider:
         self.account_id = self._aws.account_id
         # Security Hub 와 Inspector 가 캐시·잠금 하나를 공유한다(분리하면 중복 조회).
         cache = SharedCache()
-        self._inspector = InspectorFindings(self._aws, cache)
-        self._findings = FindingRepository(SecurityHubFindings(self._aws, cache), region)
+        # 탐지·취약점 원본: AWS 직접 조회(기존) 또는 DynamoDB 적재(v21, EVENT_SOURCE·VULNERABILITY_SOURCE).
+        # 어느 쪽이든 같은 원본 모양을 돌려주고 같은 repository 가 변환한다.
+        stored_events = event_source == "dynamodb"
+        stored_vulns = vulnerability_source == "dynamodb"
+        self._inspector = (StoredVulnerabilities(self._aws, vulnerabilities_table, cache) if stored_vulns
+                           else InspectorFindings(self._aws, cache))
+        securityhub = (StoredFindings(self._aws, findings_table, cache) if stored_events
+                       else SecurityHubFindings(self._aws, cache))
+        self._findings = FindingRepository(securityhub, region)
+        self._sync = {"events": ("탐지", securityhub) if stored_events else None,
+                      "vulnerabilities": ("취약점", self._inspector) if stored_vulns else None}
         self._resources = ResourceRepository(self._aws, region)
         self._metrics = MetricRepository(self._aws, clock=now_ms)
         self._vulnerabilities = VulnerabilityRepository(self._inspector, self._aws, region)
@@ -82,6 +95,14 @@ class AwsProvider:
             return {"connected": True, "state": "credentials_verified", "region": self.region}
         return {"connected": False, "state": "unavailable", "region": self.region,
                 "detail": self._aws.error or "connection_failed"}
+
+    def sync_status(self, kind):
+        """DynamoDB 적재를 읽을 때만 {asOf, warnings}. AWS 직접 조회면 None(지금 조회한 값이라 지연 없음)."""
+        source = self._sync.get("vulnerabilities" if kind == "vulnerabilities" else "events")
+        if source is None:
+            return None
+        label, integration = source
+        return freshness(integration.sync_status(), label, now_ms())
 
     def observations(self, query=None):
         return self._findings.observations(query)

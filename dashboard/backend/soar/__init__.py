@@ -27,7 +27,11 @@ def create_app(overrides=None):
     app.config.update(settings)
     store = Store(settings["DATABASE"])
     provider = (AwsProvider(settings["AWS_REGION"], actions_table=settings["REMEDIATION_ACTIONS_TABLE"],
-                            correlated_table=settings["CORRELATED_FINDINGS_TABLE"])
+                            correlated_table=settings["CORRELATED_FINDINGS_TABLE"],
+                            findings_table=settings["FINDINGS_TABLE"],
+                            vulnerabilities_table=settings["VULNERABILITIES_TABLE"],
+                            event_source=settings["EVENT_SOURCE"],
+                            vulnerability_source=settings["VULNERABILITY_SOURCE"])
                 if settings["DATA_PROVIDER"] == "aws" else UnconfiguredProvider())
     if provider.connected and not settings.get("TESTING"):
         provider.warm()  # 취약점 목록(Inspector 수천 건)을 기동 직후 미리 받아 둔다

@@ -78,7 +78,8 @@ export const api={
   const resolved=rows.filter(e=>e.actionState==='VERIFIED').length;
   Object.assign(summary,{total:state.source||state.search?rows.length:standardSummary.totalEvents,resolved,
    resolutionRate:rows.length?resolved/rows.length*100:null,asOf,collectedAt:asOf,snapshot:events.meta?.requestId,
-   health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}}});
+   health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}},
+   warnings:Array.isArray(events.meta?.warnings)?events.meta.warnings:[]}); // 적재 지연·실패(v21)
   config={...config,dataSourceConnected:healthData.dataSourceConnected};
   details.clear();for(const event of [...rows,...regional])details.set(event.id,event);
   return true;
@@ -94,7 +95,7 @@ export const api={
   const result=await pages('/api/vulnerabilities',q);
   let items=fixableOnly?result.items.filter(item=>item.fixedVersion&&!/pending/i.test(item.fixedVersion)):result.items; // '(pending)' 은 수정본 미배포
   if(state.search){const term=state.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
-  return {items,total:items.length};
+  return {items,total:items.length,warnings:Array.isArray(result.meta?.warnings)?result.meta.warnings:[]};
  },
  async history(){const q=query();q.delete('severity');q.delete('status');const result=await pages('/api/history',q);return {items:result.items,jobs:result.extra.jobs||[],warnings:Array.isArray(result.meta?.warnings)?result.meta.warnings:[],partial:result.meta?.partial===true};},
  async logout(){controller?.abort();generation++;await request('/api/auth/logout',{method:'POST',body:'{}'});reset();location.assign('/login');},

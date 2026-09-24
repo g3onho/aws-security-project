@@ -125,6 +125,10 @@ resource "aws_instance" "dashboard" {
     project                   = var.name_prefix
     correlated_findings_table = var.correlated_findings_table
     remediation_actions_table = var.remediation_actions_table
+    findings_table            = var.findings_table
+    vulnerabilities_table     = var.vulnerabilities_table
+    event_source              = var.dashboard_event_source
+    vulnerability_source      = var.dashboard_vulnerability_source
     scan_results_bucket       = var.scan_results_bucket
     sns_topic_arn             = var.sns_topic_arn
     # 코드 zip 의 MD5. 코드가 바뀌면 user_data 가 바뀌어 인스턴스가 새로 뜬다.

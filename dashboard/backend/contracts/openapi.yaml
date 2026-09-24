@@ -255,7 +255,12 @@ components:
       properties:
         requestId: {type: string, minLength: 1}
         schemaVersion: {type: string, const: '1'}
-        asOf: {type: string, format: date-time}
+        asOf:
+          type: string
+          format: date-time
+          description: >-
+            데이터 기준 시각. 탐지·취약점을 DynamoDB 적재(EVENT_SOURCE·VULNERABILITY_SOURCE=dynamodb)에서
+            읽으면 마지막 전체 대조 성공 시각이고, 지연·실패·건수 불일치는 warnings 로 알린다.
         partial: {type: boolean}
         warnings: {type: array, items: {type: string}}
         dataMode: {type: string, const: live}

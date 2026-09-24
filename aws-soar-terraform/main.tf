@@ -21,6 +21,10 @@ locals {
   remediation_actions_table = "${local.name_prefix}-remediation-actions"
   scan_results_bucket       = "${local.name_prefix}-scan-results-${local.account_id}"
 
+  # 탐지·취약점 적재(v21). soar 가 만들고(finding_sync), compute 대시보드가 읽는다.
+  findings_table        = "${local.name_prefix}-findings"
+  vulnerabilities_table = "${local.name_prefix}-vulnerabilities"
+
   # SSM Automation 역할 이름 — compute(대시보드 PassRole 범위)와 soar 가 공유
   ssm_automation_role_name = "${local.name_prefix}-ssm-automation-role"
 
@@ -90,6 +94,8 @@ module "soar" {
 
   correlated_findings_table = local.correlated_findings_table
   remediation_actions_table = local.remediation_actions_table
+  findings_table            = local.findings_table
+  vulnerabilities_table     = local.vulnerabilities_table
   scan_results_bucket       = local.scan_results_bucket
 
   enable_auto_remediation  = var.enable_auto_remediation
@@ -160,6 +166,8 @@ module "compute" {
 
   correlated_findings_table = local.correlated_findings_table
   remediation_actions_table = local.remediation_actions_table
+  findings_table            = local.findings_table
+  vulnerabilities_table     = local.vulnerabilities_table
   scan_results_bucket       = local.scan_results_bucket
 
   ssm_automation_role_name = local.ssm_automation_role_name

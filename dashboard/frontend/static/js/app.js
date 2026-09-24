@@ -381,9 +381,10 @@ function vulnGroupMarkup(g){
 function vulnerabilityMarkup(data){
  const rows=data.items,groups=vulnGroups(rows),pages=Math.max(1,Math.ceil(groups.length/(vulnSize||groups.length||1)));
  vulnPage=Math.min(vulnPage,pages);const size=vulnSize||groups.length||1,page=groups.slice((vulnPage-1)*size,vulnPage*size);
+ const warn=(data.warnings||[]).map(w=>`<p class="panel-error" role="status">${esc(w)}</p>`).join('');
  const counts={};for(const v of rows)counts[v.severity]=(counts[v.severity]||0)+1;
  const servers=new Set(rows.map(v=>v.resource)).size,fixable=rows.filter(fixableNow).length;
- return `<div class="view-intro"><span>Inspector 실제 관측 결과 · 서버 ${servers}대 · 패키지 ${groups.length}개</span><span class="view-summary">CVE ${rows.length}건 (서버별 합계)</span></div>
+ return `${warn}<div class="view-intro"><span>Inspector 실제 관측 결과 · 서버 ${servers}대 · 패키지 ${groups.length}개</span><span class="view-summary">CVE ${rows.length}건 (서버별 합계)</span></div>
  <div class="vuln-summary">${SEV_ORDER.filter(s=>counts[s]).map(s=>`<div style="border-color:${SEV_COLOR[s]}55"><span>${SEV_KO[s]}</span><b style="color:${SEV_COLOR[s]}">${counts[s]}</b></div>`).join('')}<div><span>지금 업데이트 가능</span><b class="mint">${fixable}</b></div><div><span>수정본 대기</span><b>${rows.length-fixable}</b></div></div>
  <section class="panel full-panel">${header('패키지별 취약점',`<label class="page-size">표시 <select id="vuln-size">${[25,50,100,200,0].map(n=>`<option value="${n}"${n===vulnSize?' selected':''}>${n?n+'개씩':'전체'}</option>`).join('')}</select></label><button id="export-vulns" class="text-button">↓ CVE CSV 내보내기</button>`)}
  <div class="vuln-toolbar">${vulnTarget?`<button class="text-button" data-vuln-target="">전체 서버 보기 ←</button>`:'<span class="muted-mini">패키지를 누르면 영향받는 서버와 CVE가 펼쳐집니다. 서버 이름을 누르면 그 서버만 봅니다.</span>'}<label class="vuln-check"><input type="checkbox" id="vuln-fixable"${vulnFixable?' checked':''}> 지금 업데이트 가능한 항목만</label></div>
@@ -564,7 +565,7 @@ async function refresh(options={}){
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
   $('#session-user').textContent=config.user.name+' · '+(config.role==='operator'?'조치 담당':'조회 전용');
   applyModeLabels();
-  $('#worker-state').textContent=summary.health.checks.worker==='ok'?'작업 처리기 정상':'조치 처리기 미연결 또는 중지';
+  $('#worker-state').textContent=(summary.health.checks.worker==='ok'?'작업 처리기 정상':'조치 처리기 미연결 또는 중지')+(summary.warnings?.length?' · ⚠ '+summary.warnings.join(' · '):'');
  }catch(e){
   if(serial!==refreshSerial||e.name==='AbortError')return;
   applyModeLabels();
