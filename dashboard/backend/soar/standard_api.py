@@ -13,7 +13,10 @@ def service():
 
 def read(kind):
     data = service().read(kind, dict(request.args.lists()), g.actor)
-    return jsonify(envelope(data, g.request_id))
+    # 서비스가 붙인 경고·부분 결과 표시를 meta 로 옮긴다(설계 2.3 원칙 6).
+    warnings = data.pop("_warnings", []) if isinstance(data, dict) else []
+    partial = data.pop("_partial", False) if isinstance(data, dict) else False
+    return jsonify(envelope(data, g.request_id, partial=partial, warnings=warnings))
 
 
 def command(action, event_id=None):

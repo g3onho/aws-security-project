@@ -8,12 +8,14 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from .errors import Problem
 from .history_repository import HistoryRepository
+from .repositories.correlations import apply as apply_correlations
 from .scope import matches as scope_matches
 from .store import encode, now_ms
 
@@ -33,6 +35,10 @@ QUERY_FIELDS = {
     "infra": COMMON,
     "history": COMMON | LIST | {"eventId", "actionId", "jobId"},
 }
+# 자동조치 기록 status → 계약 actionState. 실행 성공(SUCCESS)은 EXECUTED 이지 VERIFIED(해결)가 아니다.
+AUTOMATIC_STATES = {"NOTIFIED": "PENDING_APPROVAL", "DRY_RUN": "PENDING_APPROVAL", "IN_PROGRESS": "RUNNING",
+                    "SUCCESS": "EXECUTED", "FAILED": "EXECUTION_FAILED", "TIMED_OUT": "EXECUTION_FAILED",
+                    "CANCELLED": "EXECUTION_FAILED", "UNKNOWN": "RECONCILING"}
 LEGACY_STATES = {
     "NEW": "PENDING_APPROVAL", "PENDING_APPROVAL": "PENDING_APPROVAL", "APPROVED": "APPROVED",
     "EXECUTING": "RUNNING", "PENDING_VERIFICATION": "EXECUTED", "VERIFYING": "VERIFYING",
@@ -137,6 +143,8 @@ def event_dto(event, allowed_actions):
             "geoStatus": event.get("geoStatus"), "sourceSample": bool(event.get("sourceSample")),
             # 플레이북이 없는 탐지(대부분의 Security Hub finding)는 승인 대상이 아니다 — 화면이 '탐지됨'으로 표시.
             "actionable": bool(event.get("actionable")),
+            # correlator(DynamoDB)가 GuardDuty 위협 + 같은 자원 CVE 로 위험도를 올린 경우.
+            "severityBumped": bool(event.get("severityBumped")), "relatedCves": list(event.get("relatedCves") or []),
             "dataMode": "live"}
 
 
@@ -198,8 +206,13 @@ class StandardService:
     def _events(self, actor, principal):
         # Both account scope and permissions are server-owned. Filtering never
         # broadens the current principal, including when a session is reused.
-        source = (self.provider.observations({}) if getattr(self.provider, "connected", False)
-                  else self.workflow.events())
+        connected = getattr(self.provider, "connected", False)
+        source = self.provider.observations({}) if connected else self.workflow.events()
+        if connected and hasattr(self.provider, "correlations"):
+            try:
+                source = apply_correlations(source, self.provider.correlations())
+            except Exception:  # noqa: BLE001 — 상관분석은 부가 정보. 실패해도 이벤트는 그대로 보여준다.
+                logging.getLogger(__name__).exception("correlation read failed")
         visible = []
         for event in source:
             if not scope_matches(event, principal):
@@ -252,7 +265,7 @@ class StandardService:
                              "installedVersion": scan.get("installedVersion"), "cvss": scan.get("cvss"), "dataMode": "live", "_sortAt": observed})
             return self._page(rows, q, binding, marker)
         if kind == "history":
-            return self._history(events, q, binding, marker)
+            return self._history(events, q, binding, marker, principal)
         if kind == "metrics":
             return self._metrics(q, principal)
         if kind == "infra":
@@ -306,7 +319,53 @@ class StandardService:
                 "createdAt": iso(created_at), "updatedAt": iso(updated_at), "requestId": request_id,
                 "resource": event["resource"], "region": event["region"], "dataMode": "live"}
 
-    def _history(self, events, q, binding, marker):
+    def _automatic_history(self, principal, notes, finding_id=None):
+        """DynamoDB 자동조치 기록 → Evidence 행. 설계 3.1: 외부 자동 SOAR 이력도 같은 조회 모델로."""
+        if not hasattr(self.provider, "actions"):
+            return []
+        try:
+            data = self.provider.actions(finding_id) if finding_id else self.provider.actions()
+        except Exception:  # noqa: BLE001 — 내부 원인은 로그로만(설계 2.3 원칙 7)
+            logging.getLogger(__name__).exception("action history read failed")
+            notes["warnings"].append("자동조치 이력을 불러오지 못했습니다.")
+            notes["partial"] = True
+            return []
+        if not data.get("configured"):
+            notes["warnings"].append("자동조치 이력 테이블이 설정되지 않았습니다.")
+            return []
+        if data.get("truncated"):
+            notes["warnings"].append("자동조치 이력이 많아 일부만 표시합니다.")
+            notes["partial"] = True
+        rows = []
+        empty_hash = hashlib.sha256(encode({}).encode()).hexdigest()
+        for record in data["items"]:
+            # 리전·계정을 모르는 기록은 범위 제한 사용자에게 보이지 않는다(안전 쪽).
+            if not scope_matches({"accountId": record["accountId"], "region": record["region"],
+                                  "resource": record["resource"]}, principal):
+                continue
+
+            def text_state(text, at):
+                return None if text is None else {"value": None, "unit": None, "observedAt": iso(at),
+                                                  "source": "asr_trigger", "criterionVersion": None,
+                                                  "resource": record["resource"], "text": text}
+            rows.append({
+                "id": "auto:" + record["actionId"] + "@" + str(record["createdAt"]),
+                "eventId": record["eventId"], "actionId": record["actionId"], "jobId": None,
+                "actor": "asr_trigger", "source": "automatic", "decision": record["decision"],
+                "playbookId": record["playbookId"], "playbookVersion": None, "parametersHash": empty_hash,
+                "beforeState": text_state(record["beforeText"], record["createdAt"]),
+                "afterState": text_state(record["afterText"], record["updatedAt"]),
+                "executionId": record["executionId"], "verification": "NOT_RUN",
+                "actionState": AUTOMATIC_STATES.get(record["status"], "RECONCILING"),
+                "automationStatus": record["status"], "occurrenceCount": record["occurrenceCount"],
+                "findingId": record["findingId"], "findingType": record["findingType"],
+                "createdAt": iso(record["createdAt"]), "updatedAt": iso(record["updatedAt"]),
+                "lastSeenAt": iso(record["lastSeenAt"]), "requestId": None,
+                "resource": record["resource"], "region": record["region"], "accountId": record["accountId"],
+                "dataMode": "live", "_sortAt": record["lastSeenAt"]})
+        return rows
+
+    def _history(self, events, q, binding, marker, principal):
         known = {event["id"]: event for event in events}
         audits, jobs = self.history.snapshot()
         rows, selected_jobs = [], []
@@ -343,10 +402,16 @@ class StandardService:
             if job["kind"] == "verify" and job["result"] and not job["result"].get("error"):
                 row.update(afterState=measurement(job["result"]), verification="PASSED" if job["result"].get("passed") else "FAILED")
             selected_jobs.append(row)
+        notes = {"warnings": [], "partial": False}
+        # eventId 로 좁힌 조회는 그 이벤트의 finding 만 인덱스로 읽는다.
+        finding_id = (known.get(q["eventId"]) or {}).get("externalFindingId") if q.get("eventId") else None
+        rows.extend(self._automatic_history(principal, notes, finding_id))
         rows = [row for row in rows if common_matches(row, q, row["_sortAt"])
                 and all(not q.get(field) or q[field] == row.get(field) for field in ("eventId", "actionId", "jobId"))]
         result = self._page(rows, q, binding, marker)
         result["jobs"] = sorted(selected_jobs, key=lambda row: (row["createdAt"], row["jobId"]), reverse=True)
+        if notes["warnings"]:
+            result["_warnings"], result["_partial"] = notes["warnings"], notes["partial"]
         return result
 
     def command(self, action, event_id, body, actor, key, request_id):

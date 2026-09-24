@@ -152,3 +152,39 @@ resource "aws_lambda_permission" "waf_alarm_to_finding" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.waf_alarm_to_finding[0].arn
 }
+
+############################################
+# SSM Automation(ASR-*) 종료 → asr_trigger
+# 자동조치 실행 결과(성공·실패·시간초과·취소)를 조치 이력의 같은 행(action_id = ssm-<실행 ID>)에
+# 기록한다. 실행 결과일 뿐 재검증(동일 조건 재점검)은 아니다 — 대시보드는 '해결'로 표시하지 않는다.
+############################################
+
+resource "aws_cloudwatch_event_rule" "ssm_result_to_asr" {
+  name        = "${var.name_prefix}-ssm-result"
+  description = "ASR automation terminal status to asr_trigger (action history result)"
+
+  event_pattern = jsonencode({
+    source        = ["aws.ssm"]
+    "detail-type" = ["EC2 Automation Execution Status-change Notification"]
+    detail = {
+      Definition = [{ prefix = "ASR-" }]
+      Status     = ["Success", "Failed", "TimedOut", "Cancelled", "CompletedWithSuccess", "CompletedWithFailure"]
+    }
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "ssm_result_to_asr" {
+  rule      = aws_cloudwatch_event_rule.ssm_result_to_asr.name
+  target_id = "asr-trigger"
+  arn       = aws_lambda_function.asr_trigger.arn
+}
+
+resource "aws_lambda_permission" "ssm_result_to_asr" {
+  statement_id  = "AllowSsmResultAsr"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.asr_trigger.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.ssm_result_to_asr.arn
+}

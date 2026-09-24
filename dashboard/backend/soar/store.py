@@ -92,8 +92,3 @@ class Store:
     def audit(db, actor, event_id, action, detail=None):
         db.execute("INSERT INTO audit(at,actor,event_id,action,detail) VALUES (?,?,?,?,?)",
                    (now_ms(), actor, event_id, action, encode(detail or {})))
-
-    def audit_log(self):
-        with self.connect() as db:
-            return {"items": [dict(row) for row in db.execute(
-                "SELECT id,at,actor,event_id,action,detail FROM audit ORDER BY id DESC LIMIT 1000")]}

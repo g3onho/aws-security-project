@@ -43,6 +43,8 @@ locals {
   dynamodb_table_arns = [
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.correlated_findings_table}",
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}",
+    # 조치 이력 finding_id 인덱스 조회(modules/soar storage.tf 의 finding_id-created_at GSI). 읽기 전용.
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}/index/*",
   ]
 }
 

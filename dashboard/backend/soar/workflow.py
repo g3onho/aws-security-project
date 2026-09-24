@@ -7,7 +7,7 @@ import hashlib
 import json
 import uuid
 
-from .domain import STATUSES, plan_hash, public_event
+from .domain import plan_hash, public_event
 from .errors import Problem
 from .scope import matches as scope_matches
 from .store import encode, now_ms
@@ -72,27 +72,8 @@ class Workflow:
             candidates.append("verify")
         return [action for action in candidates if f"soar:{action}" in PERMISSIONS[principal["role"]]]
 
-    def visible_events(self, actor):
-        principal = self.principal(actor)
-        result = []
-        for event in self.store.events():
-            try:
-                self._authorize(event, principal, "dashboard:read")
-            except Problem as error:
-                if error.status == 404:
-                    continue
-                raise
-            dto = public_event(event)
-            dto["allowedActions"] = self._allowed_actions(event, principal)
-            result.append(dto)
-        return result
-
     def events(self):
         return [public_event(event) for event in self.store.events()]
-
-    def get_event(self, event_id):
-        with self.store.connect() as db:
-            return public_event(self._require(db, event_id))
 
     def _require(self, db, event_id):
         event = self.store.event(db, event_id)
@@ -102,25 +83,21 @@ class Workflow:
 
     def change(self, event_id, action, body, actor, key):
         self.provider.require_ready()
-        if action not in {"approve", "cancel", "execute", "verify", "plan"}:
+        if action not in {"approve", "cancel", "execute", "verify"}:
             raise Problem(404, "지원하지 않는 조치입니다.", "NOT_FOUND")
         self._validate_body(body)
-        if body.get("dry_run") and action not in {"execute", "verify"}:
-            raise Problem(400, "dry_run은 실행·재검증 요청에만 사용할 수 있습니다.")
         content = {key: value for key, value in body.items() if key != "request_id"}
         fingerprint = hashlib.sha256(encode([actor, event_id, action, content]).encode()).hexdigest()
         with self.store.connect(write=True) as db:
             principal = self._principal(db, actor)
             event = self._require(db, event_id)
-            self._authorize(event, principal, "soar:" + ("approve" if action == "plan" else action))
+            self._authorize(event, principal, "soar:" + action)
             cached = db.execute("SELECT * FROM requests WHERE key=?", (key,)).fetchone()
             if cached:
                 if cached["actor"] != actor or cached["fingerprint"] != fingerprint:
                     raise Problem(409, "이미 다른 요청에 사용한 Idempotency-Key입니다.", "IDEMPOTENCY_CONFLICT")
                 return json.loads(cached["response"]), cached["status"]
-            self._check_preconditions(event, body)
-            if action == "plan":
-                raise Problem(422, "조치 계획 공급자가 이 작업을 지원하지 않습니다.", "UNSUPPORTED_PLAN")
+            self._check_version(event, body)
             self._check_actionable(event)
             timestamp = now_ms()
             if action == "approve":
@@ -164,31 +141,26 @@ class Workflow:
                         raise Problem(409, "조치가 성공한 뒤 재검증할 수 있습니다.", "INVALID_TRANSITION")
                     if event.get("_executedPlanHash") != plan_hash(event):
                         raise Problem(409, "실행 당시의 검증 기준과 다릅니다.", "PLAN_CHANGED")
-                if body.get("dry_run"):
-                    result = {"event": public_event(event), "execution": None, "dryRun": True}
-                    status = 202
+                job_id = str(uuid.uuid4())
+                # Snapshot before the transient state. Retries and crash recovery use this exact input.
+                payload = {"event": event, "actor": actor, "planHash": plan_hash(event),
+                           "requestId": body.get("request_id")}
+                db.execute("INSERT INTO jobs(id,event_id,kind,state,payload,created_at,updated_at) "
+                           "VALUES (?,?,?,'QUEUED',?,?,?)",
+                           (job_id, event_id, action, encode(payload), timestamp, timestamp))
+                event["activeExecutionId"] = job_id
+                if action == "execute":
+                    event.update(status="EXECUTING", actionState="QUEUED", execution="RUNNING", verification="NOT_RUN",
+                                 afterValue=None, afterAt=None)
                 else:
-                    job_id = str(uuid.uuid4())
-                    # Snapshot before the transient state. Retries and crash recovery use this exact input.
-                    payload = {"event": event, "actor": actor, "planHash": plan_hash(event),
-                               "requestId": body.get("request_id")}
-                    db.execute("INSERT INTO jobs(id,event_id,kind,state,payload,created_at,updated_at) "
-                               "VALUES (?,?,?,'QUEUED',?,?,?)",
-                               (job_id, event_id, action, encode(payload), timestamp, timestamp))
-                    event["activeExecutionId"] = job_id
-                    if action == "execute":
-                        event.update(status="EXECUTING", actionState="QUEUED", execution="RUNNING", verification="NOT_RUN",
-                                     afterValue=None, afterAt=None)
-                    else:
-                        event.update(status="VERIFYING", actionState="VERIFY_QUEUED", verification="CHECKING")
-                    self._history(event, timestamp, "조치 대기열 등록" if action == "execute" else "동일 기준 재검증 대기열 등록")
-                    result = {"event": public_event(event), "execution": {
-                        "executionId": job_id, "status": "RUNNING", "kind": action,
-                        "startedAt": timestamp}, "dryRun": False}
-                    status = 202
-            if not body.get("dry_run"):
-                event["version"] += 1
-                event["updatedAt"] = timestamp
+                    event.update(status="VERIFYING", actionState="VERIFY_QUEUED", verification="CHECKING")
+                self._history(event, timestamp, "조치 대기열 등록" if action == "execute" else "동일 기준 재검증 대기열 등록")
+                result = {"event": public_event(event), "execution": {
+                    "executionId": job_id, "status": "RUNNING", "kind": action,
+                    "startedAt": timestamp}}
+                status = 202
+            event["version"] += 1
+            event["updatedAt"] = timestamp
             if "event" in result:
                 result["event"] = public_event(event)
             else:
@@ -197,7 +169,7 @@ class Workflow:
             returned_event["allowedActions"] = self._allowed_actions(event, principal)
             self.store.save_event(db, event)
             self.store.audit(db, actor, event_id, action, {
-                "planHash": plan_hash(event), "dryRun": body.get("dry_run", False),
+                "planHash": plan_hash(event),
                 "executionId": (result.get("execution") or {}).get("executionId") if isinstance(result.get("execution"), dict) else None,
                 "jobId": event.get("activeExecutionId"), "requestId": body.get("request_id"),
                 "event": public_event(event), "reason": body.get("reason", ""),
@@ -214,36 +186,21 @@ class Workflow:
             encode(body).encode("utf-8")
         except (ValueError, TypeError, UnicodeError) as error:
             raise Problem(400, "유효한 JSON 값만 사용할 수 있습니다.") from error
-        if set(body) - {"expected_status", "plan_hash", "dry_run", "parameters", "evidence",
-                        "expected_version", "reason", "playbook_id", "approval_id", "action_id", "request_id"}:
+        if set(body) - {"expected_version", "reason", "playbook_id", "parameters",
+                        "approval_id", "action_id", "request_id"}:
             raise Problem(400, "허용되지 않은 조치 파라미터입니다.")
-        if "expected_status" in body and (not isinstance(body["expected_status"], str)
-                                          or body["expected_status"] not in STATUSES):
-            raise Problem(400, "expected_status 값이 올바르지 않습니다.")
-        if "plan_hash" in body and not isinstance(body["plan_hash"], str):
-            raise Problem(400, "plan_hash는 문자열이어야 합니다.")
-        if "dry_run" in body and type(body["dry_run"]) is not bool:
-            raise Problem(400, "dry_run은 true 또는 false여야 합니다.")
         if "parameters" in body and not isinstance(body["parameters"], dict):
             raise Problem(400, "parameters는 JSON 객체여야 합니다.")
         if "expected_version" in body and (type(body["expected_version"]) is not int or body["expected_version"] < 1):
             raise Problem(400, "expectedVersion은 양의 정수여야 합니다.")
         if "reason" in body and (not isinstance(body["reason"], str) or len(body["reason"]) > 1000):
             raise Problem(400, "reason은 1000자 이하 문자열이어야 합니다.")
-        if body.get("evidence") is not None:
-            # User-authored evidence cannot replace a measured result.
-            raise Problem(422, "임의 계획·수동 증적 입력은 지원하지 않습니다.", "UNSUPPORTED_PLAN")
 
     @staticmethod
-    def _check_preconditions(event, body):
-        if "expected_version" in body:
-            if body["expected_version"] != event["version"]:
-                raise Problem(409, "조치 버전이 변경됐습니다. 새로고침해주세요.", "VERSION_CONFLICT")
-            return
-        if body.get("expected_status") != event["status"]:
-            raise Problem(409, "이벤트 상태가 변경됐습니다. 새로고침해주세요.", "STATE_CONFLICT")
-        if body.get("plan_hash") != plan_hash(event):
-            raise Problem(409, "조치 계획이 변경됐습니다. 새로고침해주세요.", "PLAN_CHANGED")
+    def _check_version(event, body):
+        # 표준 API는 expectedVersion을 필수로 받는다(contracts.StandardService.command).
+        if body.get("expected_version") != event["version"]:
+            raise Problem(409, "조치 버전이 변경됐습니다. 새로고침해주세요.", "VERSION_CONFLICT")
 
     @staticmethod
     def _check_actionable(event):
@@ -258,16 +215,3 @@ class Workflow:
     @staticmethod
     def _history(event, timestamp, text, decision=None):
         event.setdefault("history", []).append({"at": timestamp, "text": text, "decision": decision, "source": "manual"})
-
-    def execution(self, event_id, job_id):
-        with self.store.connect() as db:
-            event = self._require(db, event_id)
-            job = db.execute("SELECT * FROM jobs WHERE id=? AND event_id=?", (job_id, event_id)).fetchone()
-            if not job:
-                raise Problem(404, "실행 기록을 찾을 수 없습니다.", "EXECUTION_NOT_FOUND")
-            execution = {"executionId": job["id"], "kind": job["kind"],
-                         "status": "RUNNING" if job["state"] in {"QUEUED", "RUNNING"} else job["state"],
-                         "startedAt": job["created_at"], "finishedAt": job["updated_at"] if job["result"] else None}
-            if job["result"]:
-                execution["result"] = json.loads(job["result"])
-            return {"event": public_event(event), "execution": execution}

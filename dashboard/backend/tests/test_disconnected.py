@@ -9,16 +9,11 @@ from soar.errors import Problem
 
 @pytest.mark.parametrize('route', [
     '/api/events', '/api/summary', '/api/metrics', '/api/vulnerabilities', '/api/infra/status', '/api/history',
-    '/api/legacy/events', '/api/legacy/snapshot', '/api/legacy/summary', '/api/legacy/metrics',
-    '/api/legacy/services', '/api/legacy/resources', '/api/legacy/nacls', '/api/legacy/scenarios',
-    '/api/legacy/incidents', '/api/legacy/vulnerabilities', '/api/legacy/audit',
-    '/api/legacy/events/unknown', '/api/legacy/events/unknown/evidence', '/api/legacy/export/events.csv',
 ])
 def test_missing_source_is_not_reported_as_empty_or_success(client, route):
     response = client.get(route)
     assert response.status_code == 503
-    data = response.json
-    assert data.get('code', data.get('error', {}).get('code')) == 'DATA_SOURCE_NOT_CONFIGURED'
+    assert response.json['error']['code'] == 'DATA_SOURCE_NOT_CONFIGURED'
 
 
 def test_startup_and_restart_do_not_populate_operational_tables(app):
@@ -31,15 +26,8 @@ def test_startup_and_restart_do_not_populate_operational_tables(app):
 
 
 def test_disconnected_status_and_write_gate(client):
-    config = client.get('/api/legacy/config').json
-    assert config['mode'] == 'live'
-    assert config['dataSourceConnected'] is False
-    assert config['awsConnected'] is False
-    assert config['writeEnabled'] is False
-    assert config['regions'] == []
-    status = client.get('/api/legacy/health').json
-    assert status['status'] == 'degraded'
-    assert status['checks']['dataSource'] == 'not_configured'
+    for path in ('/api/legacy/config', '/api/legacy/health', '/api/legacy/events'):
+        assert client.get(path).status_code == 404
     assert client.post('/execute', json={}).status_code == 403
 
 
@@ -72,4 +60,5 @@ def test_authentication_csrf_logout_and_assets(app, client):
 def test_health_distinguishes_process_from_data_readiness(client):
     response = client.get('/health')
     assert response.status_code == 200
-    assert response.json['data']['dataSourceConnected'] is False
+    # 설계 3.3 #1·openapi HealthEnvelope: 생존 여부와 연결 여부만. 공급자 내부 구성은 노출하지 않는다.
+    assert response.json['data'] == {'status': 'ok', 'dataSourceConnected': False}

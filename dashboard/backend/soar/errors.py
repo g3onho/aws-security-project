@@ -15,7 +15,7 @@ class Problem(Exception):
 def install_errors(app):
     def response(status, title, code, detail=""):
         from .contracts import metadata
-        if request.path.startswith(("/api/legacy/", "/api/auth/")):
+        if request.path.startswith("/api/auth/"):
             result = jsonify(type="about:blank", title=title, status=status,
                              code=code, detail=detail, instance=request.path,
                              requestId=g.request_id)

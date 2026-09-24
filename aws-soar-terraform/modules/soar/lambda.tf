@@ -102,9 +102,10 @@ data "aws_iam_policy_document" "asr_trigger" {
     }
   }
 
+  # 반복 판정은 같은 행의 횟수만 갱신(Query → UpdateItem), SSM 종료 결과도 같은 행에 갱신한다.
   statement {
     sid       = "RecordActions"
-    actions   = ["dynamodb:PutItem"]
+    actions   = ["dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"]
     resources = [aws_dynamodb_table.actions.arn]
   }
 
@@ -164,6 +165,7 @@ resource "aws_lambda_function" "asr_trigger" {
       DOC_DISABLE_KEY           = aws_ssm_document.automation["ASR-DisableExposedAccessKey"].name
       DOC_NGINX_HARDEN          = aws_ssm_document.command["ASR-HardenNginx"].name
       AUTOMATION_ROLE_ARN       = aws_iam_role.ssm_automation.arn
+      ACTION_TTL_DAYS           = tostring(var.action_history_ttl_days)
     }
   }
 

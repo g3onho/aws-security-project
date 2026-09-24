@@ -78,9 +78,9 @@ def test_aws_provider_does_not_hide_connection_failure():
 
 def test_aws_provider_reads_normalized_metrics_from_aws_clients():
     provider = AwsProvider("ap-northeast-2", session_factory=lambda region: FakeSession(region))
-    result = provider.metrics({})
-    assert result["dataMode"] == "live"
-    assert result["hosts"][0]["id"] == "i-1"
+    host = provider.resources({})["items"][0]
+    assert host["id"] == "i-1" and host["state"] == "running"
+    assert provider.metric_for(host, {})["period"] == 300
 
 
 def test_aws_provider_metrics_match_infrastructure_view_shape():
@@ -91,13 +91,11 @@ def test_aws_provider_metrics_match_infrastructure_view_shape():
         {"Id": "memory", "Timestamps": ts[:1], "Values": [40.0]}]}})()
     session = FakeSession("ap-northeast-2")
     session.client = lambda name, **kw: cw if name == "cloudwatch" else FakeSession.client(session, name)
-    m = AwsProvider("ap-northeast-2", session_factory=lambda region: session).metrics({"from": "0", "to": "9999999999999"})
-    assert m["resource"] == "i-1" and m["host"]["name"] == "i-1"
+    provider = AwsProvider("ap-northeast-2", session_factory=lambda region: session)
+    host = provider.resources({})["items"][0]
+    m = provider.metric_for(host, {"from": "0", "to": "9999999999999"})
     assert [p["cpu"] for p in m["points"]] == [10.0, 95.0, 90.0]  # 시간순 정렬
-    assert m["cpu"] == 90.0 and m["memory"] == 40.0
-    assert m["breaches"] == [{"metric": "cpu", "from": ts[1].timestamp() * 1000, "to": ts[0].timestamp() * 1000, "peak": 95.0, "samples": 2}]
-    assert m["summary"]["cpu"] == {"max": 95.0, "avg": 65.0} and m["summary"]["samples"] == 3
-    assert m["series"][0]["resource"] == "i-1"
+    assert m["points"][-1]["memory"] == 40.0 and m["points"][0]["memory"] is None  # 같은 시각끼리 병합, 결측은 None
 
 
 def test_aws_provider_services_have_fields_the_view_reads():

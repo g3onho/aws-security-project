@@ -5,7 +5,6 @@ info:
   description: >-
     실데이터용 API 계약. 공급자 연결 전에는 데이터 요청에 503 DATA_SOURCE_NOT_CONFIGURED를 반환한다.
     /api/auth/session, /api/auth/login, /api/auth/logout은 별도 인증 부트스트랩이다.
-    기존 화면 호환 API는 /api/legacy 아래에 격리한다.
     보호된 응답에는 Cache-Control no-store를 적용한다.
     시각은 UTC ISO 8601, 범위는 [from,to), 최대 31일이다.
     생략한 기간은 현재 서버 시각 직전 24시간이다.
@@ -139,6 +138,8 @@ paths:
           description: >-
             불변 감사 기록과 현재 작업 상태. 지정 jobId의 jobs는 이력 페이지·기간과
             독립적으로 반환하되 현재 사용자와 리소스 범위를 매번 확인한다.
+            items에는 DynamoDB 자동조치 판정 기록(source=automatic)도 포함한다. 테이블 미설정·조회 실패는
+            meta.warnings(실패 시 partial=true)로 알린다.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/HistoryEnvelope'}
@@ -289,6 +290,7 @@ components:
         source: {type: string}
         resource: {type: [string, 'null']}
         criterionVersion: {type: [string, 'null']}
+        text: {type: [string, 'null'], description: 수치가 아닌 상태 설명(자동조치 기록의 before_state·after_state)}
     Event:
       type: object
       required: [id, title, severity, resource, actionState, version, allowedActions, updatedAt]
@@ -320,6 +322,8 @@ components:
         geoStatus: {type: [string, 'null'], enum: [located, country-only, unknown, null]}
         sourceSample: {type: boolean, description: GuardDuty create-sample-findings 로 만든 시연용 finding}
         actionable: {type: boolean, description: 승인·실행할 플레이북이 있는지. false 면 탐지 기록}
+        severityBumped: {type: boolean, description: correlator 가 GuardDuty 위협과 같은 자원의 CVE 로 위험도를 한 단계 올렸는지}
+        relatedCves: {type: array, items: {type: string}, description: 상관분석에서 찾은 같은 자원의 CVE}
         source: {type: string, description: 실제 탐지 서비스(GuardDuty·Security Hub·Config·WAF)}
         scenario: {type: string}
     Evidence:
@@ -342,6 +346,14 @@ components:
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
         requestId: {type: [string, 'null']}
+        automationStatus:
+          type: string
+          enum: [NOTIFIED, DRY_RUN, IN_PROGRESS, SUCCESS, FAILED, TIMED_OUT, CANCELLED, UNKNOWN]
+          description: 자동조치(source=automatic) 기록의 상태. SUCCESS 는 실행 성공이며 재검증 전이다(해결 아님)
+        occurrenceCount: {type: integer, minimum: 1, description: 같은 finding·같은 판정의 반복 횟수(자동조치 기록)}
+        lastSeenAt: {type: string, format: date-time, description: 마지막 판정 시각. 자동조치 기록의 정렬·기간 기준}
+        findingId: {type: string}
+        findingType: {type: [string, 'null']}
     HealthEnvelope:
       allOf:
         - {$ref: '#/components/schemas/Envelope'}

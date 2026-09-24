@@ -23,7 +23,7 @@ python -m venv backend/.venv
 
 실제 AWS 조회를 켜려면 `DATA_PROVIDER=aws`와 `AWS_REGION`을 설정합니다. Security Hub, EC2, CloudWatch CPU, Inspector 결과를 읽기 전용으로 제공하며 변경·실행 API는 비활성화되어 있습니다.
 
-화면은 `backend/contracts/openapi.yaml`의 표준 읽기 API를 사용합니다. 기존 `/api/legacy/*`는 호환용으로만 남아 있습니다. 계정별 `accounts`·`regions`·`resources` 접근 범위를 설정해야 AWS 조회 결과가 보입니다. 새 계정의 `accounts` 범위는 빈 목록이므로 기본적으로 결과가 보이지 않습니다.
+화면은 `backend/contracts/openapi.yaml`의 표준 읽기 API를 사용합니다. 계정별 `accounts`·`regions`·`resources` 접근 범위를 설정해야 AWS 조회 결과가 보입니다. 새 계정의 `accounts` 범위는 빈 목록이므로 기본적으로 결과가 보이지 않습니다.
 
 Terraform 담당 작업과 대시보드 배포 전 점검은 [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)에 구분해 정리했습니다.
 

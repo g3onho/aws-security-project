@@ -12,6 +12,12 @@ variable "remediation_actions_table" { type = string }
 variable "scan_results_bucket" { type = string }
 
 variable "enable_auto_remediation" { type = bool }
+
+# 조치 이력 보존 일수. 지나면 DynamoDB TTL 로 자동 삭제된다(루트에서 넘기지 않으면 30일).
+variable "action_history_ttl_days" {
+  type    = number
+  default = 30
+}
 variable "auto_remediable_patterns" { type = list(string) }
 variable "alert_email" { type = string }
 

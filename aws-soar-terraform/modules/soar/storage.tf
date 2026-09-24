@@ -33,6 +33,25 @@ resource "aws_dynamodb_table" "actions" {
     name = "created_at"
     type = "S"
   }
+  attribute {
+    name = "finding_id"
+    type = "S"
+  }
+
+  # finding 별 조치 이력 조회(대시보드 대응 이력). 기존 항목도 finding_id 가 있어 자동으로 색인된다.
+  # GSI 추가·TTL 설정은 테이블을 교체하지 않는 제자리 변경이다(hash/range 키는 바꾸지 않는다).
+  global_secondary_index {
+    name            = "finding_id-created_at"
+    hash_key        = "finding_id"
+    range_key       = "created_at"
+    projection_type = "ALL"
+  }
+
+  # expires_at(epoch 초)이 지난 항목은 DynamoDB 가 자동 삭제한다(최대 48시간 지연 가능).
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
 
   tags = merge(var.tags, { Purpose = "remediation-before-after" })
 }

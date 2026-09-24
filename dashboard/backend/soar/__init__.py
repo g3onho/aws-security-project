@@ -5,10 +5,8 @@ from pathlib import Path
 from flask import Flask, g, redirect, render_template, send_from_directory
 from jinja2 import ChoiceLoader, FileSystemLoader
 
-from .api import bp as legacy_api
 from .auth import current_user, install_auth
 from .contracts import StandardService, envelope
-from .dashboard import Dashboard
 from .provider import AwsProvider, UnconfiguredProvider
 from .errors import install_errors
 from .settings import configure
@@ -28,7 +26,8 @@ def create_app(overrides=None):
                                     app.jinja_loader])
     app.config.update(settings)
     store = Store(settings["DATABASE"])
-    provider = (AwsProvider(settings["AWS_REGION"])
+    provider = (AwsProvider(settings["AWS_REGION"], actions_table=settings["REMEDIATION_ACTIONS_TABLE"],
+                            correlated_table=settings["CORRELATED_FINDINGS_TABLE"])
                 if settings["DATA_PROVIDER"] == "aws" else UnconfiguredProvider())
     if provider.connected and not settings.get("TESTING"):
         provider.warm()  # 취약점 목록(Inspector 수천 건)을 기동 직후 미리 받아 둔다
@@ -36,7 +35,6 @@ def create_app(overrides=None):
     worker = Worker(store, provider, settings["WORKER_LEASE_SECONDS"])
     app.extensions.update(store=store, provider=provider, workflow=workflow,
                           worker=worker,
-                          legacy_dashboard=Dashboard(workflow, provider, store, worker, settings["WRITE_ENABLED"]),
                           standard_service=StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"]))
 
     @app.before_request
@@ -46,7 +44,6 @@ def create_app(overrides=None):
     install_errors(app)
     install_auth(app)
     app.register_blueprint(standard_api)
-    app.register_blueprint(legacy_api)
 
     @app.get("/")
     def index():
@@ -61,8 +58,8 @@ def create_app(overrides=None):
     @app.get("/health")
     def health():
         status = provider.status()
-        return envelope({"status": "ok", "dataSourceConnected": status["connected"],
-                         "provider": status}, g.request_id)
+        # 생존 확인 전용. 공급자 상태·리전 같은 내부 구성은 노출하지 않는다(설계 3.3 #1, openapi HealthEnvelope).
+        return envelope({"status": "ok", "dataSourceConnected": status["connected"]}, g.request_id)
 
     @app.get("/static/<path:filename>")
     def static(filename):

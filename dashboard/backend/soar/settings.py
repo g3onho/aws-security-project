@@ -23,6 +23,9 @@ def configure(overrides=None):
         "FRONTEND_PATH": str(ROOT.parent / "frontend"),
         "DATA_PROVIDER": os.getenv("DATA_PROVIDER", "none").lower(),
         "AWS_REGION": os.getenv("AWS_REGION", "ap-northeast-2"),
+        # Terraform modules/soar 의 DynamoDB 테이블(dashboard.sh.tftpl 이 env 로 넣는다). 없으면 해당 기능은 경고로 표시.
+        "REMEDIATION_ACTIONS_TABLE": os.getenv("REMEDIATION_ACTIONS_TABLE") or None,
+        "CORRELATED_FINDINGS_TABLE": os.getenv("CORRELATED_FINDINGS_TABLE") or None,
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),

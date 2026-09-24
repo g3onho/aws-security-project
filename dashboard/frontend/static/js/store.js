@@ -79,7 +79,7 @@ export const api={
   Object.assign(summary,{total:state.source||state.search?rows.length:standardSummary.totalEvents,resolved,
    resolutionRate:rows.length?resolved/rows.length*100:null,asOf,collectedAt:asOf,snapshot:events.meta?.requestId,
    health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}}});
-  config={...config,dataSourceConnected:healthData.dataSourceConnected,providerRegion:healthData.provider?.region};
+  config={...config,dataSourceConnected:healthData.dataSourceConnected};
   details.clear();for(const event of [...rows,...regional])details.set(event.id,event);
   return true;
  },
@@ -96,7 +96,7 @@ export const api={
   if(state.search){const term=state.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
   return {items,total:items.length};
  },
- async history(){const q=query();q.delete('severity');q.delete('status');const result=await pages('/api/history',q);return {items:result.items,jobs:result.extra.jobs||[]};},
+ async history(){const q=query();q.delete('severity');q.delete('status');const result=await pages('/api/history',q);return {items:result.items,jobs:result.extra.jobs||[],warnings:Array.isArray(result.meta?.warnings)?result.meta.warnings:[],partial:result.meta?.partial===true};},
  async logout(){controller?.abort();generation++;await request('/api/auth/logout',{method:'POST',body:'{}'});reset();location.assign('/login');},
  async export(){const {items}=await pages('/api/events',query());const lines=[['ID','발생 시각','제목','위험도','리전','자원','탐지 소스','상태'],...items.map(e=>[e.id,e.observedAt,e.title,e.severity,e.region,e.resource,e.source,e.actionState])];const csv='\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const anchor=document.createElement('a');anchor.href=url;anchor.download='events.csv';anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 };
