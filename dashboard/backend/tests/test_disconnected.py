@@ -52,7 +52,7 @@ def test_authentication_csrf_logout_and_assets(app, client):
     assert client.get('/').status_code == 200
     root = Path(__file__).resolve().parents[2]
     assert client.get('/static/js/store.js').data == (root / 'frontend/static/js/store.js').read_bytes()
-    assert client.get('/static/js/data.js').data == (root / 'frontend/static/js/data.js').read_bytes()
+    assert client.get('/static/js/ui/constants.js').data == (root / 'frontend/static/js/ui/constants.js').read_bytes()
     assert client.post('/api/auth/logout', json={}).status_code == 200
     assert client.get('/api/events').status_code == 401
 

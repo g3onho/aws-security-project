@@ -1,4 +1,4 @@
-import {project,mapPoint,wrapLon,clampPhi,ZOOM_MIN,ZOOM_MAX} from './map.js?v=local-4';
+import {project,mapPoint,wrapLon,clampPhi,ZOOM_MIN,ZOOM_MAX} from './globe.js?v=ui-1';
 
 const SVG_NS='http://www.w3.org/2000/svg';
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));

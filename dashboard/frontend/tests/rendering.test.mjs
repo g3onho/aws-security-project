@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from './dom-test-support.mjs';
-import {patchMarkup} from '../static/js/rendering.js';
+import {patchMarkup} from '../static/js/ui/components/rendering.js';
 
 function container(html) {
   const dom = new JSDOM(`<main>${html}</main>`);

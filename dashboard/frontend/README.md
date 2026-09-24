@@ -10,7 +10,16 @@ Store 구조(v20.3, 설계 2.1·2.2): 화면(`app.js`)은 `store.actions`·`stor
 - `store/state.js`·`selectors.js`·`actions.js`: 상태, 읽기, 요청·필터 변경(`setFilters`)
 - `store/polling.js`: 자동 새로고침 타이머 하나, 탭이 숨으면 정지
 
-`static/js/data.js`에는 리전 지리 좌표와 화면용 열거값만 있습니다. 이벤트, 자원 ID, 공격 출발지, 취약점, 지표는 API에서 받아야 합니다.
+화면 구조(v20.4, 설계 2.1): `static/js/` 바로 아래에는 시작점 `app.js`와 Store 입구 `store.js`만 둡니다.
+
+- `ui/context.js`: Store 연결(화면 모듈 중 유일하게 `store.js`를 불러옴), 화면 전용 상태, `render`·`refresh` 연결
+- `ui/pages/`: 통합 관제·이벤트·취약점·침해사례·인프라·대응 이력·로그인
+- `ui/components/`: 서식·배지·패널·상세 창·상태 바로가기·CSV·레이아웃 애니메이션 등 공통 부품
+- `ui/charts/charts.js`: Chart.js 생성·갱신·제거
+- `ui/map/`: 지구본 계산(`globe.js`)·조작(`interaction.js`)·관제 지도 화면(`view.js`)
+- `ui/router.js`: 주소창 ↔ 필터·열린 이벤트
+
+`static/js/ui/constants.js`에는 리전 지리 좌표와 화면용 열거값만 있습니다. 이벤트, 자원 ID, 공격 출발지, 취약점, 지표는 API에서 받아야 합니다.
 
 현재 데이터 소스는 미연결 상태입니다. 로그인 후 오류 안내와 재시도 버튼을 표시하고 가상의 탐지 건수·지표·조치 성공 결과를 만들지 않습니다.
 

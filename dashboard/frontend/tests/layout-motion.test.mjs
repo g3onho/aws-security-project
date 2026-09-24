@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from './dom-test-support.mjs';
-import {animateLayout} from '../static/js/layout-motion.js';
+import {animateLayout} from '../static/js/ui/components/layout-motion.js';
 
 function fixture(t,html='<section class="panel" data-height="100"><div class="content"><canvas></canvas></div></section>'){
  const dom=new JSDOM(`<style>.panel{box-sizing:border-box}</style><main>${html}</main>`,{pretendToBeVisual:true});

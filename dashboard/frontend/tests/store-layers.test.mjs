@@ -83,7 +83,7 @@ test('Store modules never touch the DOM; event CSV is built by the screen',async
  const dir=path.join(ROOT,'static/js/store');
  const files=fs.readdirSync(dir,{recursive:true}).filter(f=>f.endsWith('.js'));
  for(const file of files)assert.doesNotMatch(fs.readFileSync(path.join(dir,file),'utf8'),/\bdocument\.(createElement|body|querySelector)|\.click\(\)|createObjectURL/,file);
- const {eventCsv}=await import(pathToFileURL(path.join(ROOT,'static/js/downloads.js')).href+'?v=local-5');
+ const {eventCsv}=await import(pathToFileURL(path.join(ROOT,'static/js/ui/components/downloads.js')).href+'?v=ui-1');
  const csv=eventCsv([{id:'E1',observedAt:iso,title:'=cmd()',severity:'HIGH',region:'ap-northeast-2',resource:'i-1',source:'GuardDuty',actionState:'PENDING_APPROVAL'}]);
  assert(csv.startsWith('\uFEFF"ID","발생 시각"'));
  assert(csv.includes('"\'=cmd()"'),'formula-looking cells are neutralised');
@@ -91,12 +91,22 @@ test('Store modules never touch the DOM; event CSV is built by the screen',async
 });
 
 test('UI talks to the Store only through actions and selectors',()=>{
- const app=fs.readFileSync(path.join(ROOT,'static/js/app.js'),'utf8');
- assert.doesNotMatch(app,/\bstate\.[a-zA-Z]+\s*(\+|-)?=(?!=)/,'app.js must not assign filter state directly');
- assert.doesNotMatch(app,/Object\.assign\(state/);
- assert.doesNotMatch(app,/setInterval\(/,'polling belongs to the Store');
- const fetches=app.match(/\bfetch\(/g)||[];assert.equal(fetches.length,1,'only the static map geometry is fetched by the UI');
- assert.match(app,/import \{store\} from '\.\/store\.js/);
+ // v20.4: 화면 코드는 app.js + ui/** 로 나뉜다. Store 는 ui/context.js 한 곳에서만 불러온다.
+ const dir=path.join(ROOT,'static/js');
+ const files=['app.js',...fs.readdirSync(path.join(dir,'ui'),{recursive:true}).filter(f=>f.endsWith('.js')).map(f=>path.join('ui',f))];
+ const fetchers=[];
+ for(const file of files){
+  const source=fs.readFileSync(path.join(dir,file),'utf8');
+  assert.doesNotMatch(source,/\bstate\.[a-zA-Z]+\s*(\+|-)?=(?!=)/,file+': must not assign filter state directly');
+  assert.doesNotMatch(source,/Object\.assign\(state/,file);
+  assert.doesNotMatch(source,/setInterval\(/,file+': polling belongs to the Store');
+  assert.doesNotMatch(source,/from '[^']*store\/[^']*'/,file+': Store internals are private');
+  if(/from '[^']*store\.js/.test(source))assert.equal(file,path.join('ui','context.js'),file+': only ui/context.js imports the Store');
+  if(/\bfetch\(/.test(source))fetchers.push(file);
+ }
+ // 지도 도형(정적 파일)과 별도 로그인 화면만 직접 요청한다.
+ assert.deepEqual(fetchers.sort(),[path.join('ui','map','view.js'),path.join('ui','pages','login.js')].sort());
+ assert.deepEqual(fs.readdirSync(dir).filter(f=>f.endsWith('.js')).sort(),['app.js','store.js'],'only the entry points stay at the top level');
 });
 
 test('screen shows valid rows, reports skipped rows and uses accurate labels',async t=>{

@@ -6,7 +6,7 @@
 
 - `backend/soar/`: Flask 백엔드
 - `frontend/static/js/store.js`: 단일 API 클라이언트
-- `frontend/static/js/data.js`: 리전 지리정보와 화면용 열거값
+- `frontend/static/js/ui/constants.js`: 리전 지리정보와 화면용 열거값 (v20.4: `data.js`에서 이동)
 - `backend/instance/dashboard.sqlite3`: 계정·실제 데이터 저장소
 
 ## 이번 변경

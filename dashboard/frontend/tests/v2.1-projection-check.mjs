@@ -1,6 +1,6 @@
-// Pure-math sanity checks for the v2.1 rotating-globe projection (static/js/map.js).
+// Pure-math sanity checks for the v2.1 rotating-globe projection (static/js/ui/map/globe.js).
 // Node-only, no browser required: run with `node tests/v2.1-projection-check.mjs`.
-import {project, wrapLon, clampPhi, DEFAULT_ROTATION, DEFAULT_ZOOM, REGION_ZOOM, ZOOM_MIN, ZOOM_MAX} from '../static/js/map.js';
+import {project, wrapLon, clampPhi, DEFAULT_ROTATION, DEFAULT_ZOOM, REGION_ZOOM, ZOOM_MIN, ZOOM_MAX} from '../static/js/ui/map/globe.js';
 
 function approx(a, b, eps, label) {
   if (Math.abs(a - b) > eps) throw new Error(`FAIL ${label}: got ${a}, expected ~${b}`);
@@ -39,7 +39,7 @@ approx(clampPhi(-95), -80, 1e-6, 'clampPhi(-95)');
 // 6) Drag direction sanity check: bindMapInteraction uses a trackball ("grab the surface")
 //    convention, where dragging right subtracts from lambda0 so the point under the cursor keeps
 //    following the cursor (content moves with your hand, new content enters from the left) —
-//    this is the standard drag-to-rotate feel, and must match static/js/map.js exactly.
+//    this is the standard drag-to-rotate feel, and must match static/js/ui/map/globe.js exactly.
 {
   const R = 380 * 1; // BASE_R * zoom=1, must match map.js's internal BASE_R
   const dxRight = 50; // test rightward mouse delta, px

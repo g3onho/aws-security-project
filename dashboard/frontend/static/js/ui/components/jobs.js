@@ -1,3 +1,4 @@
+// 현재 화면에서 쓰지 않는다(테스트만). 수동 조치 실행 기능을 켤 때 상세 창의 작업 감시에 쓴다.
 /** Poll local job results without tying their lifetime to the event dialog. */
 export function createJobWatcher({
   loadJob,

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRequestActivity} from '../static/js/request-activity.js';
+import {createRequestActivity} from '../static/js/ui/components/request-activity.js';
 
 function fixture(options = {}) {
   let time = 0, nextId = 0;

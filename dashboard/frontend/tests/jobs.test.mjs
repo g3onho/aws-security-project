@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createJobWatcher} from '../static/js/jobs.js';
+import {createJobWatcher} from '../static/js/ui/components/jobs.js';
 
 const result = status => ({execution: {status}});
 function deferred() {

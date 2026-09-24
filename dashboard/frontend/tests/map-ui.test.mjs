@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from './dom-test-support.mjs';
-import {createMarkerLayer,createCameraController} from '../static/js/map-ui.js';
-import {bindMapInteraction,mapPoint,project} from '../static/js/map.js';
+import {createMarkerLayer,createCameraController} from '../static/js/ui/map/interaction.js';
+import {bindMapInteraction,mapPoint,project} from '../static/js/ui/map/globe.js';
 
 function fixture({width=1000,height=460,aspect='xMidYMid meet'}={}){
  const dom=new JSDOM(`<style>.marker text{font-size:11px;letter-spacing:.2px}.region-marker-label{opacity:0;pointer-events:none}.marker.selected .region-marker-label,.marker:hover .region-marker-label,.marker:focus .region-marker-label{opacity:1}</style><svg tabindex="0" viewBox="0 0 1000 460" preserveAspectRatio="${aspect}"><g id="markers"></g></svg>`,{pretendToBeVisual:true});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {vulnerabilityCsv} from '../static/js/downloads.js';
+import {vulnerabilityCsv} from '../static/js/ui/components/downloads.js';
 
 test('CVE export includes all filtered rows, quotes data and neutralizes spreadsheet formulas',()=>{
   const data={items:[
