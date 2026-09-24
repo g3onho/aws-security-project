@@ -14,6 +14,7 @@ function notify(change){for(const listener of [...listeners]){try{listener(chang
 
 const poller=createPoller();
 const milliseconds=value=>value==null?null:Date.parse(value);
+export const historyAt=row=>milliseconds(row.lastSeenAt||row.createdAt);
 const unique=list=>[...new Set(list)];
 
 export function reset(){poller.stop();resetState();}
@@ -42,6 +43,12 @@ async function pages(path,q,signal){
 function activeSession(epoch){if(epoch!==session.epoch)throw new DOMException('세션이 변경되었습니다.','AbortError');}
 const searchMatches=term=>e=>[e.id,e.title,e.resource,e.scenario].some(v=>String(v||'').toLocaleLowerCase().includes(term));
 
+// 1주일 지표에서 선택 기간(from 이후) 표본만 남긴다. 서버에 그 기간으로 따로 물은 결과와 같은 5분 표본이다.
+export function sliceMetrics(metric,from){
+ return {...metric,series:(metric.series||[]).map(s=>{const points=(s.points||[]).filter(p=>Date.parse(p.timestamp)>=from);
+  return {...s,points,observedAt:points.length?points[points.length-1].timestamp:null,
+   collectionStatus:points.some(p=>p.value!=null)?'available':'missing'};})};
+}
 export const actions={
  async init(){
   if(!session.initializing)session.initializing=(async()=>{
@@ -60,11 +67,21 @@ export const actions={
   try{
    const q=query(),regionalQuery=new URLSearchParams(q),metricQuery=new URLSearchParams(q);
    regionalQuery.delete('region');metricQuery.delete('severity');metricQuery.delete('status');
+   // CloudWatch 그래프는 기간과 관계없이 5분 평균(v20.5). EC2 기본 모니터링 CPU 가 5분 간격이라 메모리도 맞춘다.
+   // /api/infra/status 는 periodSeconds 를 모르는 필터로 거절(400)하므로 metrics 요청에만 붙인다.
+   // 기간 트랙(v20.5)이 1주일 임계 초과 구간을 세므로 지표는 늘 1주일을 받고, 그래프·통계용은 선택 기간만 잘라 쓴다(요청 1회).
+   const chartQuery=new URLSearchParams(metricQuery);chartQuery.set('periodSeconds','300');
+   chartQuery.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());
    const eventRequest=pages(endpoints.events,q,signal);
    const regionalRequest=q.has('region')?pages(endpoints.events,regionalQuery,signal):eventRequest;
    const calls=[eventRequest,regionalRequest,request(endpoints.summary+'?'+q,{signal}),request(endpoints.health,{signal})];
-   if(filters.view==='infrastructure')calls.push(request(endpoints.metrics+'?'+metricQuery,{signal}),request(endpoints.infra+'?'+metricQuery,{signal}));
-   const [events,all,summaryResponse,health,metricsResponse,infraResponse]=await Promise.all(calls);
+   if(filters.view==='infrastructure')calls.push(request(endpoints.metrics+'?'+chartQuery,{signal}),request(endpoints.infra+'?'+metricQuery,{signal}));
+   // 기간 트랙(v20.5)은 지금부터 1주일 전까지 누적 탐지 수를 그린다 → 1주일 목록. 1주일을 보고 있으면 본 목록을 그대로 쓴다.
+   const weekQuery=new URLSearchParams(q);weekQuery.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());
+   // 인프라(임계 초과)·대응 이력(이력 수)은 트랙에 탐지를 쓰지 않는다.
+   const weekRequest=['vulnerabilities','infrastructure','responses'].includes(filters.view)?Promise.resolve(null)
+    :filters.hours===168?eventRequest:pages(endpoints.events,weekQuery,signal);
+   const [[events,all,summaryResponse,health,metricsResponse,infraResponse],week]=await Promise.all([Promise.all(calls),weekRequest]);
    if(current!==session.generation)return false;
    const standardSummary=envelope(summaryResponse).data,healthData=envelope(health).data;
    const adapted=adaptEvents(events.items),regionalAdapted=all===events?adapted:adaptEvents(all.items);
@@ -72,10 +89,17 @@ export const actions={
    if(filters.source){rows=rows.filter(e=>e.source===filters.source);regional=regional.filter(e=>e.source===filters.source);}
    if(filters.search){const matches=searchMatches(filters.search.toLocaleLowerCase());rows=rows.filter(matches);regional=regional.filter(matches);}
    data.rows=rows;data.regional=regional;
-   data.metric=metricsResponse?envelope(metricsResponse).data:null;data.infra=infraResponse?envelope(infraResponse).data:null;
+   if(week){let weekRows=week===events?adapted.rows:adaptEvents(week.items).rows;
+    if(filters.source)weekRows=weekRows.filter(e=>e.source===filters.source);
+    if(filters.search)weekRows=weekRows.filter(searchMatches(filters.search.toLocaleLowerCase()));
+    data.week=weekRows;}else data.week=null;
+   const metricWeek=metricsResponse?envelope(metricsResponse).data:null;
+   data.metricWeek=metricWeek;data.metric=metricWeek?sliceMetrics(metricWeek,Date.parse(q.get('from'))):null;
+   data.infra=infraResponse?envelope(infraResponse).data:null;
    const asOf=milliseconds(events.meta?.asOf)||Date.now();setAsOf(asOf);
    const resolved=rows.filter(e=>e.actionState==='VERIFIED').length;
    Object.assign(summary,{total:filters.source||filters.search?rows.length:standardSummary.totalEvents,resolved,
+    openVulnerabilities:standardSummary.openVulnerabilities??null,
     resolutionRate:rows.length?resolved/rows.length*100:null,asOf,collectedAt:asOf,snapshot:events.meta?.requestId,
     health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}},
     // 적재 지연·실패(v21, meta.warnings)와 형식 오류로 뺀 행 수(어댑터)를 숨기지 않는다.
@@ -95,7 +119,8 @@ export const actions={
  async change(){throw Error('조치 공급자가 연결되지 않아 읽기 전용입니다.');},
  async job(id,jobId){const q=query();q.set('jobId',jobId);const result=envelope(await request(endpoints.history+'?'+q)).data;return {execution:result.jobs.find(job=>job.jobId===jobId)};},
  async vulnerabilities({target='',fixableOnly=false}={}){
-  const q=query();q.delete('status');if(target)q.set('resource',target);
+  // 취약점은 현재 상태 — 화면의 기간과 무관하게 계약 최대 구간(최근 31일)으로 요청한다(v20.5, API 규칙은 그대로).
+  const q=query(),to=Date.now();q.delete('status');q.set('from',new Date(to-31*86400000).toISOString());q.set('to',new Date(to).toISOString());if(target)q.set('resource',target);
   if(filters.source&&!['Inspector','Trivy'].includes(filters.source))return {items:[],total:0,warnings:[]};
   if(filters.source)q.set('source',filters.source);
   markRequest('vulnerabilities',{status:'loading'});
@@ -108,12 +133,16 @@ export const actions={
   }catch(error){markRequest('vulnerabilities',{status:'error',error:error.message});throw error;}
  },
  async history(){
+  // 기간 트랙(v20.5)이 1주일 대응 이력 수를 세므로 1주일을 받고, 표에는 선택 기간만 남긴다.
+  // 기간 기준 = 서버와 같은 '마지막 발생 시각'(자동: lastSeenAt, 수동: 기록 시각 createdAt).
   const q=query();q.delete('severity');q.delete('status');
+  const from=Date.parse(q.get('from'));q.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());
   markRequest('history',{status:'loading'});
   try{
    const result=await pages(endpoints.history,q);const adapted=adaptHistory(result.items,result.extra.jobs);
+   data.historyWeek=adapted.rows;notify('history');
    markRequest('history',{status:'success',lastUpdated:milliseconds(result.meta?.asOf),requestId:result.meta?.requestId||null,error:null});
-   return {items:adapted.rows,jobs:adapted.jobs,warnings:unique([...result.warnings,...adapted.warnings]),partial:result.meta?.partial===true};
+   return {items:adapted.rows.filter(row=>historyAt(row)>=from),jobs:adapted.jobs,warnings:unique([...result.warnings,...adapted.warnings]),partial:result.meta?.partial===true};
   }catch(error){markRequest('history',{status:'error',error:error.message});throw error;}
  },
  async logout(){session.controller?.abort();session.generation++;await request(endpoints.logout,{method:'POST',body:'{}'});reset();location.assign('/login');},

@@ -146,6 +146,22 @@ def test_closed_states_follow_dashboard_filter():
         "info": "CLOSED", "sup": "CLOSED", "arch": "CLOSED", "open": "OPEN"}
 
 
+def test_sample_findings_are_closed_and_existing_sample_rows_close_on_reconcile():
+    """GuardDuty create-sample-findings(ASFF Sample=true)는 시연용 — 대시보드 목록(OPEN)에 넣지 않는다."""
+    f = Fakes()
+    sample = asff("smp") | {"Sample": True}
+    handler.handler(sh_event(sample, asff("real")), None)
+    assert f.findings["smp"]["view_state"] == "CLOSED" and f.findings["smp"]["raw"]["Sample"] is True
+    assert f.findings["real"]["view_state"] == "OPEN" and "Sample" not in f.findings["real"]["raw"]
+    # v20.2 에서 OPEN 으로 저장된 샘플 행: 원본은 그대로(같은 UpdatedAt)여도 대조가 닫는다.
+    f.tables["findings"].rows["smp"] |= {"view_state": "OPEN"}
+    f.tables["findings"].rows["smp"].pop("expires_at", None)
+    f.sh = [sample, asff("real")]
+    result = handler.handler({"action": "reconcile"}, None)["findings"]
+    assert f.findings["smp"]["view_state"] == "CLOSED" and f.findings["smp"]["expires_at"] > 0
+    assert result["source_open"] == result["table_open"] == 1
+
+
 def test_inspector_event_and_closed_status():
     f = Fakes()
     handler.handler({"source": "aws.inspector2", "region": "ap-northeast-2", "detail": insp("v1")}, None)

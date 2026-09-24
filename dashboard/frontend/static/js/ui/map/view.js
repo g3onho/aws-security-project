@@ -2,10 +2,9 @@
 import {globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './globe.js?v=ui-1';
 import {createMarkerLayer,createCameraController} from './interaction.js?v=ui-1';
 import {regions,severityColors} from '../constants.js?v=ui-1';
-import {$,state,selectors,selectEvents,setFilters,hooks} from '../context.js?v=ui-1';
-import {esc,format} from '../components/format.js?v=ui-1';
-import {patchAnimated,canvas} from '../components/panel.js?v=ui-1';
-import {drawChart} from '../charts/charts.js?v=ui-1';
+import {$,state,summary,selectEvents,setFilters,hooks} from '../context.js?v=ui-1';
+import {esc} from '../components/format.js?v=ui-1';
+import {patchAnimated} from '../components/panel.js?v=ui-1';
 import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=ui-1';
 import {clearSelection} from '../pages/events.js?v=ui-1';
 let attackSelection='all';
@@ -55,7 +54,7 @@ function renderAttacksOnly(){
 }
 export function renderAttacks(rows){
  const attacks=rows.filter(e=>e.sourceIp);if(attackSelection!=='all'&&!attacks.some(e=>e.id===attackSelection))attackSelection='all';
- $('#attack-filter').innerHTML='<option value="all">전체 공격 흐름</option>'+attacks.map(e=>`<option value="${e.id}">${e.sourceSample?'[샘플] ':''}${esc(e.sourceIp)} · ${e.id}${e.sourceLocation?'':' · 위치 미상'}</option>`).join('');$('#attack-filter').value=attackSelection;
+ $('#attack-filter').innerHTML='<option value="all">전체 공격 흐름</option>'+attacks.map(e=>`<option value="${e.id}">${esc(e.sourceIp)} · ${e.id}${e.sourceLocation?'':' · 위치 미상'}</option>`).join('');$('#attack-filter').value=attackSelection;
  const chosen=attackSelection==='all'?attacks:attacks.filter(e=>e.id===attackSelection);
  cachedMapped=chosen.filter(e=>e.sourceLocation&&regions.some(r=>r.id===e.region&&r.lon!==undefined));
  renderAttacksOnly();
@@ -75,10 +74,28 @@ export function mapRender(rows){
  cachedAll=selectEvents({ignoreRegion:true});renderAttacks(rows);
  renderMarkersOnly();
  $('#region-panel').hidden=!panelOpen;$('#open-region').hidden=panelOpen;
- const r=regions.find(r=>r.id===state.region);const unresolved=rows.filter(e=>e.status!=='해결').length;
- patchAnimated($('#region-panel'),`<button id="close-region" class="region-close" aria-label="지역 상세 닫기">×</button><div class="region-kicker">SELECTED REGION</div><h3 class="region-title">${r?.en||'ALL REGIONS'}</h3><div class="region-code">${r?.id==='global'?'글로벌 서비스 / 위치 미상':r?`${r.name} · ${r.id}`:'전체 AWS 리전'}</div><div class="region-total"><strong>${String(rows.length).padStart(2,'0')}</strong><span>탐지 이벤트</span></div><div class="region-stats"><span>미해결 <b>${unresolved}</b></span><span>영향 자원 <b>${new Set(rows.map(e=>e.resource)).size}</b></span></div><div class="spark">${canvas('region-spark',`현재 시간 범위의 이벤트 ${rows.length}건 추세`)}</div><div class="region-events">${rows.slice(0,2).map(e=>`<button data-event="${e.id}"><i style="background:${severityColors[e.severity]}"></i>${esc(e.title)}</button>`).join('')||'<span class="muted">데이터 없음</span>'}</div><button class="nongeo-button" data-region="global">글로벌 / 위치 미상 ${cachedAll.filter(e=>e.region==='global').length}건 ↗</button>`);
- const end=selectors.asOf()-state.endOffset*3600000,start=end-state.hours*3600000,values=Array(12).fill(0);rows.forEach(e=>values[Math.min(11,Math.floor((e.at-start)/(end-start)*12))]++);
- drawChart('region-spark','line',{labels:values.map((_,i)=>format(start+(i+.5)*(end-start)/12,true)),datasets:[{label:'탐지 건수',data:values,borderColor:'#32d4be',backgroundColor:'#32d4be10',fill:true,pointRadius:0,tension:.35,borderWidth:1.5}]},{scales:{x:{display:false},y:{display:false,beginAtZero:true}}});
+ const r=regions.find(r=>r.id===state.region);
+ // 지역 패널(v20.5): 탐지 이벤트(선택 기간) · 취약 현황(열린 취약점) 두 카드. 각 카드 = 큰 숫자 + 위험도 구성 막대.
+ const eventSev=Object.fromEntries(EVENT_SEVERITIES.map(([key])=>[key,rows.filter(e=>e.severity===key).length]));
+ const ov=summary.openVulnerabilities,vuln=ov==null?null:r?(ov.byRegion?.[r.id]||{total:0,bySeverity:{}}):ov;
+ patchAnimated($('#region-panel'),`<button id="close-region" class="region-close" aria-label="지역 상세 닫기">×</button><div class="region-kicker">SELECTED REGION</div><div class="region-heading"><h3 class="region-title">${r?.en||'ALL REGIONS'}</h3><div class="region-code">${r?.id==='global'?'글로벌 서비스 / 위치 미상':r?`${r.name} · ${r.id}`:'전체 AWS 리전'}</div></div>
+ <div class="region-cards">${regionCard('탐지 이벤트',`최근 ${PERIOD_LABEL[state.hours]||state.hours+'시간'}`,rows.length,EVENT_SEVERITIES,eventSev,{fixed:true,view:'events',target:'보안 이벤트'})}${regionCard('취약 현황','열린 취약점',vuln?.total??null,VULN_SEVERITIES,vuln?.bySeverity||{},{view:'vulnerabilities',target:'취약점 점검'})}</div>`);
+}
+const PERIOD_LABEL={0.25:'15분',1:'1시간',24:'1일',168:'1주일'};
+const EVENT_SEVERITIES=[['Critical','긴급'],['High','높음'],['Medium','보통'],['Low','낮음']];
+const VULN_SEVERITIES=[['CRITICAL','긴급'],['HIGH','높음'],['MEDIUM','보통'],['LOW','낮음'],['INFORMATIONAL','정보'],['UNTRIAGED','미분류']];
+// 이벤트·취약점 화면과 같은 위험도 색. 미분류는 무채색.
+const SEV_COLOR={긴급:severityColors.Critical,높음:severityColors.High,보통:severityColors.Medium,낮음:severityColors.Low,정보:severityColors.Informational,미분류:severityColors.Unknown};
+// fixed: 0건 등급도 범례에 둔다(탐지 이벤트 — 긴급·높음·보통·낮음 한 줄 고정).
+// 카드 전체가 해당 화면으로 가는 버튼(data-view → app.js 공통 클릭 처리). 평소엔 카드처럼 보이고 올렸을 때만 드러난다.
+function regionCard(title,sub,total,order,counts,{fixed=false,view,target}={}){
+ const all=order.map(([key,label])=>({label,count:counts[key]||0})),parts=all.filter(p=>p.count);
+ const sum=parts.reduce((a,p)=>a+p.count,0);
+ const bar=sum?parts.map(p=>`<span class="rc-seg" style="flex:${p.count};background:${SEV_COLOR[p.label]}" title="${p.label} ${p.count.toLocaleString('ko-KR')}건"></span>`).join(''):'<span class="rc-seg rc-none"></span>';
+ const legend=(fixed?all:parts).map(p=>`<span class="rc-item${p.count?'':' zero'}"><i style="background:${SEV_COLOR[p.label]}"></i>${p.label}<b>${p.count.toLocaleString('ko-KR')}</b></span>`).join('');
+ return `<button type="button" class="region-card" data-view="${view}" aria-label="${title} ${total==null?'조회 실패':total+'건'} — ${target} 화면으로 이동"><span class="rc-head"><span>${title}</span><small>${sub}<span class="rc-go" aria-hidden="true">→</span></small></span>
+ <strong class="rc-total">${total==null?'—':total.toLocaleString('ko-KR')}</strong><span class="rc-bar" aria-hidden="true">${bar}</span>
+ <span class="rc-legend${fixed?' one-line':''}">${legend||'<span class="rc-item rc-empty">없음</span>'}</span></button>`;
 }
 export function isMapReady(){return mapReady;}
 export function cancelCamera(){camera.cancel();}

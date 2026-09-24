@@ -140,7 +140,7 @@ def event_dto(event, allowed_actions):
             "verification": event.get("verification"),
             # 통합 관제 지도의 공격 흐름선. GuardDuty 출발지가 없으면 null.
             "sourceIp": event.get("sourceIp"), "sourceLocation": event.get("sourceLocation"),
-            "geoStatus": event.get("geoStatus"), "sourceSample": bool(event.get("sourceSample")),
+            "geoStatus": event.get("geoStatus"),
             # 플레이북이 없는 탐지(대부분의 Security Hub finding)는 승인 대상이 아니다 — 화면이 '탐지됨'으로 표시.
             "actionable": bool(event.get("actionable")),
             # correlator(DynamoDB)가 GuardDuty 위협 + 같은 자원 CVE 로 위험도를 올린 경우.
@@ -151,6 +151,9 @@ def event_dto(event, allowed_actions):
 def common_matches(row, q, timestamp, *, check_time=True):
     return (all(q.get(key) is None or q[key] == row.get(key) for key in ("region", "resource"))
             and (not check_time or (timestamp is not None and q["from"] <= timestamp < q["to"])))
+
+
+OPEN_VULNERABILITY_WINDOW_MS = 31 * 86_400_000  # 계약 최대 조회 구간 = 화면의 "열린 취약점" 기준
 
 
 class StandardService:
@@ -239,6 +242,37 @@ class StandardService:
                 result["_asOf"] = fresh["asOf"]
         return result
 
+    def _open_vulnerabilities(self, q, principal, events):
+        """통합 관제 지역 패널용 열린 취약점 수(v20.5). 취약점 화면과 같은 기준 — 요청 to 직전 31일(계약 최대 구간)
+        안에 가장 최근 탐지된 ACTIVE 취약점. 이벤트 기간(from)과는 무관하다.
+        total·bySeverity 는 리전·자원 필터를, byRegion 은 자원 필터만 따른다(지도에서 고른 리전 표시용).
+        취약점 원본 조회가 실패해도 요약 전체를 실패시키지 않는다 → null."""
+        try:
+            items = self.provider.vulnerabilities(q, events)["items"]
+        except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).exception("open vulnerability count failed")
+            return None
+        total, by_severity, by_region = 0, {}, {}
+        since = q["to"] - OPEN_VULNERABILITY_WINDOW_MS
+        for scan in items:
+            observed = scan.get("lastSeenAt") or scan.get("foundAt")
+            if observed is None or not since <= observed < q["to"]:
+                continue
+            if not scope_matches({"accountId": scan.get("accountId"), "region": scan.get("region"),
+                                  "resource": scan.get("resource")}, principal):
+                continue
+            if q.get("resource") and scan.get("resource") != q["resource"]:
+                continue
+            region = scan.get("region") or "unknown"
+            slot = by_region.setdefault(region, {"total": 0, "bySeverity": {}})
+            slot["total"] += 1
+            slot["bySeverity"][scan["severity"]] = slot["bySeverity"].get(scan["severity"], 0) + 1
+            if q.get("region") and region != q["region"]:
+                continue
+            total += 1
+            by_severity[scan["severity"]] = by_severity.get(scan["severity"], 0) + 1
+        return {"total": total, "bySeverity": by_severity, "byRegion": by_region}
+
     def _read(self, kind, raw, actor):
         self.provider.require_ready()
         principal = self.workflow.principal(actor)
@@ -258,13 +292,15 @@ class StandardService:
                               "regions": principal.get("scope", {}).get("regions"),
                               "resources": principal.get("scope", {}).get("resources"),
                               "region": q.get("region"), "resource": q.get("resource"), "from": iso(q["from"]), "to": iso(q["to"])},
-                    "observedAt": iso(self.provider.as_of)}
+                    "observedAt": iso(self.provider.as_of),
+                    "openVulnerabilities": self._open_vulnerabilities(q, principal, events)}
         if kind == "vulnerabilities":
             rows = []
             for scan in self.provider.vulnerabilities(q, events)["items"]:
                 # 기간 기준 = 가장 최근 탐지 시각(Inspector lastObservedAt). Inspector 는 같은 서버·CVE·패키지를
                 # 기록 1건으로 두고 다시 탐지될 때마다 이 시각만 갱신한다. 최초 발견 시각(firstObservedAt)으로
                 # 거르면 처음 발견 뒤 시간이 지나면 계속 탐지되는 CVE도 기간 보기에서 사라진다(v20.1).
+                # 화면은 "열린 취약점"을 보이려고 계약 최대 구간(31일)으로 요청한다(v20.5, 규칙은 그대로).
                 observed = scan.get("lastSeenAt") or scan.get("foundAt")
                 if not scope_matches({"accountId": scan.get("accountId"), "region": scan.get("region"),
                                       "resource": scan.get("resource")}, principal) or not common_matches(scan, q, observed):

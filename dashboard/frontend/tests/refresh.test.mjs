@@ -15,7 +15,8 @@ test('refresh keeps previous content on failure and accepts the next canonical r
  network.respond('/api/events',()=>{throw Error('fixture unavailable');});
  click('#refresh');
  await until(()=>!$('#load-state').hidden&&$('#load-state').textContent.includes('서버에 연결할 수 없습니다'));
- assert.equal(network.count('/api/events')-before,1+client.RETRY.retries,'network errors are retried a bounded number of times');
+ // 이벤트 목록 두 개(선택 기간 + 기간 트랙용 1주일, v20.5)가 각각 정해진 횟수만 재시도한다.
+ assert.equal(network.count('/api/events')-before,2*(1+client.RETRY.retries),'network errors are retried a bounded number of times');
  assert($('#content').textContent.includes('Contract test event'));
  network.respond('/api/events',()=>snapshot('Recovered event'));
  click('#retry');

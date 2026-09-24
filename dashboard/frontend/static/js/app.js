@@ -1,20 +1,20 @@
 // 대시보드 시작점: 화면 조립(render)·새로고침(refresh)·사용자 입력 연결만 한다.
 // 화면별 표시는 ui/pages, 공통 부품은 ui/components, 차트는 ui/charts, 지도는 ui/map, 주소창은 ui/router(설계 2.1).
-import {regions,sources,statuses,severityColors} from './ui/constants.js?v=ui-1';
-import {$,$$,api,activity,storeApi,state,summary,config,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=ui-1';
+import {regions,sources,statuses,periodStops} from './ui/constants.js?v=ui-1';
+import {periodTrackMarkup} from './ui/components/period-track.js?v=ui-1';
+import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=ui-1';
 import {esc,format} from './ui/components/format.js?v=ui-1';
 import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=ui-1';
-import {drawChart,cleanCharts} from './ui/charts/charts.js?v=ui-1';
+import {cleanCharts} from './ui/charts/charts.js?v=ui-1';
 import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=ui-1';
 import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=ui-1';
 import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=ui-1';
 import {titles,syncUrl,applyUrl} from './ui/router.js?v=ui-1';
 import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=ui-1';
-import {overviewCharts,responseCard} from './ui/pages/overview.js?v=ui-1';
+import {overviewCharts} from './ui/pages/overview.js?v=ui-1';
 import {table,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=ui-1';
-import {infrastructure,drawInfrastructureChart,selectHost} from './ui/pages/infrastructure.js?v=ui-1';
+import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=ui-1';
 import {renderAudit} from './ui/pages/history.js?v=ui-1';
-import {renderIncidents} from './ui/pages/incidents.js?v=ui-1';
 import {renderVulnerabilities,selectVulnTarget,stepVulnPage,setVulnSize,setVulnFixable,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=ui-1';
 function render({loadPanels=false}={}){
  const pending=[];
@@ -22,24 +22,23 @@ function render({loadPanels=false}={}){
  const rows=selectEvents();const [title,en]=titles[state.view];$('#page-title').innerHTML=`${title} <span>${en}</span>`;document.title=`AWS Security Operations · ${title}`;
  $$('nav [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===state.view);b.setAttribute('aria-current',b.dataset.view===state.view?'page':'false');});
  $('#map-section').hidden=state.view!=='overview';
+ // 취약점은 현재 상태라 기간을 쓰지 않는다 — 기간 막대를 숨긴다(v20.5).
+ $('.timeline').hidden=state.view==='vulnerabilities';
  const span=state.hours*3600000,end=clockNow()-state.endOffset*3600000;
- $('#time-label').innerHTML=`${format(end-span)} — ${format(end)}<br>KST · ${'조회 기준 시각'} · 되감기 ${state.endOffset}시간`;
+ renderTrack(end);
  $$('[data-hours]').forEach(b=>{b.classList.toggle('active',+b.dataset.hours===state.hours);b.setAttribute('aria-pressed',String(+b.dataset.hours===state.hours));});
  syncTimeRange();
- if(state.view==='overview'){renderContent(overviewCharts(rows)+`<div class="table-layout">${table(rows)}${responseCard(rows)}</div>`);mapRender(rows);drawChart('severity-chart','doughnut',{labels:Object.keys(severityColors),datasets:[{data:Object.keys(severityColors).map(s=>rows.filter(e=>e.severity===s).length),backgroundColor:Object.values(severityColors),borderWidth:0,hoverOffset:3}]},{cutout:'75%'});}
+ if(state.view==='overview'){renderContent(overviewCharts(rows)+table(rows));mapRender(rows);}
   else if(state.view==='infrastructure'){
    renderContent(infrastructure());
    drawInfrastructureChart();
   }else if(state.view==='vulnerabilities'){
    renderContent(`<div id="vulns" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
    if(loadPanels)pending.push(renderVulnerabilities());
- }else if(state.view==='incidents'){
-  renderContent('<div id="incidents" data-async-panel><p class="panel-loading">불러오는 중…</p></div>');
-  if(loadPanels)pending.push(renderIncidents());
  }else if(state.view==='responses'){
   // 탐지 목록이 아니라 조치 기록을 보여준다(v20).
-  renderContent(`<div class="view-intro"><span>자동조치 판정과 수동 조치 기록입니다. '실행 완료'는 재검증 전 상태이며 해결을 뜻하지 않습니다.</span></div><section class="panel full-panel">${header('대응 이력','HISTORY')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
-  if(loadPanels)pending.push(renderAudit());
+  renderContent(`<div class="view-intro"><span>자동조치 판정과 수동 조치 기록입니다(선택 기간에 마지막으로 발생한 기록, 최대 30일 보존). '실행 완료'는 재검증 전 상태이며 해결을 뜻하지 않습니다.</span></div><section class="panel full-panel">${header('대응 이력','HISTORY')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
+  if(loadPanels)pending.push(renderAudit().then(()=>renderTrack()));   // 1주일 이력이 오면 트랙을 이력 수로 다시 그린다
  }else {
   const visible=visibleRows();
   const intro=state.view==='responses'?'실행 결과와 재검증 결과를 구분하여 확인합니다.':'탐지 근거에서 대응과 재검증까지 추적합니다.';
@@ -48,7 +47,7 @@ function render({loadPanels=false}={}){
   const after=state.view==='responses'
     ?`<section class="panel full-panel">${header('조치 이력','HISTORY')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`:'';
   renderContent(head+before+table(visible,true)+after);
-  if(state.view==='responses'&&loadPanels)pending.push(renderAudit());
+  if(state.view==='responses'&&loadPanels)pending.push(renderAudit().then(()=>renderTrack()));
  }
  renderNotifications(rows);
  $('#footer-asof').textContent=`기준 데이터 ${format(clockNow())} KST`;
@@ -56,20 +55,24 @@ function render({loadPanels=false}={}){
  syncUrl();
  return Promise.all(pending);
 }
-// 되감기 슬라이더는 선택한 창 길이에 맞춰 움직여야 한다. 24시간 창에서 1시간 단위,
-// 7일 창에서 6시간 단위로 잡아 어느 기간에서도 끝까지 되감을 수 있게 한다.
 function clockNow(){return summary.asOf||Date.now();}
-function syncTimeRange(){
- const input=$('#time-range');
- const step=state.hours>=168?6:state.hours>=24?1:1;
- const max=Math.max(state.hours*3,24);
- input.step=step;input.max=max;
- if(state.endOffset>max)setFilters({endOffset:max});
- input.value=state.endOffset;
- $('#range-max').textContent=`${Math.round(max/24*10)/10}일 전`;
- $('#range-mid').textContent=`${Math.round(max/48*10)/10}일 전`;
- input.setAttribute('aria-valuetext',`${state.endOffset}시간 전까지, 최근 ${state.hours}시간`);
+// 기간 트랙(v20.5): 지금 → 15분·1시간·1일·1주일 누적 곡선. 지점 = 기간 버튼. 화면마다 세는 대상이 다르다.
+//  통합 관제·보안 이벤트 = 탐지 / 인프라 = 임계 초과 구간(끝 시각 기준 → 기간과 겹치는 구간, 화면 표와 같은 수) / 대응 이력 = 이력(마지막 발생 시각)
+const historyAt=row=>Date.parse(row.lastSeenAt||row.createdAt);   // 서버 대응 이력 기간 기준과 같다
+function trackSource(){
+ if(state.view==='infrastructure')return {noun:'임계 초과',unit:'구간',times:selectors.metricWeek()?hostViews(selectors.metricWeek()).flatMap(h=>h.breaches.map(b=>b.to)):null};
+ if(state.view==='responses'){const week=selectors.historyWeek();return {noun:'대응 이력',unit:'건',times:week?week.map(historyAt):null};}
+ return {noun:'탐지',unit:'건',times:(selectors.week()||selectEvents()).map(e=>e.at)};
 }
+function renderTrack(end=clockNow()-state.endOffset*3600000){
+ const span=state.hours*3600000,{noun,unit,times}=trackSource(),from=end-span;
+ const count=times==null?null:times.filter(t=>t!=null&&t>=from&&t<=end).length;
+ $('#time-label').innerHTML=`${format(from)} — ${format(end)} KST<br>최근 ${periodStops[periodIndex()].label} · ${noun} <strong>${count??'…'}</strong>${unit}`;
+ $('#period-track').innerHTML=periodTrackMarkup(times,state.hours,end,{noun,unit});
+}
+// 기간은 기간 버튼(15분·1시간·1일·1주일)으로만 고른다. 되감기는 없다 — 항상 지금 기준(v20.5).
+const periodIndex=()=>Math.max(0,periodStops.findIndex(stop=>stop.hours===state.hours));
+function syncTimeRange(){if(state.endOffset)setFilters({endOffset:0});}
 function applyModeLabels(){
  $('#data-mode').textContent=config().dataSourceConnected?'실데이터':'데이터 소스 미연결';
  $('#aws-state').textContent=summary.health?.aws_connected?'AWS 연동 정상':'AWS 미연결';
@@ -96,7 +99,6 @@ function navigateView(view){
 function syncControls(){
  $('#region').value=state.region;
  ['severity','status','source','search'].forEach(key=>{const el=$('#'+key);if(el)el.value=state[key];});
- $('#time-range').value=state.endOffset;
  updateSelectedCountry(state.region);
 }
 async function refresh(options={}){
@@ -136,7 +138,6 @@ let searchTimer;
 ['severity','status','source'].forEach(key=>$(`#${key}`).addEventListener('change',e=>{setFilters({[key]:e.target.value,page:1});refresh();}));
 $('#region').addEventListener('change',e=>chooseRegion(e.target.value));
 $('#search').addEventListener('input',e=>{setFilters({search:e.target.value,page:1});clearTimeout(searchTimer);searchTimer=setTimeout(refresh,220);});
-$('#time-range').addEventListener('input',e=>{setFilters({endOffset:+e.target.value,page:1});clearTimeout(searchTimer);searchTimer=setTimeout(refresh,120);});
 $('#event-dialog').addEventListener('cancel',e=>{e.preventDefault();closeDialog();});
 $('#event-dialog').addEventListener('close',()=>{
  // closeDialog owns cleanup synchronously; a queued close event can belong to

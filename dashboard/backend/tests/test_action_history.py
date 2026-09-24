@@ -135,6 +135,17 @@ def test_history_includes_automatic_records_without_calling_execution_a_resoluti
     assert body["meta"]["warnings"] == [] and body["meta"]["partial"] is False
 
 
+def test_history_period_uses_last_occurrence(tmp_path):
+    """대응 이력 기간 필터 = 마지막 발생 시각(last_seen_at). 반복 판정은 한 줄이라 횟수는 누적이다."""
+    week_old = new_row(action_id="ssm-exec-old", last_seen_at=iso(NOW - timedelta(days=6)),
+                       created_at=iso(NOW - timedelta(days=6)), updated_at=iso(NOW - timedelta(days=6)))
+    client = client_for(tmp_path, Provider([new_row(), week_old]))
+    ids = lambda span: {row["actionId"] for row in client.get("/api/history", query_string={
+        "from": iso(NOW - span), "to": iso(NOW + timedelta(seconds=1))}).json["data"]["items"]}
+    assert "ssm-exec-1" in ids(timedelta(minutes=15)) and "ssm-exec-old" not in ids(timedelta(minutes=15))
+    assert {"ssm-exec-1", "ssm-exec-old"} <= ids(timedelta(days=7))
+
+
 def test_scope_hides_records_outside_or_without_account(tmp_path):
     rows = [OLD_ROW, new_row(), new_row(action_id="ssm-other", account_id="999999999999",
                                         finding_id="arn:aws:securityhub:ap-northeast-2:999999999999:finding/x"),

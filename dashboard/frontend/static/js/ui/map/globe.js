@@ -47,7 +47,7 @@ export function globeArtwork(rotation,zoom){
  for(let lat=-75;lat<=75;lat+=15){const pts=[];for(let lon=-180;lon<=180;lon+=2)pts.push([lon,lat]);lines.push(ringPath(pts,rotation,zoom,false));}
  for(let lon=-165;lon<=165;lon+=15){const pts=[];for(let lat=-90;lat<=90;lat+=2)pts.push([lon,lat]);lines.push(ringPath(pts,rotation,zoom,false));}
  return {
-  base:`<defs><radialGradient id="ocean-depth" cx="43%" cy="36%" r="68%"><stop offset="0" stop-color="#25332e"/><stop offset=".65" stop-color="#19251f"/><stop offset="1" stop-color="#0c1511"/></radialGradient><radialGradient id="surface-shade" cx="43%" cy="36%" r="66%"><stop offset=".25" stop-color="#7fb49a" stop-opacity=".03"/><stop offset=".75" stop-color="#020c07" stop-opacity=".02"/><stop offset="1" stop-color="#020c07" stop-opacity=".55"/></radialGradient><marker id="attack-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#e7a064"/></marker><marker id="attack-arrow-sample" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#8fb3ff"/></marker></defs><circle class="globe-rim" cx="${CX}" cy="${CY}" r="${R.toFixed(2)}" fill="url(#ocean-depth)"/><g class="graticule">${lines.filter(Boolean).map(d=>`<path d="${d}"/>`).join('')}</g>`,
+  base:`<defs><radialGradient id="ocean-depth" cx="43%" cy="36%" r="68%"><stop offset="0" stop-color="#25332e"/><stop offset=".65" stop-color="#19251f"/><stop offset="1" stop-color="#0c1511"/></radialGradient><radialGradient id="surface-shade" cx="43%" cy="36%" r="66%"><stop offset=".25" stop-color="#7fb49a" stop-opacity=".03"/><stop offset=".75" stop-color="#020c07" stop-opacity=".02"/><stop offset="1" stop-color="#020c07" stop-opacity=".55"/></radialGradient><marker id="attack-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10Z" fill="#e7a064"/></marker></defs><circle class="globe-rim" cx="${CX}" cy="${CY}" r="${R.toFixed(2)}" fill="url(#ocean-depth)"/><g class="graticule">${lines.filter(Boolean).map(d=>`<path d="${d}"/>`).join('')}</g>`,
   shade:`<circle cx="${CX}" cy="${CY}" r="${R.toFixed(2)}" fill="url(#surface-shade)" pointer-events="none"/>`
  };
 }
@@ -188,9 +188,7 @@ export function connectionMarkup(events,regions,escape,rotation,zoom){
   }
   if(!visibleAny)return '';
   const [ox,oy,ovis]=project(o.lon,o.lat,rotation,zoom);
-  // GuardDuty 샘플 finding 은 색(파란 점선)과 라벨로 실제 공격과 구분한다.
-  const sample=e.sourceSample===true,tag=sample?'샘플 · ':'';
-  const label=ovis>0?`<circle class="attack-origin" cx="${ox.toFixed(2)}" cy="${oy.toFixed(2)}" r="4"/><text class="attack-ip" x="${(ox+8).toFixed(2)}" y="${(oy-10).toFixed(2)}">${tag}${o.country&&!sample?escape(o.country)+' · ':''}${escape(e.sourceIp)}</text>`:''; // 샘플 국가명은 GeneratedFindingCountryName 이라 뺀다
-  return `<g class="attack-connection${sample?' sample':''}" data-event="${e.id}" role="button" tabindex="0" aria-label="${tag}${escape(e.sourceIp)} → ${escape(r.name)}, ${escape(e.id)} 상세"><title>${tag}${escape(e.sourceIp)} (${escape(o.city)}) → ${escape(r.name)} / ${escape(e.id)}</title><path class="attack-hit" d="${d}"/><path class="attack-line" d="${d}" marker-end="url(#attack-arrow${sample?'-sample':''})"/><path class="attack-motion" d="${d}"/>${label}</g>`;
+  const label=ovis>0?`<circle class="attack-origin" cx="${ox.toFixed(2)}" cy="${oy.toFixed(2)}" r="4"/><text class="attack-ip" x="${(ox+8).toFixed(2)}" y="${(oy-10).toFixed(2)}">${o.country?escape(o.country)+' · ':''}${escape(e.sourceIp)}</text>`:'';
+  return `<g class="attack-connection" data-event="${e.id}" role="button" tabindex="0" aria-label="${escape(e.sourceIp)} → ${escape(r.name)}, ${escape(e.id)} 상세"><title>${escape(e.sourceIp)} (${escape(o.city)}) → ${escape(r.name)} / ${escape(e.id)}</title><path class="attack-hit" d="${d}"/><path class="attack-line" d="${d}" marker-end="url(#attack-arrow)"/><path class="attack-motion" d="${d}"/>${label}</g>`;
  }).join('');
 }

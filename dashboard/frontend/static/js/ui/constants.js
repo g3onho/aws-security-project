@@ -23,3 +23,5 @@ export const severityColors = {Critical:'#EF777F',High:'#E7A064',Medium:'#D8CA78
 // 탐지 소스 필터 목록. Security Hub ProductName 기준(실측 2026-09-24: IAM Access Analyzer 2건).
 export const sources = ['GuardDuty','Security Hub','Config','IAM Access Analyzer','WAF','Inspector','Trivy','CloudWatch'];
 export const statuses = ['승인 대기','승인됨','취소됨','실행 대기','조치 실행 중','실행 완료','실행 실패','재검증 대기','재검증 중','해결','재검증 실패','재검증 오류','상태 확인 중'];
+// 기간 막대의 네 지점 = 기간 버튼(v20.5). 막대와 버튼은 같은 값(state.hours)을 바꾼다. 항상 지금 기준 직전 구간.
+export const periodStops = Object.freeze([{hours:.25,label:'15분'},{hours:1,label:'1시간'},{hours:24,label:'1일'},{hours:168,label:'1주일'}]);

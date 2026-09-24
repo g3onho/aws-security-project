@@ -327,7 +327,6 @@ components:
             country: {type: [string, 'null']}
             city: {type: [string, 'null']}
         geoStatus: {type: [string, 'null'], enum: [located, country-only, unknown, null]}
-        sourceSample: {type: boolean, description: GuardDuty create-sample-findings 로 만든 시연용 finding}
         actionable: {type: boolean, description: 승인·실행할 플레이북이 있는지. false 면 탐지 기록}
         severityBumped: {type: boolean, description: correlator 가 GuardDuty 위협과 같은 자원의 CVE 로 위험도를 한 단계 올렸는지}
         relatedCves: {type: array, items: {type: string}, description: 상관분석에서 찾은 같은 자원의 CVE}
@@ -390,6 +389,22 @@ components:
                 verifiedEvents: {type: integer, minimum: 0}
                 resolutionRate: {type: [number, 'null'], minimum: 0, maximum: 100}
                 scope: {type: object}
+                openVulnerabilities:
+                  type: ['object', 'null']
+                  description: >-
+                    열린 취약점 수(v20.5). /api/vulnerabilities 를 [to-31일, to) 로 조회한 것과 같은 기준이며 from 과는 무관하다.
+                    total·bySeverity 는 region·resource 필터를, byRegion 은 resource 필터만 따른다. 취약점 원본 조회 실패 시 null.
+                  properties:
+                    total: {type: integer, minimum: 0}
+                    bySeverity: {type: object, additionalProperties: {type: integer, minimum: 0}}
+                    byRegion:
+                      type: object
+                      description: 리전별 {total, bySeverity} (통합 관제 지역 패널)
+                      additionalProperties:
+                        type: object
+                        properties:
+                          total: {type: integer, minimum: 0}
+                          bySeverity: {type: object, additionalProperties: {type: integer, minimum: 0}}
     MetricsEnvelope:
       allOf:
         - {$ref: '#/components/schemas/Envelope'}

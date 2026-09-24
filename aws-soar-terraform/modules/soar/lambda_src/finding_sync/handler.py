@@ -11,7 +11,9 @@ finding_sync — Security Hub 탐지·Inspector 취약점을 DynamoDB 에 적재
     이벤트가 늦게·순서가 바뀌어 도착해도 옛 정보가 새 정보를 덮지 않는다.
   - view_state: 대시보드 목록에 보일 행 = OPEN(탐지) / ACTIVE(취약점), 그 밖은 CLOSED.
     OPEN 기준은 대시보드가 Security Hub 를 직접 읽을 때의 필터와 같다
-    (RecordState ACTIVE, Workflow 가 RESOLVED·SUPPRESSED 아님, 심각도 INFORMATIONAL 아님).
+    (RecordState ACTIVE, Workflow 가 RESOLVED·SUPPRESSED 아님, 심각도 INFORMATIONAL 아님, 샘플 아님).
+    GuardDuty create-sample-findings 샘플(ASFF 최상위 Sample=true)은 CLOSED 로 저장한다 → 목록에 안 보이고,
+    이미 OPEN 으로 저장된 샘플은 다음 대조에서 같은 version·다른 상태로 덮여 닫힌다.
   - 대조: 원본에 열려 있는데 표에 없거나 낡은 행만 쓴다(= 이벤트로 못 받은 것, corrected 로 센다).
     표에는 열려 있는데 원본에서 사라진 행은 CLOSED 로 바꾼다. 원본이 0건이면 닫기를 건너뛴다(오조회 방지).
   - CLOSED 행은 expires_at(TTL)으로 FINDING_TTL_DAYS 뒤 DynamoDB 가 지운다 → 해결 이력 보존 기간.
@@ -104,7 +106,7 @@ def finding_item(finding):
     severity = (finding.get("Severity") or {}).get("Label")
     updated = iso(finding.get("UpdatedAt")) or iso(finding.get("CreatedAt")) or _now_iso()
     is_open = (finding.get("RecordState") == "ACTIVE" and workflow not in {"RESOLVED", "SUPPRESSED"}
-               and severity != "INFORMATIONAL")
+               and severity != "INFORMATIONAL" and finding.get("Sample") is not True)
     remote = {k: v for k, v in (finding.get("ProductFields") or {}).items() if "remoteIpDetails" in k}
     raw = {
         "Id": finding.get("Id"), "ProductArn": finding.get("ProductArn"), "ProductName": finding.get("ProductName"),
@@ -115,6 +117,7 @@ def finding_item(finding):
         "Resources": [{"Id": r.get("Id"), "Type": r.get("Type")} for r in (finding.get("Resources") or [])[:5]],
         "ProductFields": remote, "RecordState": finding.get("RecordState"), "Workflow": {"Status": workflow},
         "Compliance": {"Status": (finding.get("Compliance") or {}).get("Status")},
+        "Sample": finding.get("Sample") is True or None,
     }
     item = {"finding_id": finding["Id"], "view_state": "OPEN" if is_open else "CLOSED", "updated_at": updated,
             "version": updated, "region": finding.get("Region"), "account_id": finding.get("AwsAccountId"),

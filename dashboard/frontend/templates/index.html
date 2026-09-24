@@ -23,7 +23,6 @@
   <button data-view="overview" class="active"><span>▦</span>통합 관제</button>
   <button data-view="events"><span>◎</span>보안 이벤트</button>
   <button data-view="vulnerabilities"><span>◇</span>취약점 점검</button>
-  <button data-view="incidents"><span>⚑</span>침해사례</button>
   <button data-view="infrastructure"><span>▥</span>인프라 모니터링</button>
   <button data-view="responses"><span>↻</span>대응 이력</button>
  </nav>
@@ -51,9 +50,9 @@
    <aside id="region-panel" aria-label="선택 지역 상세"></aside>
   </div>
  </section>
- <section class="timeline panel" aria-label="시간 범위">
+ <section class="timeline panel" aria-label="조회 기간">
   <div class="time-presets flex items-center gap-1"><span class="muted">기간</span><button data-hours="0.25">15분</button><button data-hours="1">1시간</button><button data-hours="24" class="active">1일</button><button data-hours="168">1주일</button></div>
-  <div class="range-wrap"><label for="time-range" class="sr-only">종료 시각을 과거로 이동 (시간 전)</label><input id="time-range" type="range" min="0" max="72" step="1" value="0" dir="rtl"><div class="range-labels"><span id="range-max">3일 전</span><span id="range-mid">1.5일 전</span><span>기준 시각</span></div></div>
+  <div id="period-track" class="period-track"></div>
   <div id="time-label" class="time-label"></div>
  </section>
  <div id="worker-state" class="local-context" role="status"></div><div id="content"></div>

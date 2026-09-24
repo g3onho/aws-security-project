@@ -41,7 +41,8 @@ class FakeSecurityHub:
             assert "DateRange" in f or {"Start", "End"} <= f.keys(), f
         # 실제 ASFF 처럼 날짜는 문자열이다.
         return {"Findings": [
-            {"Id": "new", "Title": "new", "UpdatedAt": "2026-09-23T02:00:00.000Z", "Sample": True},
+            {"Id": "new", "Title": "new", "UpdatedAt": "2026-09-23T02:00:00.000Z"},
+            {"Id": "sample", "Title": "sample", "UpdatedAt": "2026-09-23T03:00:00.000Z", "Sample": True},
             {"Id": "old", "Title": "old", "UpdatedAt": "2020-01-01T00:00:00Z"},
         ]}
 
@@ -115,7 +116,7 @@ def test_aws_provider_findings_are_cached_and_time_filtered():
     rows = provider.observations({"from": "1790000000000"})  # 2026-09-21
     assert [r["externalFindingId"] for r in rows] == ["new"]
     assert rows[0]["at"] == 1790128800000
-    assert rows[0]["sourceSample"] is True  # ASFF Sample -> 지도 파란 점선
+    assert "sourceSample" not in rows[0]  # 샘플 finding 은 목록에서 빠진다(아래 2건 = new·old)
     assert len(provider.observations({})) == 2
     assert hub.calls == 1  # 두 번 조회해도 Security Hub 호출은 한 번
 

@@ -5,7 +5,7 @@ export const filters={...FILTER_DEFAULTS};
 export let config={...CONFIG_DEFAULTS};
 export let DATA_AS_OF=0;
 export const summary={};
-export const data={rows:[],regional:[],metric:null,infra:null};
+export const data={rows:[],regional:[],metric:null,metricWeek:null,infra:null,week:null,historyWeek:null};
 export const details=new Map();
 // 조회 단위별 요청 상태: idle/loading/success/error, lastUpdated, requestId, error
 export const requests={};
@@ -17,7 +17,7 @@ export function markRequest(kind,patch){
 }
 export function resetState(){
  session.controller?.abort();session.generation++;session.epoch++;session.initializing=null;session.csrf='';
- DATA_AS_OF=0;Object.assign(data,{rows:[],regional:[],metric:null,infra:null});details.clear();
+ DATA_AS_OF=0;Object.assign(data,{rows:[],regional:[],metric:null,metricWeek:null,infra:null,week:null,historyWeek:null});details.clear();
  for(const key of Object.keys(summary))delete summary[key];
  for(const key of Object.keys(requests))delete requests[key];
  config={...CONFIG_DEFAULTS};Object.assign(filters,FILTER_DEFAULTS);

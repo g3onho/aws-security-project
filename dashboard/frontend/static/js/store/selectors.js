@@ -3,6 +3,9 @@ import {data,filters,summary,requests,config,DATA_AS_OF} from './state.js?v=loca
 export const selectors=Object.freeze({
  events:({ignoreRegion=false}={})=>ignoreRegion?data.regional:data.rows,
  metrics:()=>data.metric,
+ week:()=>data.week,
+ metricWeek:()=>data.metricWeek,
+ historyWeek:()=>data.historyWeek,
  services:()=>data.infra,
  summary:()=>summary,
  filters:()=>filters,

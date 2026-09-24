@@ -69,39 +69,6 @@
 @media(max-width:720px){.notification-panel{position:fixed;top:62px;left:12px;right:12px;width:auto;max-height:calc(100dvh - 78px)}.metric-stats{grid-template-columns:1fr 1fr}.host-picker{width:100%}.service-arrow{padding:0;flex-shrink:0}.row-action{min-height:36px}.table-pager{justify-content:flex-start}.page-size{flex-basis:100%;margin-right:0}}
 @media(max-width:600px){.notification-panel{top:112px;max-height:calc(100dvh - 128px)}}
 
-/* ── 침해사례 탭 ── */
-.incident-card{margin-bottom:14px}
-.incident-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:16px 16px 8px}
-.incident-head h3{margin:4px 0 0;font-size:16px;color:#e7eeec}
-.incident-summary{margin:6px 0 0;font-size:12px;color:#b8cdbf;line-height:1.6;max-width:62ch}
-.incident-counts{display:flex;gap:16px;flex-shrink:0}
-.incident-counts div{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.incident-counts span{font-size:10px;color:#8fa295;text-transform:uppercase}
-.incident-counts b{font-size:18px;color:#e7eeec}
-.stage-rail{list-style:none;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:8px 0 0;padding:0 16px}
-.stage{position:relative;padding:14px 10px 12px 0;display:flex;flex-direction:column;gap:3px}
-.stage::before{content:'';position:absolute;left:0;top:6px;right:0;height:1px;background:#2f3d37}
-.stage:last-child::before{right:60%}
-.stage-dot{position:absolute;left:0;top:2px;width:9px;height:9px;border-radius:50%;background:#1d2422;border:1.5px solid #3f524a}
-.stage.done .stage-dot{background:var(--tone);border-color:var(--tone)}
-.stage b{font-size:12px;color:#7d8f84;font-weight:600}
-.stage.done b{color:#e7eeec}
-.stage small{font-size:10px;color:#8fa295}
-.stage-detail{font-size:11px;color:#9eb5a5;line-height:1.5;word-break:break-word}
-.incident-tags{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px 0}
-.incident-details{margin:12px 16px 16px;border-top:1px solid #2b3733;padding-top:10px}
-.incident-details summary{cursor:pointer;font-size:12px;color:#32d4be;list-style:none}
-.incident-details summary::-webkit-details-marker{display:none}
-.incident-details summary::before{content:'▸ ';}
-.incident-details[open] summary::before{content:'▾ ';}
-.incident-block{margin-top:12px}
-.incident-block h4{margin:0 0 4px;font-size:11px;color:#8fa295;text-transform:uppercase;letter-spacing:.04em}
-.incident-block p,.incident-block li{font-size:12px;color:#c4d7cb;line-height:1.7}
-.incident-block ul{margin:0;padding-left:18px}
-.incident-block li{word-break:break-all}
-.warn-block h4{color:#d8ca78}
-.incident-details .row-action{margin-top:14px}
-@media(max-width:900px){.stage-rail{grid-template-columns:1fr 1fr}.incident-head{flex-direction:column}.incident-counts{align-self:stretch;justify-content:space-between}}
 
 /* ── 취약점 점검 ── */
 .sev-chip{display:inline-block;padding:1px 7px;border:1px solid;border-radius:3px;font-size:10px;font-weight:600}
@@ -163,12 +130,6 @@ html{scrollbar-gutter:stable}
 #load-state:not(.error){pointer-events:none}
 .panel-loading,.panel-error{padding:12px 16px;margin:0;color:#9eb5a5;font-size:12px}
 .panel-error{color:#ef9292}
-/* 지도 공격 흐름선 — GuardDuty 샘플 finding 은 파란 점선으로 실제 공격(주황 실선)과 구분 */
-.attack-connection.sample .attack-line{stroke:#8fb3ff;stroke-dasharray:5 4}
-.attack-connection.sample .attack-origin{fill:#8fb3ff;stroke:#d6e2ff}
-.attack-connection.sample .attack-ip{fill:#b9ccff}
-.attack-connection.sample .attack-motion{stroke:#d6e2ff}
-.attack-connection.sample:focus .attack-line,.attack-connection.sample:hover .attack-line{stroke:#d6e2ff}
 /* 보안 이벤트 표 — 위험도 알약, 분류 태그, 짧은 자원 ID, 탐지 소스 테두리 태그 */
 .sev-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
 .sev-pill i{width:6px;height:6px;border-radius:50%;display:inline-block}
@@ -210,3 +171,61 @@ html{scrollbar-gutter:stable}
 .event-sub-row td{background:#1b2020;border-top:0}
 .event-sub-row td:nth-child(2){padding-left:30px}
 .event-sub-row .event-link small{color:#7d8a86;word-break:break-all}
+/* 지도 지역 패널(v20.5) — 탐지 이벤트 · 취약 현황 두 카드: 큰 숫자 + 위험도 구성 막대 + 범례 */
+/* 두 카드가 지도 높이(340~430px) 안에 들어가게 패널 머리글을 한 줄로 줄인다 */
+#region-panel{padding-top:16px;padding-bottom:12px}
+.region-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;margin:0 0 10px;padding-right:22px;grid-column:1/-1}
+#region-panel .region-title{font-size:22px;letter-spacing:1.5px;padding-right:0}
+#region-panel .region-code{margin:0;font-size:11px}
+.region-cards{display:grid;gap:8px;grid-column:1/-1}
+.region-card{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:#232b27;border:1px solid #3a4540;border-radius:5px;padding:9px 12px 9px;cursor:pointer;transition:border-color .18s,background .18s}
+/* 클릭 가능하다는 건 올렸을 때만 드러낸다: 테두리·배경이 조금 밝아지고 제목 옆 → 가 나타난다 */
+.region-card:hover{background:#27312c;border-color:#5b7064;color:inherit}
+.region-card:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.rc-go{display:inline-block;margin-left:0;width:0;opacity:0;overflow:hidden;color:#32d4be;transition:opacity .18s,width .18s,margin .18s}
+.region-card:hover .rc-go,.region-card:focus-visible .rc-go{opacity:1;width:12px;margin-left:5px}
+.rc-bar,.rc-legend{display:flex}
+.rc-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:#d6e4db}
+.rc-head small{font-size:10px;color:#8fa295;letter-spacing:.3px}
+.rc-total{display:block;font-size:26px;font-weight:400;line-height:1.1;margin:3px 0 7px;color:#e7eeec;font-variant-numeric:tabular-nums}
+.rc-bar{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden}
+.rc-seg{min-width:3px}
+.rc-none{flex:1;background:#2f3d37}
+.rc-legend{list-style:none;display:flex;flex-wrap:wrap;gap:3px 10px;margin:7px 0 0;padding:0;font-size:10.5px;color:#b8cdbf}
+.rc-legend .rc-item{display:flex;align-items:center;gap:5px}
+.rc-legend i{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.rc-legend b{color:#e7eeec;font-weight:500;font-variant-numeric:tabular-nums}
+.rc-legend .rc-empty{color:#7d8f84}
+/* 지역 패널 폭(v20.5): 탐지 이벤트 범례 긴급·높음·보통·낮음을 한 줄에 둔다 */
+@media(min-width:1151px){#region-panel{width:334px}.map-heading{right:334px}}
+@media(min-width:1700px){#region-panel{width:356px}.map-heading{right:356px}}
+.rc-legend.one-line{flex-wrap:nowrap;justify-content:space-between;gap:6px}
+.rc-legend .zero{color:#7d8f84}.rc-legend .zero b{color:#7d8f84;font-weight:400}.rc-legend .zero i{opacity:.45}
+/* 기간 트랙(v20.5) — 왼쪽 '지금' → 15분·1시간·1일·1주일. 곡선 = 지금부터 쌓인 탐지 수, 지점 = 기간 버튼 */
+.period-track{flex:1;min-width:220px;padding:0 18px}
+.pt{position:relative;height:64px}
+.pt-svg{position:absolute;left:0;right:0;top:0;width:100%;height:42px;overflow:visible}
+.pt-base{stroke:#3a4540;stroke-width:1;vector-effect:non-scaling-stroke}
+.pt-area-dim{fill:#32d4be;opacity:.05}
+.pt-line-dim{fill:none;stroke:#4d6259;stroke-width:1.5;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.pt-line{fill:none;stroke:#32d4be;stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.pt-stop{position:absolute;top:0;height:64px;width:64px;margin-left:-32px;padding:0;border:0;background:none;color:#8fa295;cursor:pointer}
+.pt-stop.now{cursor:default}
+.pt-stop:hover{background:none}
+.pt-stop>span{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap}
+.pt-count{top:calc(var(--y) - 21px);font-size:11px;font-weight:600;color:#6f8479;font-variant-numeric:tabular-nums}
+.pt-stop.inside .pt-count{color:#c4d7cb}
+.pt-stop.active .pt-count{color:#e7eeec}
+.pt-stem{top:var(--y);height:calc(39px - var(--y));width:0;border-left:1px dashed #3f524a}
+.pt-dot{top:calc(var(--y) - 4.5px);width:9px;height:9px;border-radius:50%;background:#1d2422;border:1.5px solid #4d6259;box-shadow:0 0 0 3px #252b28;box-sizing:border-box}
+.pt-stop.inside .pt-dot{border-color:#32d4be;background:#1f3a33}
+.pt-stop.active .pt-dot{top:calc(var(--y) - 6.5px);width:13px;height:13px;background:#32d4be;border-color:#b9ffe8}
+.pt-stop.now .pt-dot{background:#32d4be;border-color:#32d4be}
+.pt-stop:hover .pt-dot{border-color:#71f6d8}
+.pt-label{top:47px;font-size:11px}
+.pt-stop:hover .pt-label{color:#e7eeec}
+.pt-stop.first .pt-label,.pt-stop.first .pt-count{left:calc(50% - 5px);transform:none}
+.pt-stop.last .pt-label,.pt-stop.last .pt-count{left:auto;right:calc(50% - 5px);transform:none}
+.pt-stop.active .pt-label{color:#32d4be;font-weight:600}
+.pt-stop:focus-visible{outline:2px solid var(--mint);outline-offset:2px;border-radius:4px}
+.time-label strong{color:#e7eeec;font-weight:600}

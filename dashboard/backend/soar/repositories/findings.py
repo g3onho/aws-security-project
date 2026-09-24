@@ -64,6 +64,8 @@ class FindingRepository:
             findings = [f for f in findings if to_ms(f.get("UpdatedAt") or f.get("CreatedAt")) >= start]
         rows = []
         for finding in findings:
+            if finding.get("Sample") is True:
+                continue  # GuardDuty create-sample-findings 시연용 — 실데이터만 표시한다(ASFF 최상위 Sample)
             finding_id = str(finding.get("Id") or finding.get("ProductArn") or "finding")
             resource = (finding.get("Resources") or [{}])[0]
             resource_id = resource.get("Id") or "unknown-resource"
@@ -85,8 +87,5 @@ class FindingRepository:
                 "accountId": finding.get("AwsAccountId"),
                 "observedAt": at, "externalFindingId": finding_id,
                 **remote_ip(finding.get("ProductFields")),
-                # GuardDuty create-sample-findings 결과. ASFF 최상위 Sample 필드(실측 2026-09-23).
-                # 샘플 좌표는 (0,0) 가짜 위치라 지도에서 파란 점선으로 구분한다.
-                "sourceSample": finding.get("Sample") is True,
             })
         return rows
