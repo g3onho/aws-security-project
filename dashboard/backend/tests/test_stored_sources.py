@@ -1,6 +1,6 @@
 """v21 (PR-4): 탐지·취약점을 DynamoDB 적재에서 읽어도 AWS 직접 조회와 같은 결과인지 검사한다.
 
-적재 행은 실제 적재 Lambda(aws-soar-terraform/modules/soar/lambda_src/finding_sync)의 변환 함수로 만든다.
+적재 행은 실제 적재 Lambda(terraform/modules/soar/lambda_src/finding_sync)의 변환 함수로 만든다.
 원본 → Lambda 행 → DynamoDB 형식 → 대시보드 연동 → repository 결과가 직접 조회 결과와 같아야 한다.
 """
 import importlib.util
@@ -19,7 +19,7 @@ from soar.settings import configure
 from soar.store import now_ms
 from tests.test_provider import FakeSession
 
-LAMBDA = (Path(__file__).resolve().parents[3] / "aws-soar-terraform" / "modules" / "soar"
+LAMBDA = (Path(__file__).resolve().parents[3] / "terraform" / "modules" / "soar"
           / "lambda_src" / "finding_sync" / "handler.py")
 ACCOUNT = "123456789012"
 

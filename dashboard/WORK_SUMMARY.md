@@ -29,6 +29,6 @@
 
 ## 실행·검사
 
-[현재 실행 안내](README.md), [백엔드 안내](backend/README.md), [API 계약](backend/contracts/openapi.yaml), [설계 기준](backend/docs/DASHBOARD_DESIGN_STANDARD.md)을 참고하세요.
+[대시보드 설계 기준](dashboard-design.md), [전체 아키텍처](../project.md), [구현·검증 추적](../project-management/tracking.md), [API 계약](backend/contracts/openapi.yaml)을 참고하세요.
 
 테스트용 고정 입력은 테스트 코드 안에만 남아 있으며 운영 데이터로 제공하지 않습니다.

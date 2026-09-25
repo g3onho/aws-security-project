@@ -33,7 +33,7 @@ jobs:
     # terraform 파일이 저장소 루트가 아니라 하위 폴더에 있습니다.
     defaults:
       run:
-        working-directory: aws-soar-terraform
+        working-directory: terraform
     steps:
       - uses: actions/checkout@v4
 
@@ -86,7 +86,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let plan = fs.readFileSync('aws-soar-terraform/plan.txt', 'utf8');
+            let plan = fs.readFileSync('terraform/plan.txt', 'utf8');
             // 코멘트 길이 제한(65536)에 걸리지 않게 자릅니다.
             const max = 60000;
             if (plan.length > max) {
@@ -119,6 +119,6 @@ jobs:
         with:
           name: tfplan-${{ github.sha }}
           path: |
-            aws-soar-terraform/tfplan
-            aws-soar-terraform/plan.txt
+            terraform/tfplan
+            terraform/plan.txt
           retention-days: 14

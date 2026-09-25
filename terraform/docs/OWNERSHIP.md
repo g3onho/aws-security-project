@@ -1,6 +1,6 @@
 # OWNERSHIP — Terraform 관리 영역 / SOAR 조치 영역
 
-`aws-soar-terraform`
+`terraform`
 
 SOAR 조치(asr_trigger → SSM Automation, 대시보드 수동 조치)가 바꾼 값을
 다음 `terraform apply` 가 되돌리지 않도록 리소스·속성마다 소유자를 하나로 정한다.
@@ -100,7 +100,7 @@ plan 출력에 아래가 보이면 **apply 중단**, 원인부터 확인한다.
 ### 경계 확인 절차 (팀 격리 계정, 사람이 실행)
 
 ```bash
-cd aws-soar-terraform
+cd terraform
 aws sts get-caller-identity                            # 계정 확인
 
 terraform plan -detailed-exitcode; echo "exit=$?"      # 0 기대 (0 변경없음 / 1 오류 / 2 변경있음)
