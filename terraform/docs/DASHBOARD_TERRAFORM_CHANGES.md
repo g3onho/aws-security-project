@@ -55,7 +55,7 @@ aws_iam_role_policy_attachment.dashboard_execute
 ## 적용 전 확인
 
 ```powershell
-cd C:\Users\user\aws-security-project\aws-soar-terraform
+cd C:\Users\user\aws-security-project\terraform
 terraform fmt -recursive
 terraform init
 terraform validate
