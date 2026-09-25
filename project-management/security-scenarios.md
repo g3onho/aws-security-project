@@ -7,7 +7,7 @@
 | 문서 목적 | 탐지부터 재검증까지 보안 검증 시나리오와 안전한 증적 기준 정의 |
 | 적용 범위 | SEC-01~SEC-10, 웹·인증 경로 검증, 수동 및 자동 조치 확인 |
 | 책임 역할 | 보안 설계자: 시나리오·통제 승인, 구현 담당자: 코드·계약 반영, 검증 담당자: 격리된 환경에서 증적 수집 |
-| 기준 문서 | [project.md](../project.md), [agents.md](../agents.md), [dashboard-design.md](../dashboard/dashboard-design.md), [infrastructure-design.md](../terraform/infrastructure-design.md), [honeypot-design.md](../honeypot/honeypot-design.md), [glossary.md](glossary.md), [tracking.md](tracking.md), [decisions.md](decisions.md) |
+| 기준 문서 | [README.md](../README.md), [agents.md](../agents.md), [dashboard-design.md](../dashboard/dashboard-design.md), [infrastructure-design.md](../terraform/infrastructure-design.md), [honeypot-design.md](../honeypot/honeypot-design.md), [glossary.md](glossary.md), [tracking.md](tracking.md), [decisions.md](decisions.md) |
 | 확인 근거 | 읽기 전용 소스와 기존 가이드 정적 검토. 이 문서는 AWS 실행, 공격 재현, 통합 검증이 완료되었다고 주장하지 않는다. 구현 조사 기준일과 경로별 근거는 tracking.md에서 관리한다. |
 
 ## 1. 목적과 적용 원칙
@@ -209,8 +209,8 @@ ZAP 또는 유사 도구의 확인은 취약점 응답, WAF 규칙 평가, 차�
 
 | 변경 종류 | 갱신 대상 | 완료 확인 |
 |---|---|---|
-| 탐지 원천, 상관분석 또는 finding 경로 변경 | project.md, 이 문서, 해당 기능 design.md, tracking.md | 입력 finding과 식별자 흐름 및 실패 상태 연결 확인 |
-| 조치 게이트, 승인, 권한, 멱등성 변경 | project.md, 관련 Terraform/dashboard 설계, decisions.md, tracking.md | 경로별 조건, 운영 영향, 결과 미확인 복구 기준 기록 |
+| 탐지 원천, 상관분석 또는 finding 경로 변경 | README.md, 이 문서, 해당 기능 design.md, tracking.md | 입력 finding과 식별자 흐름 및 실패 상태 연결 확인 |
+| 조치 게이트, 승인, 권한, 멱등성 변경 | README.md, 관련 Terraform/dashboard 설계, decisions.md, tracking.md | 경로별 조건, 운영 영향, 결과 미확인 복구 기준 기록 |
 | 공격 대상·테스트 도구·안전 범위 변경 | 이 문서, honeypot-design.md 또는 보호 대상 설계, decisions.md | 비운영 대상과 정리·복구 절차 검토 |
 | 임계값, 보존 기간, 재시도, 데이터 신선도 변경 | 기능 설계, glossary.md, decisions.md, tracking.md | 결정 근거와 검증 환경, 영향 범위 연결 |
 | 검증 결과 또는 코드 연결 상태 변경 | tracking.md | 경로별 증거와 검증 등급 갱신. 설계 기준 변경은 별도로 이 문서와 decisions.md에 기록 |

@@ -7,7 +7,7 @@
 | 적용 범위 | 프로젝트 목표 허니팟의 격리, 미끼 상호작용, 로그·분석·대시보드 연계, 차단 정책과 검증 기준 |
 | 책임 역할 | 보안 설계자, 인프라/IAM 담당, 허니팟 구현 담당, 관제 담당, 격리환경 검증 담당 |
 | 상태 | 허니팟은 목표 범위에 포함한다. 세부 기술, AI 공급자/모델, 대화 처리 방식, 자동 차단 정책은 미결정이다. |
-| 관련 문서 | [`../project.md`](../project.md), [`../agents.md`](../agents.md), [`../terraform/infrastructure-design.md`](../terraform/infrastructure-design.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
+| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../terraform/infrastructure-design.md`](../terraform/infrastructure-design.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
 | 조사 근거 | 기존 SEC-01~SEC-10 시나리오 가이드, AI 허니팟 아키텍처 다이어그램 프롬프트, 현재 Terraform·서비스 코드의 읽기 전용 조사 |
 | 변경 이력 | 설계 선택은 `../project-management/decisions.md`, 구현·검증 근거는 `../project-management/tracking.md`에 버전으로 연결 |
 

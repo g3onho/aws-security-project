@@ -9,7 +9,7 @@
 | 책임 역할 | 기능 담당자는 자신의 코드·검증 근거를 갱신하고, 설계 책임자는 ID·상태·문서 간 연결을 검토한다. |
 | 실제 프로젝트 기준 경로 | C:\Users\user\aws-security-project |
 | 확인 시점 | 2026-09-26, Asia/Seoul. 읽기 전용 정적 조사 |
-| 관련 문서 | [전체 설계](../project.md), [Dashboard](../dashboard/dashboard-design.md), [Terraform](../terraform/infrastructure-design.md), [허니팟](../honeypot/honeypot-design.md), [보안 시나리오](security-scenarios.md), [공통 용어](glossary.md), [결정 기록](decisions.md) |
+| 관련 문서 | [전체 설계](../README.md), [Dashboard](../dashboard/dashboard-design.md), [Terraform](../terraform/infrastructure-design.md), [허니팟](../honeypot/honeypot-design.md), [보안 시나리오](security-scenarios.md), [공통 용어](glossary.md), [결정 기록](decisions.md) |
 | 갱신을 유발하는 변경 | 요구사항·코드 경로·호출 관계·구성 토글·데이터 계약·검증 증거·편차 상태 변경 |
 
 ## 1. 판정 방법과 조사 한계
@@ -31,14 +31,14 @@
 
 | 요구 ID | 출처·요구사항 | 설계 위치 | 실제 코드 경로와 정적 근거 | 구현 | 검증 |
 |---|---|---|---|---|---|
-| SYS-01 | project.md의 4계층 구조, 보호 대상과 관제 시스템 경계 | [project.md §1–3](../project.md) | terraform/main.tf에서 network, security, compute, soar 모듈을 선언. dashboard와 보호 대상은 별도 compute·서비스 자원으로 구성 | 완료 | 미실행 |
+| SYS-01 | README.md의 4계층 구조, 보호 대상과 관제 시스템 경계 | [README.md §1–3](../README.md) | terraform/main.tf에서 network, security, compute, soar 모듈을 선언. dashboard와 보호 대상은 별도 compute·서비스 자원으로 구성 | 완료 | 미실행 |
 | TF-01 | GOAL-01: Terraform 4개 책임 모듈 | [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/main.tf → modules/network, modules/compute, modules/security, modules/soar | 완료 | 미실행 |
 | TF-02 | 원격 상태와 잠금 | [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/backend.tf에 S3 backend 및 DynamoDB lock table 선언. bootstrap/main.tf에 S3 버전 관리·암호화·공개 차단 및 잠금 테이블 선언 | 완료 | 미실행 |
-| TF-03 | CI plan, 사람의 apply 책임 | [project.md §1·8](../project.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | .github/workflows/terraform-plan.yml에 OIDC, init, fmt check, validate, plan, 결과 보관 선언. apply 단계는 workflow에 없고 사람이 담당한다고 주석·PR 결과에 명시 | 완료 | 미실행 |
-| NET-01 | 서브넷·보안 경계·관리 접속 | [project.md §3](../project.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/network/main.tf에 VPC, public/private subnet, SSM·SSM Messages·EC2 Messages·monitoring VPC endpoint 선언. sg.tf에 Dashboard 8080 경로, DB SG, NACL 선언. SSM 사용·SSH 미개방은 주석과 규칙에서 확인 | 완료 | 미실행 |
-| APP-01 | 보호 대상 Nginx–Flask–MySQL 컨테이너 서비스 | [project.md §1·3](../project.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/compute/templates/docker-host.sh.tftpl에 Compose·Nginx·Flask·서비스 DB 구성 및 CloudWatch Agent 설정 | 완료 | 미실행 |
-| APP-02 | 별도 Private-DB 시연 MySQL EC2와 자동/수동 대조군 | [project.md §1](../project.md), [security-scenarios.md §5–6](security-scenarios.md) | terraform/modules/compute/templates/mysql-db.sh.tftpl에 MySQL 설치·로그 수집. modules/network/sg.tf에 db-auto/db-manual SG와 3306 규칙 | 완료 | 미실행 |
-| APP-03 | 별도 DVWA 공격 시험 자산 | DEC-004, [project.md §1](../project.md), [security-scenarios.md §6](security-scenarios.md) | terraform/modules/compute/templates/web-dvwa.sh.tftpl, modules/compute/alb.tf의 선택적 DVWA listener 8081, modules/network/sg.tf의 admin_cidr 제한 | 완료 | 미실행 |
+| TF-03 | CI plan, 사람의 apply 책임 | [README.md §1·8](../README.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | .github/workflows/terraform-plan.yml에 OIDC, init, fmt check, validate, plan, 결과 보관 선언. apply 단계는 workflow에 없고 사람이 담당한다고 주석·PR 결과에 명시 | 완료 | 미실행 |
+| NET-01 | 서브넷·보안 경계·관리 접속 | [README.md §3](../README.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/network/main.tf에 VPC, public/private subnet, SSM·SSM Messages·EC2 Messages·monitoring VPC endpoint 선언. sg.tf에 Dashboard 8080 경로, DB SG, NACL 선언. SSM 사용·SSH 미개방은 주석과 규칙에서 확인 | 완료 | 미실행 |
+| APP-01 | 보호 대상 Nginx–Flask–MySQL 컨테이너 서비스 | [README.md §1·3](../README.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/compute/templates/docker-host.sh.tftpl에 Compose·Nginx·Flask·서비스 DB 구성 및 CloudWatch Agent 설정 | 완료 | 미실행 |
+| APP-02 | 별도 Private-DB 시연 MySQL EC2와 자동/수동 대조군 | [README.md §1](../README.md), [security-scenarios.md §5–6](security-scenarios.md) | terraform/modules/compute/templates/mysql-db.sh.tftpl에 MySQL 설치·로그 수집. modules/network/sg.tf에 db-auto/db-manual SG와 3306 규칙 | 완료 | 미실행 |
+| APP-03 | 별도 DVWA 공격 시험 자산 | DEC-004, [README.md §1](../README.md), [security-scenarios.md §6](security-scenarios.md) | terraform/modules/compute/templates/web-dvwa.sh.tftpl, modules/compute/alb.tf의 선택적 DVWA listener 8081, modules/network/sg.tf의 admin_cidr 제한 | 완료 | 미실행 |
 | OPS-IAC-01 | 비용·토글·격리 구성 | [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/variables.tf, modules/compute/variables.tf와 docs/비용예측.md에 선택 리소스·비용 자료. 실제 예산 알림·청구 검증은 이 경로들만으로 확인되지 않음 | 부분 구현 | 미실행 |
 
 ## 3. 대시보드·저장소·API
@@ -58,14 +58,14 @@
 
 | 요구 ID | 출처·요구사항 | 설계 위치 | 실제 코드 경로와 정적 근거 | 구현 | 검증 |
 |---|---|---|---|---|---|
-| DET-01 | Config, GuardDuty, Inspector, Security Hub, CloudTrail, Access Analyzer 활성화 경로 | [project.md §1·3](../project.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/security/config.tf, guardduty.tf, inspector.tf, securityhub.tf, cloudtrail.tf, access_analyzer.tf에 리소스 선언. 기능 토글에 따라 조건부 생성되며 계정에서 활성 상태인지는 확인하지 않음 | 완료 | 미실행 |
-| DET-02 | GuardDuty 상관분석과 Inspector 조회 | [project.md §3](../project.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/eventbridge.tf의 gd_to_correlator 규칙·Lambda target; lambda_src/correlator/handler.py에서 Inspector 조회와 correlated DynamoDB 테이블 쓰기 | 완료 | 미실행 |
+| DET-01 | Config, GuardDuty, Inspector, Security Hub, CloudTrail, Access Analyzer 활성화 경로 | [README.md §1·3](../README.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/security/config.tf, guardduty.tf, inspector.tf, securityhub.tf, cloudtrail.tf, access_analyzer.tf에 리소스 선언. 기능 토글에 따라 조건부 생성되며 계정에서 활성 상태인지는 확인하지 않음 | 완료 | 미실행 |
+| DET-02 | GuardDuty 상관분석과 Inspector 조회 | [README.md §3](../README.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/eventbridge.tf의 gd_to_correlator 규칙·Lambda target; lambda_src/correlator/handler.py에서 Inspector 조회와 correlated DynamoDB 테이블 쓰기 | 완료 | 미실행 |
 | DET-03 | Finding·취약점 적재, 재대조와 실패 경보 | [dashboard-design.md §데이터 원본](../dashboard/dashboard-design.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/finding_sync.tf에서 Security Hub·Inspector·schedule→finding_sync, 재시도 설정·SQS DLQ·CloudWatch 오류/DLQ alarm. lambda_src/finding_sync/handler.py에서 조건부 적재·대조 | 완료 | 미실행 |
 | DET-04 | MySQL 인증 실패와 CloudWatch 관측 경로 | DEC-005, [security-scenarios.md §6.6A](security-scenarios.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/compute/templates/mysql-db.sh.tftpl의 error/general log CloudWatch 전달. modules/soar/cloudwatch.tf의 Access denied for user metric filter→MySQLAuthFailure→alarm→SNS. 코드 기본 threshold 10, 300초 기간은 승인 정책이 아님. MySQL alarm에서 ASR로 이어지는 연결은 확인되지 않음 | 완료 | 미실행 |
-| DET-05 | 운영 CPU·메모리 CloudWatch 경보 | project.md GOAL-03, [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/cloudwatch.tf의 EC2 CPU·Agent MemoryUsedPercent alarm 및 SNS. root variables.tf 기본값 80, 300초 기간·2회 평가는 코드 설정이며 사용자 확정 기준으로 승격하지 않음 | 완료 | 미실행 |
+| DET-05 | 운영 CPU·메모리 CloudWatch 경보 | README.md GOAL-03, [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/cloudwatch.tf의 EC2 CPU·Agent MemoryUsedPercent alarm 및 SNS. root variables.tf 기본값 80, 300초 기간·2회 평가는 코드 설정이며 사용자 확정 기준으로 승격하지 않음 | 완료 | 미실행 |
 | DET-06 | SSH 공격 탐지·상관 경로와 SOAR 필터의 경계 | DEC-005, [security-scenarios.md §6.6B](security-scenarios.md), [decisions.md §GAP-003](decisions.md) | modules/security/guardduty.tf와 modules/soar/eventbridge.tf에서 GuardDuty finding→correlator는 연결. gd_to_asr 필터는 UnauthorizedAccess:IAMUser, CredentialAccess:IAMUser, Discovery:IAMUser 유형이며 SSH Hydra 행위 유형을 자동 조치에 연결한다고 확인되지 않음 | 부분 구현 | 미실행 |
-| SOAR-01 | 보안 finding 기반 허용된 자동 조치 | [project.md §3·6](../project.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/eventbridge.tf의 Security Hub 및 제한된 GuardDuty→asr_trigger; lambda_src/asr_trigger/handler.py에서 whitelist·ENABLE_AUTO 검사. SG branch에는 AutoRemediation=enabled 태그 검사가 추가되고 IAM key branch에는 이 태그 검사가 없음. 직접 SSM 실행 코드 존재 | 부분 구현 | 미실행 |
-| SOAR-02 | 자동조치 이력과 SSM 결과 추적 | [project.md §6](../project.md), [glossary.md](glossary.md) | modules/soar/storage.tf의 remediation action 테이블, lambda_src/asr_trigger/handler.py의 기록·SSM 실행 ID, eventbridge.tf의 SSM terminal event→같은 handler 연결. _safe_record가 저장 실패를 기록만 하고 실행/알림을 계속할 수 있음. 자동 실행마다 SSM ID별 새 행을 생성해 동일 이벤트 중복 실행은 별도 억제되지 않음 | 부분 구현 | 미실행 |
+| SOAR-01 | 보안 finding 기반 허용된 자동 조치 | [README.md §3·6](../README.md), [infrastructure-design.md](../terraform/infrastructure-design.md) | terraform/modules/soar/eventbridge.tf의 Security Hub 및 제한된 GuardDuty→asr_trigger; lambda_src/asr_trigger/handler.py에서 whitelist·ENABLE_AUTO 검사. SG branch에는 AutoRemediation=enabled 태그 검사가 추가되고 IAM key branch에는 이 태그 검사가 없음. 직접 SSM 실행 코드 존재 | 부분 구현 | 미실행 |
+| SOAR-02 | 자동조치 이력과 SSM 결과 추적 | [README.md §6](../README.md), [glossary.md](glossary.md) | modules/soar/storage.tf의 remediation action 테이블, lambda_src/asr_trigger/handler.py의 기록·SSM 실행 ID, eventbridge.tf의 SSM terminal event→같은 handler 연결. _safe_record가 저장 실패를 기록만 하고 실행/알림을 계속할 수 있음. 자동 실행마다 SSM ID별 새 행을 생성해 동일 이벤트 중복 실행은 별도 억제되지 않음 | 부분 구현 | 미실행 |
 | SOAR-03 | IP 차단 NACL 수동 SSM 경로 | DEC-007·DEC-008, [honeypot-design.md](../honeypot/honeypot-design.md), [security-scenarios.md §4](security-scenarios.md) | modules/soar/ssm.tf에 ASR-BlockIpWithNacl 등록, documents/ASR-BlockIpWithNacl.yaml에 담당자 승인 절차, IPv4 /32, 규칙 1–99, 최대 10개 검사. asr_trigger handler에서 해당 문서를 호출하는 분기는 확인되지 않았고 만료 자동 해제도 확인되지 않음 | 부분 구현 | 미실행 |
 | SOAR-04 | 수동 Nginx 강화·DB 비밀 회전 문서 | DEC-006, [honeypot-design.md](../honeypot/honeypot-design.md), [security-scenarios.md §6.2](security-scenarios.md) | modules/soar/ssm.tf에서 ASR-HardenNginx Command와 ASR-RotateDbSecret Automation 등록. lambda.tf가 Nginx 문서 이름을 환경변수로 전달하지만 asr_trigger handler에서 Nginx 호출 분기는 없음. docker-host Compose는 80 포트 연결이며 Nginx 문서는 443 및 인증서 mount 부재 경고를 출력 | 부분 구현 | 미실행 |
 | SOAR-05 | 재검증을 실행 성공과 분리 | [dashboard-design.md §수동 조치](../dashboard/dashboard-design.md), [glossary.md](glossary.md) | EventBridge 문서 주석은 SSM terminal 결과가 실행 이력이며 동일 조건 재검증은 아님을 명시. dashboard worker/provider는 별도 verify 작업을 표현하지만 실제 measure 공급자는 비활성 | 부분 구현 | 미실행 |
@@ -93,12 +93,12 @@
 | 요구 ID | 출처·요구사항 | 설계 위치 | 실제 코드 경로와 정적 근거 | 구현 | 검증 |
 |---|---|---|---|---|---|
 | HNY-01 | DEC-008: AI 허니팟 목표 범위, 세부 기술과 자동 차단 미결정 | [honeypot-design.md](../honeypot/honeypot-design.md), [decisions.md §DEC-008·OPEN-011](decisions.md) | 실제 프로젝트의 파일 목록·내용 검색에서 honeypot, decoy, Beelzebub 등 구현 경로를 찾지 못함. 기존 공격 검증 가이드는 시뮬레이션 자료이지 허니팟 구현 증거가 아님 | 미구현 | 미실행 |
-| OPS-01 | 로그·finding·작업·감사 보존 및 만료 정책 | [project.md §6](../project.md), [decisions.md §OPEN-008·014](decisions.md) | modules/soar/variables.tf에 finding/action history TTL 기본 30일, finding_sync.tf DLQ 14일, cloudwatch.tf의 로그 보존 변수가 있음. 설정값은 기존 코드 기본값이며 승인된 보존 정책은 아님 | 부분 구현 | 미실행 |
-| OPS-02 | 비용 추정·비용 운영 | [infrastructure-design.md](../terraform/infrastructure-design.md), [project.md §6](../project.md) | terraform/docs/비용예측.md와 기능 토글·비용 리소스 구성 확인. 실제 예산·청구·장기 비용 검증 기록은 확인되지 않음 | 부분 구현 | 미실행 |
+| OPS-01 | 로그·finding·작업·감사 보존 및 만료 정책 | [README.md §6](../README.md), [decisions.md §OPEN-008·014](decisions.md) | modules/soar/variables.tf에 finding/action history TTL 기본 30일, finding_sync.tf DLQ 14일, cloudwatch.tf의 로그 보존 변수가 있음. 설정값은 기존 코드 기본값이며 승인된 보존 정책은 아님 | 부분 구현 | 미실행 |
+| OPS-02 | 비용 추정·비용 운영 | [infrastructure-design.md](../terraform/infrastructure-design.md), [README.md §6](../README.md) | terraform/docs/비용예측.md와 기능 토글·비용 리소스 구성 확인. 실제 예산·청구·장기 비용 검증 기록은 확인되지 않음 | 부분 구현 | 미실행 |
 | TEST-01 | 설계 계약과 검증 기준의 자동·수동 시험 | [dashboard-design.md §검증](../dashboard/dashboard-design.md), [security-scenarios.md §7](security-scenarios.md) | dashboard/backend/tests, dashboard/frontend/tests 및 modules/soar/lambda_src/test_*.py 파일 존재. dashboard/backend/docs/VERIFICATION.md는 커버 범위와 AWS 미포함 제한을 명시. 이번 검토에서 test 명령을 실행하지 않음 | 부분 구현 | 미실행 |
 | TEST-02 | 시나리오 실행·정리 보조 스크립트 신뢰도 | [security-scenarios.md §7](security-scenarios.md) | terraform/demo/trigger-auto-remediation.sh는 SG 3306/0.0.0.0/0 변경 후 Security Hub 형식 payload를 Lambda에 직접 전달해 EventBridge 실연결을 우회. demo/verify-controls.sh는 연결 실패·HTTP 코드만으로 PASS가 될 수 있고 curl -k 사용. demo/cleanup.sh는 해당 규칙만 회수 시도 | 부분 구현 | 미실행 |
-| EVID-01 | 요구·행위·조치·재검증 증거의 연결 | [project.md §8](../project.md), [security-scenarios.md §7](security-scenarios.md), [glossary.md §7](glossary.md) | terraform/docs/증적양식.md, modules/soar action-history DynamoDB, EventBridge SSM terminal result, dashboard/backend history contracts 확인. 자동 이력 write는 실패해도 조치가 계속될 수 있고 실환경 증거 없음 | 부분 구현 | 미실행 |
-| DOC-01 | 문서 구조·링크·버전 추적 | [project.md §7–8](../project.md), [agents.md](../agents.md), [decisions.md](decisions.md) | 요청된 문서와 AI 지침 파일이 project/ 아래 생성됨. 생성된 Markdown 11개 파일의 로컬 링크 정적 점검에서 끊어진 링크 없음. 커밋 SHA는 실제 커밋이 확인될 때에만 기록 | 완료 | 미실행 |
+| EVID-01 | 요구·행위·조치·재검증 증거의 연결 | [README.md §8](../README.md), [security-scenarios.md §7](security-scenarios.md), [glossary.md §7](glossary.md) | terraform/docs/증적양식.md, modules/soar action-history DynamoDB, EventBridge SSM terminal result, dashboard/backend history contracts 확인. 자동 이력 write는 실패해도 조치가 계속될 수 있고 실환경 증거 없음 | 부분 구현 | 미실행 |
+| DOC-01 | 문서 구조·링크·버전 추적 | [README.md §7–8](../README.md), [agents.md](../agents.md), [decisions.md](decisions.md) | 설계 문서는 루트와 기능별 폴더에 배치되고, AI 지침은 루트와 `.github/`에 있다. 이전 정적 링크 점검 이후 README 파일명 변경에 대한 링크 검증은 별도 수행한다. 커밋 SHA는 실제 커밋이 확인될 때에만 기록 | 완료 | 미실행 |
 
 ## 7. 주요 편차와 후속 작업 우선순위
 
@@ -120,7 +120,7 @@
 기능 변경을 완료할 때 담당자는 다음을 이 추적표에서 확인한다.
 
 1. 기존 요구 ID 또는 새 ID에 출처와 결정 상태를 연결한다.
-2. project.md 또는 기능 설계 문서의 정확한 절·계약 위치를 적는다.
+2. README.md 또는 기능 설계 문서의 정확한 절·계약 위치를 적는다.
 3. 실제 코드 경로를 확인하고 각 요소가 선언만 되어 있는지, 호출·이벤트·데이터 연결까지 있는지 구분한다.
 4. 구현 상태를 미구현·부분 구현·완료 중 하나로 갱신하고, 변경 대상이면 decisions.md의 구현 수정 대상·설계 갱신 대상·임시 예외 분류와 연결한다.
 5. 검증 상태는 통합 또는 AWS 실환경 결과의 실제 증거가 있을 때만 승격한다. 실행하지 않은 테스트·배포·AWS 조치는 미실행으로 둔다.

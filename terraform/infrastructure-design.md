@@ -6,7 +6,7 @@
 |---|---|
 | 적용 범위 | Terraform 원격 state, AWS 인프라 자원, 4개 모듈의 책임과 인터페이스, 탐지·SOAR 연결, IAM, 배포·운영·비용·검증 경계 |
 | 책임 역할 | IaC 담당, 네트워크·보안 담당, SOAR/대시보드 담당, 배포 승인자, 운영·비용 담당 |
-| 관련 문서 | [`../project.md`](../project.md), [`../agents.md`](../agents.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../honeypot/honeypot-design.md`](../honeypot/honeypot-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
+| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../honeypot/honeypot-design.md`](../honeypot/honeypot-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
 | 조사 근거 | `aws-security-project/terraform/`의 HCL, Terraform 문서, GitHub Actions workflow를 읽기 전용으로 확인 |
 | 변경 이력 | 설계 선택·예외는 `../project-management/decisions.md`, 구현 및 검증 증거는 `../project-management/tracking.md`에 커밋 버전과 연결 |
 

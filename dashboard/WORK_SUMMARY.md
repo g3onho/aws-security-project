@@ -1,4 +1,4 @@
-﻿# 대시보드 현재 작업 상태
+# 대시보드 현재 작업 상태
 
 갱신일: 2026-09-23
 
@@ -29,6 +29,6 @@
 
 ## 실행·검사
 
-[대시보드 설계 기준](dashboard-design.md), [전체 아키텍처](../project.md), [구현·검증 추적](../project-management/tracking.md), [API 계약](backend/contracts/openapi.yaml)을 참고하세요.
+[대시보드 설계 기준](dashboard-design.md), [전체 아키텍처](../README.md), [구현·검증 추적](../project-management/tracking.md), [API 계약](backend/contracts/openapi.yaml)을 참고하세요.
 
 테스트용 고정 입력은 테스트 코드 안에만 남아 있으며 운영 데이터로 제공하지 않습니다.
