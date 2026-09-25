@@ -229,7 +229,7 @@ Terraform 토글, NAT/endpoint 연결, AMI·ECR 준비, IAM 역할, Secrets, DNS
 
 ## 7. 관리 문서 체계
 
-아래 파일이 저장소에서 팀 공유 기준 문서를 보관하는 얕은 구조다. `project.md`와 `agents.md`, 에디터 자동 인식 파일은 저장소 루트에 둔다. 기능별 설계 문서는 해당 구성요소 폴더에, 공통 관리 문서는 `project-management/`에 둔다. 상태 현황이나 설계 예외를 각 기능의 정본에 섞지 않는다. 별도 기능 문서를 잘게 나누기보다 해당 설계의 목차에 통합한다.
+아래 파일이 저장소에서 팀 공유 기준 문서를 보관하는 얕은 구조다. `README.md`와 `agents.md`, 에디터 자동 인식 파일은 저장소 루트에 둔다. 기능별 설계 문서는 해당 구성요소 폴더에, 공통 관리 문서는 `project-management/`에 둔다. 상태 현황이나 설계 예외를 각 기능의 정본에 섞지 않는다. 별도 기능 문서를 잘게 나누기보다 해당 설계의 목차에 통합한다.
 
 ```text
 aws-security-project/
@@ -237,7 +237,7 @@ aws-security-project/
 ├── .windsurfrules
 ├── .github/
 │   └── copilot-instructions.md
-├── project.md
+├── README.md
 ├── agents.md
 ├── dashboard/                         # 애플리케이션 코드와 대시보드 설계
 │   └── dashboard-design.md
@@ -253,7 +253,7 @@ aws-security-project/
     └── tracking.md
 ```
 
-`project.md`는 목표와 상위 시스템 아키텍처를 소유한다. `agents.md`와 세 자동 인식 지침은 AI의 작업 행동을 소유한다. 기능별 `*-design.md`는 그 기능의 책임·상세 구조·자료/API 계약·실패·검증을 소유한다. 시나리오 문서는 검증 순서·안전 범위·증적을 소유한다. 용어집은 공통 개념·상태를 정의한다. 결정 기록부는 승인된 선택·근거·미결정 질문을 보관한다. 추적 문서는 코드 경로와 관측 시점별 구현·검증 근거를 보관한다. 발표용 이미지 제작 규칙은 `design-standards.md`에만 둔다. 설계 본문에는 Mermaid와 Markdown 표를 사용한다.
+`README.md`는 목표와 상위 시스템 아키텍처를 소유한다. `agents.md`와 세 자동 인식 지침은 AI의 작업 행동을 소유한다. 기능별 `*-design.md`는 그 기능의 책임·상세 구조·자료/API 계약·실패·검증을 소유한다. 시나리오 문서는 검증 순서·안전 범위·증적을 소유한다. 용어집은 공통 개념·상태를 정의한다. 결정 기록부는 승인된 선택·근거·미결정 질문을 보관한다. 추적 문서는 코드 경로와 관측 시점별 구현·검증 근거를 보관한다. 발표용 이미지 제작 규칙은 `design-standards.md`에만 둔다. 설계 본문에는 Mermaid와 Markdown 표를 사용한다.
 
 ## 8. 개발·문서 완료 기준
 

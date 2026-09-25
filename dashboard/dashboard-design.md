@@ -6,7 +6,7 @@
 |---|---|
 | 적용 범위 | 보안 관제 대시보드의 웹 UI, Flask 백엔드, AWS 데이터 공급자, 진입 경로, 수동 조치 및 감사 계약 |
 | 책임 역할 | 대시보드 설계·구현 담당, SOAR 담당, 인프라/IAM 담당, 검증 담당 |
-| 관련 문서 | [`../project.md`](../project.md), [`../agents.md`](../agents.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
+| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
 | 조사 근거 | 실제 저장소의 대시보드 설계 표준, OpenAPI, 백엔드·프런트엔드 코드를 읽기 전용으로 확인 |
 | 이력 관리 | 설계 변경은 `../project-management/decisions.md`, 구현 현황은 `../project-management/tracking.md`에서 커밋 버전에 연결 |
 

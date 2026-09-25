@@ -1,16 +1,16 @@
-작업을 시작하기 전, 반드시 루트 디렉터리에 있는 `project.md` 파일을 가장 먼저 스캔하여 전체 시스템의 4계층 구조와 핵심 로직을 파악한 뒤 코드를 제안할 것.
+작업을 시작하기 전, 반드시 루트 디렉터리에 있는 `README.md` 파일을 가장 먼저 스캔하여 전체 시스템의 4계층 구조와 핵심 로직을 파악한 뒤 코드를 제안할 것.
 # 전역 AI 작업 지침
 
 | 문서 정보 | 내용 |
 |---|---|
-| 적용 범위 | 이 저장소 전체와 루트 `project.md`·기능별 설계 문서, 사용자가 요청한 조사·코드 제안·구현 |
+| 적용 범위 | 이 저장소 전체와 루트 `README.md`·기능별 설계 문서, 사용자가 요청한 조사·코드 제안·구현 |
 | 책임 역할 | 설계·구현·검증을 연결하는 AI 에이전트 |
-| 관련 문서 | project.md, dashboard/dashboard-design.md, terraform/infrastructure-design.md, honeypot/honeypot-design.md, project-management/security-scenarios.md, project-management/glossary.md, project-management/decisions.md, project-management/tracking.md |
+| 관련 문서 | README.md, dashboard/dashboard-design.md, terraform/infrastructure-design.md, honeypot/honeypot-design.md, project-management/security-scenarios.md, project-management/glossary.md, project-management/decisions.md, project-management/tracking.md |
 | 갱신을 유발하는 변경 | 작업 경계·정본·질문 절차·코딩 규칙 변경 |
 
 ## 1. 작업 시작 순서
 
-1. 루트 project.md를 먼저 읽어 전체 목표, 4계층 구조, 기능 연결과 미결정을 확인한다.
+1. 루트 README.md를 먼저 읽어 전체 목표, 4계층 구조, 기능 연결과 미결정을 확인한다.
 2. 요청의 산출물, 파일 경로, 변경 범위, 읽기 전용 조건, 생성 순서 및 승인 단계를 확인한다. 앞선 대화의 명시적 제한도 계속 적용한다.
 3. 변경할 기능의 상세 설계와 관련 계약·시나리오·용어를 읽는다. 구현 요청에서는 실제 코드의 선언, 호출, 조건 분기, 저장과 오류 경로를 확인한다.
 4. 요구·설계·코드가 어긋나면 근거를 대조한다. 코드 존재만으로 설계 승인을 추정하지 말고, 코드와 다르다는 이유만으로 설계를 무효 처리하지 않는다.
@@ -19,7 +19,7 @@
 ## 2. 설계 기준과 근거
 
 - 사용자의 명시적 지시와 작업 경계가 우선이다. 지정된 읽기 전용 경로에는 어떤 파일 변경이나 부수 산출물도 만들지 않는다.
-- project.md는 상위 목표와 아키텍처를, 기능별 설계 문서는 승인된 기능 책임·인터페이스·검증 기준을 정의한다.
+- README.md는 상위 목표와 아키텍처를, 기능별 설계 문서는 승인된 기능 책임·인터페이스·검증 기준을 정의한다.
 - decisions.md에는 확정 선택·근거·영향 및 미결정 질문을 기록한다. 제안이나 추정을 승인된 정책으로 쓰지 않는다.
 - tracking.md에는 관찰된 구현·검증의 기준점과 증거를 기록한다. 설계 기준 문서에 조사 시점의 완료 상태를 섞지 않는다.
 - 코드는 실제 연결과 동작의 증거다. 리소스·함수·문서의 선언만으로 호출 경로나 실환경 동작을 단정하지 않는다.
