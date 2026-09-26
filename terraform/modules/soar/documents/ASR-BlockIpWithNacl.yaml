@@ -4,7 +4,7 @@ description: |
   오탐 가능성 때문에 자동화하지 않고, 담당자가 대시보드에서 승인한 뒤 실행합니다.
   before/after 규칙을 반환해 Before-After 비교에 사용합니다.
 
-  소유권 경계 (docs/OWNERSHIP.md):
+  소유권 경계 (terraform/infrastructure-design.md § IAM과 Terraform/SOAR 소유권 경계):
     1 ~ 99  : 이 문서(SOAR) 전용. Terraform 코드에 선언하지 않으므로 apply 로 지워지지 않습니다.
     100 이상: Terraform 소유(aws_network_acl_rule). 이 문서가 쓰면 다음 apply 와 충돌합니다.
   IAM 에는 규칙 번호를 제한하는 조건 키가 없어서 이 문서가 직접 막습니다.

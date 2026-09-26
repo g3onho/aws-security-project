@@ -6,7 +6,7 @@
 |---|---|
 | 적용 범위 | Terraform, 보호 대상 서비스, 탐지·수집, SOAR, 관제 대시보드, 허니팟 목표, 운영·검증 |
 | 책임 역할 | 전체 설계 책임자와 각 기능 소유 역할 |
-| 관련 문서 | [AI 작업 지침](agents.md), [대시보드](dashboard/dashboard-design.md), [Terraform](terraform/infrastructure-design.md), [허니팟](honeypot/honeypot-design.md), [시나리오](project-management/security-scenarios.md), [공통 용어](project-management/glossary.md), [결정·질문](project-management/decisions.md), [추적 현황](project-management/tracking.md), [그림 제작 기준](project-management/design-standards.md) |
+| 관련 문서 | [AI 작업 지침](agents.md), [대시보드](dashboard/dashboard-design.md), [Terraform 설계 정본](terraform/infrastructure-design.md), [허니팟](honeypot/honeypot-design.md), [시나리오](project-management/security-scenarios.md), [공통 용어](project-management/glossary.md), [결정·질문](project-management/decisions.md), [추적 현황](project-management/tracking.md), [그림 제작 기준](project-management/design-standards.md) |
 | 갱신을 유발하는 변경 | 목표·범위·성공 기준, 네 계층의 책임·연결, 공통 경계 또는 문서 체계 변경 |
 
 ## 1. 프로젝트 목표와 범위

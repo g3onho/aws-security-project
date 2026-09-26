@@ -5,7 +5,7 @@
 # 인라인 ingress 블록을 쓰면 Terraform 이 "선언되지 않은 규칙"을 모두 삭제하므로,
 # 시연 스크립트가 넣은 3306/0.0.0.0/0 규칙과 계속 충돌합니다.
 #
-# 소유권 경계 (docs/OWNERSHIP.md):
+# 소유권 경계 (terraform/infrastructure-design.md § IAM과 Terraform/SOAR 소유권 경계):
 #   시연용 취약 규칙(0.0.0.0/0 인바운드)은 이 파일에 리소스로 선언하지 않습니다.
 #   demo/trigger-auto-remediation.sh 로만 주입합니다. 리소스(또는 변수 토글)로 선언하면
 #   ASR-RevokeSecurityGroupIngress 가 회수한 규칙을 다음 apply 가 다시 만듭니다.

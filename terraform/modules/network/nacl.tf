@@ -2,7 +2,7 @@
 # NACL — 서브넷 단위 1차 방어 (SG 는 인스턴스 단위 2차 방어)
 # 기획서 아키텍처: 이중 방어. SEC-06 수동 개선(공격 IP 차단)이 쓰는 대상이기도 합니다.
 #
-# 소유권 경계 (docs/OWNERSHIP.md):
+# 소유권 경계 (terraform/infrastructure-design.md § IAM과 Terraform/SOAR 소유권 경계):
 #   규칙은 aws_network_acl_rule 로만 선언합니다. aws_network_acl 안에 ingress/egress
 #   블록을 쓰면 Terraform 이 규칙 목록 전체를 소유해서, ASR-BlockIpWithNacl 이 넣은
 #   Deny 를 다음 apply 에서 지웁니다(차단 해제). 두 방식은 혼용할 수도 없습니다.

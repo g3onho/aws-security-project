@@ -6,8 +6,8 @@
 |---|---|
 | 적용 범위 | Terraform 원격 state, AWS 인프라 자원, 4개 모듈의 책임과 인터페이스, 탐지·SOAR 연결, IAM, 배포·운영·비용·검증 경계 |
 | 책임 역할 | IaC 담당, 네트워크·보안 담당, SOAR/대시보드 담당, 배포 승인자, 운영·비용 담당 |
-| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../honeypot/honeypot-design.md`](../honeypot/honeypot-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
-| 조사 근거 | `aws-security-project/terraform/`의 HCL, Terraform 문서, GitHub Actions workflow를 읽기 전용으로 확인 |
+| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../honeypot/honeypot-design.md`](../honeypot/honeypot-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md), [`../project-management/tracking.md`](../project-management/tracking.md) |
+| 조사 근거 | Terraform HCL, GitHub Actions workflow, 루트 README와 공통 관리 기준을 대조 |
 | 변경 이력 | 설계 선택·예외는 `../project-management/decisions.md`, 구현 및 검증 증거는 `../project-management/tracking.md`에 커밋 버전과 연결 |
 
 이 문서는 인프라 코드가 어떤 자원을 선언하는지와 목표 책임 경계를 정한다. 코드는 현재 구현 상태의 증거이지 설계 목표의 자동 승인 근거가 아니다. 현황과 기준이 다르면 아래의 조사 결과 및 추적표에서 구현 수정, 설계 변경 또는 임시 예외로 구분한다.
@@ -98,6 +98,8 @@ flowchart TB
 | SSM Session Manager | 출력 `dashboard_ssm_port_forward`가 인스턴스 포트 `5000`을 로컬 `5000`으로 forwarding; 대시보드 SG는 VPC CIDR에서 `5000` 허용 | 운영자 IAM·SSM 세션 권한과 로그를 관리. SSH 22를 열지 않음 |
 | ALB → DVWA | 옵션 DVWA를 `8081` listener로 전달; HTTP `8081` ingress는 관리자 CIDR 기준 | 의도적으로 취약한 독립 공격 대상. 보호 대상 Nginx 서비스와 혼동 금지; `0.0.0.0/0` 공개 금지 |
 
+Terraform user-data는 배포 zip을 S3에서 가져와 `/opt/dashboard/dashboard.env`와 systemd 서비스를 구성한다. 현재 환경 입력에는 `DATA_PROVIDER=aws`, AWS 리전·테이블·토픽 이름, `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_PORT=5000`, `WRITE_ENABLED=true`가 포함된다. 이 설정은 프로세스 구성을 나타낸다. 실제 AWS 쓰기·조치·재검증 가능 여부는 대시보드 Provider 구현과 권한을 별도로 확인하며, 환경 변수만으로 활성화를 주장하지 않는다.
+
 대시보드 웹 UI의 계정 인증과 네트워크 접근은 서로 다른 경계다. ALB ingress나 SSM 세션이 가능하다고 해서 애플리케이션 인가를 우회하지 않는다. 도메인·인증서·종단간 HTTPS, CIDR 기본값은 실제 환경별 결정 항목이다.
 
 ### 외부 연결 및 부트스트랩 의존
@@ -112,7 +114,7 @@ Terraform은 로그와 finding을 같은 데이터로 취급하지 않는다. Gu
 |---|---|---|
 | SSH 관련 비정상 접근/Hydra 경로 | 사용자 결정: GuardDuty 경로로 검증. GuardDuty finding → EventBridge → correlator 및/또는 자동조치 판단 경로 | MySQL 계정 로그인 실패 로그와 동일 신호가 아님. GuardDuty는 원시 SSH 로그 저장소로 설명하지 않고 finding 공급자로 다룸 |
 | MySQL 인증 실패/Hydra 경로 | MySQL 로그 파일 → CloudWatch Agent → CloudWatch Logs → 메트릭 필터/Alarm → SNS | GuardDuty 경로와 별도. 기본 변수 자료에는 실패 임계치 `10회/5분`이 있지만 이를 목표 정책으로 확정하려면 시나리오 문서와 운영 결정이 필요 |
-| VPC 통신 | VPC Flow Logs(traffic `ALL`) → CloudWatch Logs → 사람이 분석/GuardDuty 입력 | Flow Logs는 자체 finding이 아니라 트래픽 메타데이터를 남김 |
+| VPC 통신 | VPC Flow Logs(traffic `ALL`, 60초 집계) → CloudWatch Logs | 트래픽 메타데이터를 남기는 로그 원천이다. 코드에서 CloudWatch 로그 그룹을 GuardDuty에 직접 전달하는 경로는 선언하지 않음 |
 | AWS API 감사 | 다중 리전 CloudTrail → 버저닝·퍼블릭 차단·KMS 암호화된 S3 | API actor/time/action 감사 자료; destroy 시 보존·정리 절차 필요 |
 | 구성 위반 | AWS Config의 제한된 기록 리소스와 관리 규칙 → Security Hub → EventBridge | 현재 Config 기록 범위는 7 리소스 유형. 기록하지 않는 타입의 변경을 완전 감시한다고 주장하지 않음 |
 | 위협·취약점 | GuardDuty + Inspector2 finding; `correlator`가 동일 EC2/Inspector CVE를 상관분석 | EC2 식별자 기준 상관에 한정; 누락/타입 불일치 시 상관되지 않았음을 드러냄 |
@@ -121,6 +123,21 @@ Terraform은 로그와 finding을 같은 데이터로 취급하지 않는다. Gu
 | 자동조치 상태 | EventBridge → `asr_trigger` → 게이트/SSM/SNS → `remediation_actions` DynamoDB | 판단 이력과 SSM 실행 결과를 구분; 실행 성공만으로 재검증/해결완료가 아님 |
 | Nginx 강화 | `ASR-HardenNginx` SSM Command 문서는 확인되나 자동 Lambda 호출 경로는 연결되지 않음 | 사용자 선택에 따라 수동 조치 기준으로 둠. Terraform이 이를 자동조치했다고 표현하지 않음 |
 | AI 허니팟 | 조사한 네 모듈과 compute 리소스에서 별도 AI 허니팟 배포 모듈·자원은 확인되지 않음 | 프로젝트 목표에 포함하되 기술·데이터 경로·비용·격리·차단 정책은 미결정. 허니팟 설계 문서에서 제안과 사실을 구분 |
+
+### 로그 원천·저장 계약
+
+아래 경로는 Terraform과 user-data가 선언하는 연결이다. 설정이 존재한다는 사실만으로 실환경 수집을 확인한 것은 아니다.
+
+| 원천 | 대상·도착지 | 보존·소비 경계 |
+|---|---|---|
+| VPC Flow Logs | VPC 전체 `ALL` 트래픽, 최대 집계 간격 60초; `/<project>/<env>/vpc/flowlogs` CloudWatch Logs 그룹 | `log_retention_days`를 적용하며 코드 기본값은 14일. 전용 역할은 해당 로그 그룹에 이벤트를 쓴다. 로그 전송 상태는 별도 확인 |
+| CloudTrail | 전 리전 및 global service events; 계정별 S3 감사 버킷, SSE-KMS, 버저닝, public access block, log file validation | `force_destroy=false`; 객체·버킷 삭제는 별도 보존·승인 절차가 필요 |
+| Nginx | `/var/log/nginx/access.log`와 `error.log` → `/<project>/<env>/web/nginx`, 인스턴스별 `access`·`error` stream | `log_retention_days` 적용. CloudWatch Agent와 송신 경로가 필요 |
+| MySQL | `/var/log/mysql/error.log`와 `general.log` → `/<project>/<env>/db/mysql`, 인스턴스별 `error`·`general` stream | `log_retention_days` 적용. `error.log`의 `Access denied for user`만 인증 실패 지표로 변환 |
+| 수동 보안 점검 | SSM 점검 문서의 nmap/curl/Trivy 출력 → 별도 scan-results S3 버킷 | 로그 스트림이 아니다. 실행별 파일이며 사람이 시작한다. 접근·보존·삭제는 로그 그룹과 별도 관리 |
+| Lambda 실행 | Lambda 함수별 CloudWatch Logs 경로 | 코드에서 명시적 로그 보존 기간을 구성했는지 별도 확인한다. 존재하는 로그 그룹만으로 보존 계약을 주장하지 않음 |
+
+MySQL 인증 실패 경보는 `Access denied for user` metric filter → `MySQLAuthFailure` → 300초 기간 합계 경보 → SNS 흐름이다. 코드 기본 threshold는 10이며, 승인된 운영 임계값이라는 뜻은 아니다. 알람의 `treat_missing_data=notBreaching`은 데이터 결측을 알람 위반으로 보지 않으므로, 별도 수집 상태 확인이 필요하다. 메모리 지표는 CloudWatch Agent의 `monitoring` 경로를 사용한다. 현재 interface endpoint 목록에는 `logs`와 `secretsmanager`가 없으므로 NAT를 끈 환경에서 로그·비밀 송신이 된다고 가정하지 않는다. user-data의 CloudWatch Agent 설치·구성 호출 일부는 실패해도 부팅을 계속하도록 되어 있으므로, 인스턴스 정상 기동만으로 Agent 수집 성공을 판정하지 않는다.
 
 ### SOAR 안전장치와 실행 경계
 
@@ -171,6 +188,16 @@ Terraform이 보유한 리소스/속성은 코드로 관리한다. SOAR가 바�
 | WAF, EC2 type, Terraform 선언 SG | Terraform 소유 | 콘솔 수동 수정은 다음 apply에서 되돌아갈 수 있음; 변경은 코드와 승인 plan을 사용 |
 | DynamoDB action items | 서비스/Lambda가 업무 항목을 기록, Terraform은 테이블 구조만 소유 | 자동/수동 데이터 쓰기는 조건부 상태·감사 계약을 따르며 테이블 교체·TTL 변경의 데이터 영향을 검토 |
 
+#### NACL·보안 그룹 적용 세부 기준
+
+- 현재 Public NACL의 Terraform Allow 규칙은 인바운드 100·110·120, 아웃바운드 100이고, Private NACL은 인바운드 100·110, 아웃바운드 100이다. 1–99는 Private NACL 인바운드 Deny를 위한 SOAR 예약 번호대다.
+- 수동 `ASR-BlockIpWithNacl`은 규칙 번호 1–99, 단일 IPv4 `/32`(unspecified 주소 제외), NACL ID 형식을 검증하고 기존 SOAR Deny 규칙이 10개 이상이면 거부한다. IAM 조건 키만으로 규칙 번호를 제한하지 못하므로 SSM 문서 입력과 실행 코드 양쪽에서 검사한다.
+- NACL Deny에는 자동 만료(TTL)가 없다. 담당자가 영향과 필요성을 확인하고 수동으로 제거해야 한다. 인라인 `ingress`/`egress` 또는 `aws_default_network_acl`을 관리하면 규칙 전체 소유권이 겹쳐 SOAR Deny가 다음 apply에서 제거될 수 있다.
+- 시연용 `0.0.0.0/0`·`::/0` 취약 SG ingress는 Terraform 리소스나 토글로 선언하지 않는다. demo 경로가 Terraform 밖에서 추가하며, eligible SG에 대한 SOAR 회수 뒤 Terraform이 같은 규칙을 선언하면 apply가 다시 만들 수 있다.
+- Terraform이 DB Secret 초기 version을 관리하고 수동 회전이 `AWSCURRENT`를 바꾼다. 입력 비밀번호·사용자·DB 이름이 바뀐 plan은 회전값을 덮을 가능성을 확인하고, 관리 소유권 선택은 결정 전까지 미결정으로 둔다.
+
+Plan에 NACL 1–99 Deny 삭제, 인라인 NACL 규칙 변경, 시연 취약 ingress 재생성, 외부 관리 시험 IAM key의 `Active` 복구, 또는 DB Secret version 교체가 나타나면 원인을 확인하기 전 적용하지 않는다.
+
 `terraform refresh-only`는 state를 현실과 동기화할 뿐 다음 일반 apply의 원복을 방지하는 소유권 조정 수단이 아니다. `lifecycle.ignore_changes`도 리소스 교체 시 무시 속성이 초기화될 수 있으므로, 단일 운영 규칙으로 남용하지 않는다.
 
 ## 변수, 환경, 비밀과 비용
@@ -179,11 +206,11 @@ Terraform이 보유한 리소스/속성은 코드로 관리한다. SOAR가 바�
 
 현재 `variables.tf`에서 확인된 default와 문서 충돌은 다음과 같다.
 
-| 토글/입력 | HCL 변수 default(조사 사실) | 문서/영향 |
+| 토글/입력 | HCL 변수 default(조사 사실) | 비용·운영 영향 |
 |---|---|---|
-| `enable_nat_gateway` | `true` | 비용 문서에는 기본 `false`라고 적힌 내용이 있음. NAT는 시간/데이터 비용과 private egress에 영향 |
-| `enable_vpc_endpoints` | `true` | 실제 HCL은 SSM 3종과 `monitoring` interface endpoint 및 S3 gateway endpoint를 생성; 일부 architecture 설명은 SSM 3종만 언급 |
-| `enable_alb`, `enable_waf`, `enable_dvwa_instance` | 각각 `true` | 비용 문서 일부는 ALB/WAF 기본 `false`라 기록; ALB public 경로 및 서비스 비용에 영향 |
+| `enable_nat_gateway` | `true` | NAT 시간·데이터 요금과 Private subnet egress에 영향 |
+| `enable_vpc_endpoints` | `true` | SSM 3종과 `monitoring` interface endpoint 및 S3 gateway endpoint를 생성; endpoint 수와 송신 경로 확인 필요 |
+| `enable_alb`, `enable_waf`, `enable_dvwa_instance` | 각각 `true` | ALB public 경로, WAF·DVWA 사용량 및 비용에 영향 |
 | `enable_attacker_instance` | `false` | 내부 공격 재현 인스턴스 비용/DB SG 경로를 비활성 상태로 둠 |
 | `enable_auto_remediation` | `true` | SOAR action 실행 허용 범위와 비용·영향에 큰 변화; 적용 환경에서 별도 승인 필요 |
 | `dashboard_ingress_cidr` | `0.0.0.0/0` | ALB 대시보드 포트의 넓은 공개 기본값; 환경별 허용 CIDR을 명시할 것 |
@@ -194,7 +221,7 @@ Terraform이 보유한 리소스/속성은 코드로 관리한다. SOAR가 바�
 
 ## 배포·CI/CD 및 운영
 
-현재 `.github/workflows/terraform-plan.yml`은 OIDC로 임시 AWS 자격 증명을 받아 PR/push/workflow_dispatch에서 `fmt -check`, `validate`, `plan`을 수행하고 PR에 결과를 남기며 plan 파일과 텍스트를 14일 artifact로 저장한다. `admin_cidr` CI 입력의 빈 값과 `0.0.0.0/0`은 workflow가 거부한다. bootstrap에는 plan role과 apply role 선언이 있으나 확인된 workflow는 plan 전용이며 apply 역할로 자동 배포하지 않는다. 기준상 apply는 plan 검토 후 권한 있는 담당자가 승인 절차에 따라 수행한다.
+현재 `.github/workflows/terraform-plan.yml`은 OIDC로 임시 AWS 자격 증명을 받아 PR/push/workflow_dispatch에서 `fmt -check`, `validate`, `plan`을 수행하고 PR에 결과를 남기며 plan 파일과 텍스트를 14일 artifact로 저장한다. CI는 Terraform `1.9.8`을 고정한다. 공용 backend 작업은 로컬·CI 실행 버전을 맞춰 `1.9.8`을 사용한다. `required_version >= 1.6.0`은 호환 범위 선언이며, 다른 실행 버전이 state 형식을 자동으로 올린다는 뜻은 아니다. `admin_cidr` CI 입력의 빈 값과 `0.0.0.0/0`은 workflow가 거부한다. bootstrap에는 plan role과 apply role 선언이 있으나 확인된 workflow는 plan 전용이며 apply 역할로 자동 배포하지 않는다. 기준상 apply는 plan 검토 후 권한 있는 담당자가 승인 절차에 따라 수행한다.
 
 plan artifact는 state 구조·민감 속성 정보를 드러낼 수 있는 운영 자료로 취급한다. GitHub artifact 접근 권한과 보존 기간, PR 댓글에 포함되는 민감 필드, 외부 fork PR의 자격증명 경계를 검토한다. OIDC trust의 repository/ref 조건을 유지하고 access key를 CI secret으로 저장하지 않는다. 현재 apply role에 `PowerUserAccess`와 광범위한 IAM write 문서가 확인되므로 장기 운영 전 최소 권한 정책으로 조정해야 한다.
 
@@ -221,9 +248,9 @@ plan artifact는 state 구조·민감 속성 정보를 드러낼 수 있는 운�
 
 성공 판정에는 해당 검증이 실제 수행된 환경과 시각, commit, plan/apply artifact, 관련 request/job/AWS ID가 필요하다. Terraform plan은 변경 예정 리소스를 말할 뿐 런타임 기능·실제 보안 효과·로그 수집·조치 성공을 증명하지 않는다.
 
-## 얕은 디렉터리 기준
+## Terraform 코드 책임 구조
 
-이 설계 문서는 `terraform/infrastructure-design.md`에 보관한다. Terraform 구현의 역할별 모듈 구조는 재사용 가능한 boundary이므로 유지하되 분류용 폴더를 더 겹겹이 만들지 않는다.
+Terraform의 정본은 이 문서다. 구현 코드는 책임별 모듈 경계를 유지하며 분류 목적으로 폴더를 더 겹겹이 만들지 않는다.
 
 ```text
 terraform/
@@ -233,7 +260,6 @@ terraform/
 │   ├── compute/               # EC2·IAM·Secret·ECR·ALB/WAF
 │   ├── security/              # 관리형 탐지·감사·Config
 │   └── soar/                  # EventBridge·Lambda·SSM·DDB·SNS·CloudWatch
-├── docs/                      # 설계·소유권·로그·비용·체크리스트
 ├── demo/                      # 격리 환경 실행/정리 절차
 ├── backend.tf                 # 원격 state backend 선언
 ├── main.tf                    # root composition
@@ -247,13 +273,14 @@ terraform/
 
 | 항목 | 읽기 전용 확인 근거 | 분류 | 필요한 결정·영향 |
 |---|---|---|---|
-| NAT/ALB/WAF/DVWA default | `variables.tf`의 해당 기본값은 `true`; 비용 문서는 일부를 `false`로 기재 | 설계/문서 갱신 대상 | 환경별 비용과 공개 범위에 직접 영향. 기본값 세트와 `tfvars.example`, CI 설명을 한 기준으로 정해야 함 |
-| VPC endpoint 목록 | `network/main.tf`는 `ssm`, `ssmmessages`, `ec2messages`, `monitoring` interface endpoint 및 S3 gateway endpoint를 생성; 일부 아키텍처 문서는 SSM 세 가지만 명시 | 문서 갱신 대상 | CloudWatch metric/SSM 경로 설명 및 endpoint 비용표 정렬 |
-| 원격 state 활성 여부 | `backend.tf`는 계정 ID가 들어간 S3/DynamoDB backend 설정을 포함하지만 `docs/AS-IS_TO-BE.md`는 bootstrap 선행·local state라고 기록. 현재 AWS backend 자원/작동 상태는 읽기 전용 코드 조사만으로 확인 불가 | 현황 확인 필요; 설계 기준 변경 아님 | 사람/환경 담당자가 실제 backend 대상과 migration 완료 여부 확인. 이 문서가 remote state 사용 완료를 주장하지 않음 |
+| NAT/ALB/WAF/DVWA default | 현재 HCL 변수 기본값은 모두 `true`; 내부 공격자 인스턴스는 `false` | 운영 입력과 검토 대상 | 비용과 공개 범위에 직접 영향. 적용 환경의 기본값·tfvars·CI 입력을 함께 검토 |
+| VPC endpoint 및 egress | 현재는 SSM 3종·`monitoring` interface endpoint와 S3 gateway endpoint를 선언; `logs`·`secretsmanager` endpoint는 없음 | 구현·운영 경계 | NAT를 끄는 환경의 user-data 설치, 로그 전송, 비밀 조회 경로를 별도로 보장해야 함 |
+| 원격 state 활성 여부 | `backend.tf`는 계정 ID가 포함된 S3/DynamoDB backend를 가리키고 `bootstrap/`은 기반 자원을 선언. 실제 AWS 자원 존재·접근·migration 완료 여부는 코드만으로 확인 불가 | 현황 확인 필요; 설계 기준 변경 아님 | 담당자가 실제 backend 대상과 migration 상태를 확인. 이 문서는 remote state 사용 완료를 주장하지 않음 |
 | backend naming | `backend.tf`의 bucket은 계정 포함 고정값, `backend.hcl.example`은 다른 예시 이름·key, bootstrap은 `state_bucket_name`을 받으며 lock table 이름은 고정 | 구현/문서 정렬 대상 | bootstrap output과 실제 backend 값 연결, environment state key 분리 여부 결정 |
 | SOAR 게이트 수 | 코드 주석/문서가 3중이라 설명하지만 SG tag 검사는 SG branch이며 IAM key 경로는 두 검사 | 구현·설명 일치 검증 대상 | 시나리오별 실제 통제 계층과 명명 표준을 확인; 보편적 3중 방어라 주장하지 않음 |
 | DynamoDB dashboard workflow | Terraform 선언 운영 테이블은 findings/vulnerabilities/correlation/자동 action 중심; dashboard SQLite 기반 승인/jobs/audit는 별도 코드에서 확인 | 구현 수정 대상 | `dashboard-design.md` 목표에 맞는 승인/작업/멱등/감사 데이터 계약·저장 책임과 migration 순서 결정 |
 | Dashboard IAM 역할 | read/execute 정책 문서는 나뉘어 있으나 현재 같은 dashboard role에 부착 | 구현 수정 또는 위험 수용 결정 | principal 격리, PassRole, AWS 권한 피해 범위 검토. IAM policy 분리와 identity 분리를 구분 |
+| Dashboard 쓰기 설정 | Terraform user-data는 `WRITE_ENABLED=true`를 전달한다. 이 값은 API의 write-disabled 검사를 통과시키지만, AWS provider의 실행·재검증 메서드는 `ACTION_PROVIDER_DISABLED`를 반환 | 구현/설계 일치 확인 | 환경변수만으로 실제 조치가 활성화됐다고 보지 않는다. 실제 AWS 실행·측정 연결은 대시보드 코드와 tracking에서 별도 판정 |
 | CloudWatch Logs 경로 | `modules/soar/cloudwatch.tf`의 MySQL 실패 로그 metric filter/알람 및 GuardDuty의 SSH 관련 finding 흐름 별도 확인 | 설계·시나리오 문서와 계약 | 사용자가 선택한 MySQL→CloudWatch, SSH→GuardDuty 경로를 검증 행으로 두고 각 탐지 증적 확인 |
 | AI 허니팟 | Terraform 네 모듈에서 AI 허니팟 배포 자원 확인되지 않음 | 신규 설계 제안/미결정 | 목표 범위에는 포함. 서비스·격리·데이터 보존·Bedrock 등의 선택과 자동 차단은 별도 승인 전 인프라 구현 없음 |
 | Nginx hardening | SSM Command 문서가 있으나 자동 Lambda 호출 분기는 확인되지 않음 | 임시/수동 기준 | 사용자가 권장한 수동 hardening 경로를 반영; 배포 시점·재부팅/재생성 후 유지 확인 |
