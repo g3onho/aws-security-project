@@ -15,16 +15,21 @@ SUPPORT_STATES = {"runnable", "prep-needed", "observe-only", "design-needed"}
 DRILL_TYPES = [
     {"id": "web-scan", "name": "웹 보안 검사", "tool": "ZAP",
      "kind": "attack", "sources": ["ZAP 결과", "웹 응답", "WAF 지표·로그", "Security Hub finding"],
+     "variants": [
+         {"id": "web-dvwa", "name": "DVWA 웹 공격 검사", "note": "SEC-08 · 별도 시험 대상"},
+         {"id": "web-service", "name": "서비스 웹 보안 설정 검사", "note": "SEC-02 · 헤더·TLS"},
+     ],
      "note": "검사 실행 성공은 공격 성공이나 침해 확정이 아니다. HTTP 403만으로 WAF 차단을 단정하지 않는다."},
     {"id": "sec-scenario", "name": "보안 시나리오", "tool": "SEC",
      "kind": "scenario", "sources": ["시나리오별 관측 원천"],
      "note": "시나리오는 웹 보안 검사나 부하 시험을 단계로 포함할 수 있다."},
-    {"id": "cpu-load", "name": "CPU 부하 시험", "tool": "stress",
-     "kind": "load", "sources": ["부하 작업 상태", "실제 CPU 사용률", "CloudWatch 알람", "SNS 전달"],
-     "note": "부하로 인한 CPU 상승을 실제 침해로 표기하지 않는다."},
-    {"id": "memory-load", "name": "메모리 부하 시험", "tool": "stress",
-     "kind": "load", "sources": ["부하 작업 상태", "실제 메모리 사용률", "CloudWatch 알람", "회복"],
-     "note": "메모리 지표 결측을 0%로 표기하지 않는다. 실행 전 Agent 지표 연결을 확인한다."},
+    {"id": "load", "name": "부하 시험", "tool": "stress",
+     "kind": "load", "sources": ["부하 작업 상태", "실제 CPU·메모리 사용률", "CloudWatch 알람", "SNS 전달·회복"],
+     "variants": [
+         {"id": "cpu-load", "name": "CPU 부하 시험", "note": "EC2 CPU 기본 지표"},
+         {"id": "memory-load", "name": "메모리 부하 시험", "note": "Agent 커스텀 지표 · 실행 전 연결 확인"},
+     ],
+     "note": "부하로 인한 CPU·메모리 상승을 실제 침해로 표기하지 않는다. 메모리 지표 결측을 0%로 표기하지 않는다."},
 ]
 
 # SEC 시나리오 카탈로그. support 는 보안-시나리오 문서의 정적 분류다(실행 가능 여부의 승인이 아님).
@@ -59,7 +64,7 @@ SCENARIOS = [
     {"id": "SEC-09", "purpose": "감사·구성·서비스 로그", "types": [],
      "sources": ["CloudTrail", "Config", "VPC Flow Logs", "CloudWatch Logs"], "response": "없음",
      "support": "observe-only", "note": "원본 로그 보관과 finding 통합을 분리한다."},
-    {"id": "SEC-10", "purpose": "CPU·메모리 과부하와 운영 알림", "types": ["cpu-load", "memory-load"],
+    {"id": "SEC-10", "purpose": "CPU·메모리 과부하와 운영 알림", "types": ["load"],
      "sources": ["EC2 CPU", "Agent 메모리", "CloudWatch Alarm", "SNS"], "response": "없음",
      "support": "prep-needed", "note": "부하 실행의 대시보드 경로는 신규. 알람 임계값은 실제 설정에서 조회한다."},
 ]

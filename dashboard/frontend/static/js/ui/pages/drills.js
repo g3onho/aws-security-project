@@ -1,18 +1,34 @@
-// 공격·대응 실습(1차 관측·구조): 실행 유형·SEC 시나리오 카탈로그·실행 환경·이력 골격.
-// 이 화면은 조회 전용이다. 실제 공격·부하 실행 버튼은 두지 않는다(실행 경로는 후속 단계).
+// 공격·대응 실습(1차): 실행 유형을 고르면 그 유형 전용 설정·정보·연결 시나리오를 보여준다.
+// 조회 전용이다. 선택은 클라이언트 상태이며 실제 공격·부하 실행 경로는 없다('시작' 비활성).
 import {$,api} from '../context.js?v=ui-1';
 import {esc,format,milliseconds} from '../components/format.js?v=ui-1';
-import {loadPanel,header,empty} from '../components/panel.js?v=ui-1';
+import {loadPanel,header} from '../components/panel.js?v=ui-1';
 
 const SUPPORT_COLOR={runnable:'#32d4be','prep-needed':'#d8ca78','observe-only':'#85b1d5','design-needed':'#8fa295'};
 const KIND_KO={attack:'웹 공격 검증',scenario:'목적별 검증(단계 포함)',load:'부하 시험 · 운영 경보 검증'};
-// 논리 흐름 단계(구조만). 실제 진행은 실행 경로가 붙는 후속 단계에서 증거로 채운다.
+const TYPE_NAME={'web-scan':'웹 보안 검사','sec-scenario':'보안 시나리오','load':'부하 시험'};
+const typeNames=ids=>ids.length?ids.map(i=>TYPE_NAME[i]||i).join(', '):'조회 전용';
 const FLOW=['실행 주체','시험 대상','관측 원천','탐지','조치','재검증'];
+const START_BLOCK={'web-scan':'ZAP 실행 경로 준비 중 (3차)','load':'부하 실행 경로 준비 중 (2차)','sec-scenario':'선택한 시나리오의 실행 경로 미연결'};
+// 유형별 정보(관측 원천은 카탈로그의 type.sources 를 쓰고, 대응·주의만 여기서 보강).
+const TYPE_INFO={
+ 'web-scan':{response:'수동 · WAF 규칙 검토, Nginx 강화(SEC-02)',
+  cautions:['검사 실행 성공은 공격 성공·침해 확정이 아니다.','HTTP 403만으로 WAF 차단을 단정하지 않는다.','DVWA와 서비스 웹(Nginx–Flask–MySQL)은 별개 대상이다.','ZAP 송신 기록과 대상 측 수신·처리 증거를 구분한다.']},
+ 'load':{response:'CPU·메모리 초과 자동조치는 없음(재부팅·프로세스 종료·증설을 가정하지 않음).',
+  cautions:['부하로 인한 사용률 상승 자체는 침해가 아니다.','목표 부하와 실측값을 구분한다.','알람은 5분 평균 × 2회 — 최소 10분 지속해야 전이한다.','메모리 지표 결측을 0%로 표기하지 않는다.','중단 요청 접수와 실제 부하 종료 확인은 다르다.']},
+ 'sec-scenario':{response:'시나리오별 상이(자동/수동).',
+  cautions:['전체 시나리오가 즉시 실행 가능하다고 가정하지 않는다.','실행 경로가 없는 항목은 준비 필요·조회 전용·설계 필요로 구분한다.']},
+};
+
+let catalog=null,runs=null;
+const sel={typeId:null,target:null,scenario:null};
 
 function supportPill(support,label){
  const c=SUPPORT_COLOR[support]||SUPPORT_COLOR['design-needed'];
  return `<span class="service-pill" style="color:${c}"><i style="background:${c}"></i>${esc(label)} <small>${esc(support)}</small></span>`;
 }
+const currentType=()=>catalog?.types.find(t=>t.id===sel.typeId)||catalog?.types[0]||null;
+const currentScenario=()=>catalog?.scenarios.find(s=>s.id===sel.scenario)||null;
 
 function environmentRow(env){
  const conn=env.dataSourceConnected?'연결됨':'미연결';
@@ -24,29 +40,99 @@ function environmentRow(env){
   <div><dt>격리 환경</dt><dd>${iso}</dd></div>
  </dl>`;
 }
-
+function flowStrip(type){
+ const strip=`<ol class="drill-flow">${FLOW.map((step,i)=>
+  `<li><span class="drill-flow-dot" aria-hidden="true">○</span>${esc(step)}${i<FLOW.length-1?'<span class="drill-flow-arrow" aria-hidden="true">→</span>':''}</li>`).join('')}</ol>`;
+ return strip+(type?`<p class="muted">선택한 유형의 관측 원천: ${type.sources.map(esc).join(' · ')}</p>`:'');
+}
 function typeCard(t){
- return `<div class="drill-type"><h4>${esc(t.name)} <small>${esc(t.tool)}</small></h4>
+ const active=t.id===sel.typeId?' active':'';
+ const variants=(t.variants||[]).length
+  ?`<ul class="drill-variants">${t.variants.map(v=>`<li><span>${esc(v.name)}</span>${v.note?`<small>${esc(v.note)}</small>`:''}</li>`).join('')}</ul>`:'';
+ return `<div class="drill-type${active}" role="button" tabindex="0" aria-pressed="${t.id===sel.typeId}" data-drill-type="${esc(t.id)}">
+  <h4>${esc(t.name)} <small>${esc(t.tool)}</small></h4>
   <p class="muted">${esc(KIND_KO[t.kind]||t.kind)}</p>
-  <p class="drill-sources">관측 원천: ${t.sources.map(esc).join(' · ')}</p>
-  ${t.note?`<p class="drill-note">${esc(t.note)}</p>`:''}</div>`;
+  ${variants}</div>`;
 }
 
-function scenarioRow(s){
+// 왼쪽: 선택한 유형의 실행 설정과 실행 가능 여부.
+function configPanel(){
+ const type=currentType();if(!type)return '';
+ let picker='',reason=START_BLOCK[type.id]||'실행 경로 미연결';
+ if(type.id==='sec-scenario'){
+  const options=catalog.scenarios.map(s=>`<option value="${esc(s.id)}"${s.id===sel.scenario?' selected':''}>${esc(s.id)} · ${esc(s.purpose)}</option>`).join('');
+  picker=`<label class="drill-field"><span>시나리오</span><select data-drill-scenario><option value="">시나리오 선택…</option>${options}</select></label>`;
+  const sc=currentScenario();
+  if(sc){
+   reason=sc.support==='observe-only'?'조회 전용 · 실행 없이 관측만':'준비 필요 · 실행 경로 미연결';
+   picker+=`<div class="drill-derived"><p><b>대응</b> ${esc(sc.response)}</p><p><b>관측 원천</b> ${sc.sources.map(esc).join(' · ')}</p><p><b>지원 상태</b> ${supportPill(sc.support,sc.supportLabel)}</p>${sc.note?`<p class="muted">${esc(sc.note)}</p>`:''}</div>`;
+  }
+ }else{
+  const variants=type.variants||[];
+  const targetLabel=type.id==='load'?'부하 종류':'대상';
+  picker=`<div class="drill-field"><span>${targetLabel}</span><div class="drill-target-group">${
+   variants.map(v=>`<button type="button" class="drill-target${v.id===sel.target?' active':''}" data-drill-target="${esc(v.id)}">${esc(v.name)}</button>`).join('')}</div></div>`;
+  if(type.id==='load'){
+   picker+=`<label class="drill-field"><span>대상 인스턴스</span><select disabled><option>미연결 — 대상 목록 없음</option></select></label>`;
+   picker+=`<label class="drill-field"><span>강도·지속</span><select data-drill-profile><option>목표 85% · 15분</option><option>목표 90% · 20분</option></select></label>`;
+   picker+=`<p class="muted">기본 수치는 예시이며 운영 정책이 아닙니다.</p>`;
+  }else{
+   picker+=`<label class="drill-field"><span>검사 프로필</span><select data-drill-profile><option>기본 스캔</option><option>전체 스캔</option></select></label>`;
+   picker+=`<p class="muted">등록·승인된 웹 대상에서만 선택합니다.</p>`;
+  }
+ }
+ return `<div class="drill-config"><h3>실행 설정 — ${esc(type.name)}</h3>${picker}
+  <div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · ${esc(reason)}</div>
+  <div class="drill-actions">
+   <button type="button" class="primary-button" disabled title="1차 범위: 실행 경로가 연결되지 않았습니다">시작 (준비 중)</button>
+   <button type="button" class="cancel-button" disabled hidden>중단</button></div>
+  <p class="muted">선택·확인은 지금 동작합니다. 실제 실행·중단은 실행 공급자 연결(2·3차) 후 활성화됩니다.</p></div>`;
+}
+
+// 오른쪽: 유형 전용 정보를 라벨/값 2열로 정리(가독성).
+function metaRow(label,valueHtml){return `<div class="drill-meta-row"><span class="drill-meta-label">${esc(label)}</span><div class="drill-meta-val">${valueHtml}</div></div>`;}
+function typeInfo(type){
+ const info=TYPE_INFO[type.id]||{response:'',cautions:[]};
+ const chips=type.sources.map(s=>`<span class="drill-chip">${esc(s)}</span>`).join('');
+ const cautions=`<ul class="drill-caution">${info.cautions.map(c=>`<li>${esc(c)}</li>`).join('')}</ul>`;
+ return `<div class="drill-info">
+  ${metaRow('관측 원천',chips+'<span class="drill-hint">서로 다른 자료로 취급</span>')}
+  ${metaRow('연결된 대응',`<span>${esc(info.response)}</span>`)}
+  ${metaRow('주의',cautions)}</div>`;
+}
+function legendInfo(){
+ const rows=Object.entries(catalog.supportLegend).map(([k,v])=>`<div class="drill-legend-row"><span class="drill-legend-dot" style="background:${SUPPORT_COLOR[k]||'#8fa295'}"></span><b>${esc(v)}</b><small class="muted">${esc(k)}</small></div>`).join('');
+ return `<div class="drill-info">
+  ${metaRow('지원 상태',`<div class="drill-legend">${rows}</div>`)}
+  ${metaRow('안내',`<span class="muted">분류는 설계 기준이며 즉시 실행 가능 여부의 승인이 아닙니다.</span>`)}</div>`;
+}
+
+function scenarioRow(s,showType){
  const obs=s.observation==='connected'?'연결됨':'미연결';
- const types=s.types.length?s.types.map(esc).join(', '):'조회 전용';
- return `<tr><td>${esc(s.id)}</td><td>${esc(s.purpose)}</td><td>${esc(types)}</td>
+ const typeCell=showType?`<td>${esc(typeNames(s.types))}</td>`:'';
+ return `<tr><td>${esc(s.id)}</td><td>${esc(s.purpose)}</td>${typeCell}
   <td>${s.sources.map(esc).join(' · ')}</td><td>${esc(s.response)}</td>
   <td>${supportPill(s.support,s.supportLabel)}</td><td>${obs}</td></tr>`;
 }
-
-function flowStrip(){
- return `<ol class="drill-flow">${FLOW.map((step,i)=>
-  `<li><span class="drill-flow-dot" aria-hidden="true">○</span>${esc(step)}${i<FLOW.length-1?'<span class="drill-flow-arrow" aria-hidden="true">→</span>':''}</li>`).join('')}</ol>`;
+function scenarioTable(list,caption,showType){
+ if(!list.length)return '<p class="muted">이 유형에 연결된 시나리오가 없습니다.</p>';
+ return `<div class="table-scroll"><table><caption class="sr-only">${esc(caption)}</caption>
+  <thead><tr><th>ID</th><th>목적</th>${showType?'<th>실행 유형</th>':''}<th>관측 원천</th><th>대응</th><th>지원 상태</th><th>관측</th></tr></thead>
+  <tbody>${list.map(s=>scenarioRow(s,showType)).join('')}</tbody></table></div>`;
 }
-
-function runsSection(runs){
- if(!runs.items.length){
+function detailSection(){
+ const type=currentType();if(!type)return '';
+ const isScenario=type.id==='sec-scenario';
+ const right=isScenario?legendInfo():typeInfo(type);
+ // 전체 시나리오 카탈로그는 '보안 시나리오' 유형에서만 보여준다(웹·부하는 제외).
+ const related=isScenario
+  ?`<div class="drill-related"><div class="panel-subhead">보안 시나리오 카탈로그 (전체)</div>${scenarioTable(catalog.scenarios,'보안 시나리오 카탈로그',true)}</div>`
+  :'';
+ return `<section class="panel full-panel">${header('선택한 유형 · '+esc(type.name),esc(type.tool))}
+  <div class="drill-detail">${configPanel()}${right}</div>${related}</section>`;
+}
+function runsSection(){
+ if(!runs||!runs.items.length){
   return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
    <p class="muted">기록된 실습 실행이 없습니다. 실제 실행·부하·웹 검사 경로는 후속 단계에서 연결됩니다(1차 범위: 관측·구조).</p></section>`;
  }
@@ -57,26 +143,38 @@ function runsSection(runs){
   <tbody>${rows}</tbody></table></div></section>`;
 }
 
-function catalogMarkup({catalog,runs}){
+function paint(){
  const c=catalog,warn=[];
  if(!c.environment.dataSourceConnected)warn.push('데이터 소스 미연결 — 관측 원천 조회는 준비되면 표시됩니다. 미연결을 0건이나 정상으로 표기하지 않습니다.');
  const notice=warn.map(w=>`<p class="panel-error" role="status">${esc(w)}</p>`).join('');
  return notice+
-  `<div class="view-intro"><span>모의 공격과 부하 시험을 실행하고, 탐지부터 대응·재검증까지 확인합니다. 현재 화면은 1차(관측·구조)로 실제 실행 경로는 연결하지 않았습니다.</span></div>`+
-  `<section class="panel full-panel">${header('실행 환경','ENVIRONMENT')}${environmentRow(c.environment)}${flowStrip()}
-   <p class="muted">단계는 논리 흐름입니다. 실행 접수만으로 대상에 공격이 도달했다고 표시하지 않으며, 실제 증거는 실행 경로가 붙을 때 채워집니다.</p></section>`+
-  `<section class="panel full-panel">${header('실행 유형','DRILL TYPES')}<div class="drill-types">${c.types.map(typeCard).join('')}</div>
-   <p class="muted">CPU·메모리 사용률 상승 자체는 실제 침해가 아니라 부하 시험으로 표기합니다.</p></section>`+
-  `<section class="panel full-panel">${header('보안 시나리오 카탈로그','SEC SCENARIOS')}
-   <p class="muted">지원 상태: ${Object.entries(c.supportLegend).map(([k,v])=>`${esc(v)}(${esc(k)})`).join(' · ')}. 이 분류는 설계 기준이며 즉시 실행 가능 여부의 승인이 아닙니다.</p>
-   <div class="table-scroll"><table><caption class="sr-only">SEC 시나리오</caption>
-   <thead><tr><th>ID</th><th>목적</th><th>실행 유형</th><th>관측 원천</th><th>대응</th><th>지원 상태</th><th>관측</th></tr></thead>
-   <tbody>${c.scenarios.map(scenarioRow).join('')}</tbody></table></div></section>`+
-  runsSection(runs);
+  `<div class="view-intro"><span>모의 공격과 부하 시험을 실행하고, 탐지부터 대응·재검증까지 확인합니다. 현재 화면은 1차(관측·구조)로 선택·확인은 동작하지만 실제 실행 경로는 연결하지 않았습니다.</span></div>`+
+  `<section class="panel full-panel">${header('실행 환경','ENVIRONMENT')}${environmentRow(c.environment)}${flowStrip(currentType())}</section>`+
+  `<section class="panel full-panel">${header('실행 유형 선택','DRILL TYPES')}
+   <p class="muted">카드를 클릭하면 아래에 그 유형 전용 설정·정보·연결 시나리오가 표시됩니다. CPU·메모리 사용률 상승 자체는 침해가 아니라 부하 시험으로 표기합니다.</p>
+   <div class="drill-types">${c.types.map(typeCard).join('')}</div></section>`+
+  detailSection()+
+  runsSection();
+}
+
+function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();}
+function pickType(id){if(!catalog?.types.some(t=>t.id===id))return;sel.typeId=id;sel.target=null;sel.scenario=null;rerender();}
+function onClick(e){
+ const type=e.target.closest('[data-drill-type]');if(type){pickType(type.dataset.drillType);return;}
+ const target=e.target.closest('[data-drill-target]');if(target){sel.target=target.dataset.drillTarget;rerender();return;}
+}
+function onKeydown(e){
+ const type=e.target.closest('[data-drill-type]');
+ if(type&&(e.key==='Enter'||e.key===' ')){e.preventDefault();pickType(type.dataset.drillType);}
+}
+function onChange(e){
+ const scenario=e.target.closest('[data-drill-scenario]');if(scenario){sel.scenario=scenario.value||null;rerender();}
 }
 
 export function renderDrills(){
- return loadPanel($('#drills'),
-  async()=>{const [catalog,runs]=await Promise.all([api.drillsCatalog(),api.drills()]);return {catalog,runs};},
-  catalogMarkup,'공격·대응 실습');
+ const box=$('#drills');
+ if(box&&!box._drillsBound){box.addEventListener('click',onClick);box.addEventListener('keydown',onKeydown);box.addEventListener('change',onChange);box._drillsBound=true;}
+ return loadPanel(box,
+  async()=>{const [c,r]=await Promise.all([api.drillsCatalog(),api.drills()]);catalog=c;runs=r;if(!sel.typeId)sel.typeId=c.types[0]?.id||null;return {catalog:c,runs:r};},
+  ()=>paint(),'공격·대응 실습');
 }

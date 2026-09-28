@@ -231,3 +231,57 @@ html{scrollbar-gutter:stable}
 .pt-stop.active .pt-label{color:#32d4be;font-weight:600}
 .pt-stop:focus-visible{outline:2px solid var(--mint);outline-offset:2px;border-radius:4px}
 .time-label strong{color:#e7eeec;font-weight:600}
+
+/* 공격·대응 실습(drills) — 1차 관측·구조 */
+.drill-env{display:flex;flex-wrap:wrap;gap:10px 28px;padding:14px 16px}
+.drill-env>div{min-width:120px}
+.drill-env dt{font-size:11px;color:#94ad9b;margin-bottom:4px}
+.drill-env dd{margin:0;font-size:13px;color:#dae8dc}
+.drill-env dd small{color:#8fa295;margin-left:6px;font-size:11px}
+.drill-flow{list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 4px;margin:0;padding:8px 16px 16px}
+.drill-flow li{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#c4d7cb;background:#18201e;border:1px solid #33433c;border-radius:4px;padding:7px 11px}
+.drill-flow-dot{color:#6f8479}
+.drill-flow-arrow{color:#5d7466;margin-left:4px}
+.drill-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:14px 16px}
+.drill-type{background:#18201e;border:1px solid #33433c;border-radius:5px;padding:13px 14px}
+.drill-type h4{margin:0 0 6px;font-size:14px;font-weight:600;color:#e7eeec}
+.drill-type h4 small{margin-left:6px;font-size:11px;font-weight:400;color:#32d4be;letter-spacing:.4px}
+.drill-type .drill-sources{font-size:11px;color:#9baaa6;margin-top:6px}
+.drill-type .drill-note{font-size:11px;color:#8fa295;margin-top:8px;line-height:1.5;border-top:1px solid #2c3833;padding-top:7px}
+.drill-variants{list-style:none;margin:8px 0 0;padding:8px 0 0;border-top:1px solid #2c3833;display:grid;gap:6px}
+.drill-variants li{display:flex;align-items:baseline;gap:8px;font-size:12px;color:#c4d7cb}
+.drill-variants li:before{content:'›';color:#6f8479}
+.drill-variants li small{color:#8fa295;font-size:11px}
+.drill-type[role=button]{cursor:pointer;transition:border-color .15s,background .15s}
+.drill-type.active{border-color:#32d4be;background:#1b302a;box-shadow:inset 0 0 0 1px #32d4be}
+.drill-type[role=button]:hover{border-color:#4d6259}
+.drill-type:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.drill-type h4{pointer-events:none}
+.drill-config{background:#18201e;border:1px solid #33433c;border-radius:5px;padding:14px;align-self:start}
+.drill-config h3{font-size:13px;color:#c3d9c9;margin-bottom:12px}
+.drill-field{display:block;margin-bottom:10px}
+.drill-field>span{display:block;font-size:11px;color:#94ad9b;margin-bottom:4px}
+.drill-field select{width:100%}
+.drill-target-group{display:flex;flex-wrap:wrap;gap:6px}
+.drill-target{border:1px solid #3b4843;border-radius:4px;padding:6px 10px;font-size:12px;background:#212a27}
+.drill-target.active{border-color:#32d4be;color:#32d4be;background:#1b302a}
+.drill-derived{font-size:12px;color:#c4d7cb;margin:8px 0;display:grid;gap:5px;border-top:1px solid #2c3833;padding-top:8px}
+.drill-derived b{color:#a0b6a7;font-weight:500;margin-right:6px}
+.drill-eligibility{display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px;color:#e7a064}
+.drill-elig-dot{width:8px;height:8px;border-radius:50%;background:#e7a064;flex-shrink:0}
+.drill-actions{display:flex;gap:8px;margin-top:6px}
+/* drills 정보 패널 가독성 개선 */
+.drill-info{background:#18201e;border:1px solid #33433c;border-radius:5px;padding:2px 14px;align-self:start}
+.drill-meta-row{display:grid;grid-template-columns:76px 1fr;gap:12px;padding:11px 0;border-top:1px solid #2c3833}
+.drill-meta-row:first-child{border-top:0}
+.drill-meta-label{font-size:11px;color:#8fa295;letter-spacing:.3px;padding-top:3px}
+.drill-meta-val{font-size:12px;color:#c9d8cd;min-width:0;line-height:1.55}
+.drill-chip{display:inline-block;font-size:11px;color:#d3e2d8;background:#232b28;border:1px solid #3f4d45;border-radius:4px;padding:3px 8px;margin:0 5px 5px 0}
+.drill-hint{display:block;font-size:11px;color:#7f948a;margin-top:1px}
+.drill-caution{margin:0;padding-left:16px;display:grid;gap:5px;font-size:12px;color:#b9cabf}
+.drill-caution li{line-height:1.5}
+.drill-legend{display:grid;gap:7px}
+.drill-legend-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.drill-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.drill-legend-row b{font-weight:500;color:#dae8dc}
+.drill-legend-row small{margin-left:auto}

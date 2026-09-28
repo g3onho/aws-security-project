@@ -116,6 +116,20 @@ async function refresh(options={}){
  $('#refresh').disabled=true;content.setAttribute('aria-busy','true');
  $$('[data-async-panel]').forEach(panel=>panel.removeAttribute('aria-busy'));
  try{
+  // 공격·대응 실습(1차)은 실데이터 공급자가 필요 없는 카탈로그다. 공용 데이터 로드(events·summary)가
+  // 미연결(503)로 실패해도 화면이 막히지 않도록 세션 확인 후 바로 렌더한다.
+  if(state.view==='drills'){
+   await api.init();
+   if(serial!==ui.refreshSerial||scope!==panelScope())return;
+   await render({loadPanels:true});
+   if(serial!==ui.refreshSerial)return;
+   box.hidden=true;content.removeAttribute('data-stale');
+   $('#session-user').textContent=config().user.name+' · '+(config().role==='operator'?'조치 담당':'조회 전용');
+   applyModeLabels();
+   $('#worker-state').textContent='공격·대응 실습 · 관측·구조(1차)';
+   $('#updated').textContent='카탈로그 조회';
+   return;
+  }
   const [loaded]=await Promise.all([api.load(),isMapReady()?Promise.resolve():loadMap()]);
   if(serial!==ui.refreshSerial||scope!==panelScope()||loaded===false)return;
   $('#region').value=state.region;

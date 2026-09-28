@@ -338,6 +338,15 @@ components:
         tool: {type: string}
         kind: {type: string, enum: [attack, scenario, load]}
         sources: {type: array, items: {type: string}}
+        variants:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              note: {type: string}
         note: {type: string}
     DrillScenario:
       type: object
