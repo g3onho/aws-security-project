@@ -201,8 +201,8 @@ resource "aws_lambda_function" "asr_trigger" {
       MYSQL_ALARM_NAME          = aws_cloudwatch_metric_alarm.mysql_bruteforce.alarm_name
       MYSQL_LOG_GROUP           = aws_cloudwatch_log_group.mysql.name
       SSH_ALARM_NAME            = local.enable_ssh_reject ? aws_cloudwatch_metric_alarm.ssh_reject[0].alarm_name : ""
-      HONEYPOT_ALARM_NAME       = coalesce(var.honeypot_alarm_name, "")
-      HONEYPOT_LOG_GROUP        = coalesce(var.honeypot_log_group, "")
+      HONEYPOT_ALARM_NAME       = var.honeypot_alarm_name != null ? var.honeypot_alarm_name : ""
+      HONEYPOT_LOG_GROUP        = var.honeypot_log_group != null ? var.honeypot_log_group : ""
       FLOWLOG_GROUP             = var.log_group_flowlogs
       FLOWLOG_REJECT_PATTERN    = local.ssh_reject_pattern
       ALARM_WINDOW_SECONDS      = tostring(local.bruteforce_alarm_period * local.bruteforce_alarm_evaluation_periods)
