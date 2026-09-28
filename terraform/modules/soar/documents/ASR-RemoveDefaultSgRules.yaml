@@ -1,0 +1,59 @@
+schemaVersion: '0.3'
+description: |
+  VPC 기본 보안그룹(이름 default)의 인바운드·아웃바운드 규칙을 모두 제거합니다 (Security Hub EC2.2).
+  이 프로젝트의 EC2·ALB·VPC 엔드포인트는 전용 보안그룹을 쓰고 기본 보안그룹을 쓰지 않습니다.
+  Terraform 은 기본 보안그룹을 관리하지 않으므로(aws_default_security_group 0건) 다음 apply 가 되돌리지 않습니다.
+  이름이 default 가 아니거나 프로젝트 VPC(VpcId) 밖의 보안그룹은 바꾸지 않고 실패합니다.
+  (계정의 기본 VPC 등 다른 VPC 의 기본 보안그룹은 팀 밖 자원일 수 있어 자동으로 건드리지 않는다.)
+  되돌리기: before 출력의 규칙을 콘솔·CLI 로 다시 추가합니다.
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  SecurityGroupId:
+    type: String
+    description: 규칙을 비울 VPC 기본 보안그룹 ID
+    allowedPattern: '^sg-[0-9a-f]{8,17}$'
+  VpcId:
+    type: String
+    description: 조치를 허용하는 프로젝트 VPC ID. 보안그룹이 이 VPC 에 없으면 실패
+    allowedPattern: '^vpc-[0-9a-f]{8,17}$'
+  AutomationAssumeRole:
+    type: String
+    description: 이 문서를 실행할 역할 ARN
+mainSteps:
+  - name: removeDefaultRules
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: Boolean
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      InputPayload:
+        sg_id: '{{ SecurityGroupId }}'
+        vpc_id: '{{ VpcId }}'
+      Script: |
+        import boto3, json
+        def _rules(sg):
+            return {"inbound": sg.get("IpPermissions", []), "outbound": sg.get("IpPermissionsEgress", [])}
+        def handler(event, context):
+            ec2 = boto3.client("ec2")
+            sg = ec2.describe_security_groups(GroupIds=[event["sg_id"]])["SecurityGroups"][0]
+            if sg.get("GroupName") != "default":
+                raise ValueError(f"{sg['GroupId']} 는 기본 보안그룹이 아님({sg.get('GroupName')}). 이 문서는 기본 보안그룹만 바꾼다")
+            if sg.get("VpcId") != event["vpc_id"]:
+                raise ValueError(f"{sg['GroupId']} 는 프로젝트 VPC({event['vpc_id']}) 밖({sg.get('VpcId')}). 자동으로 바꾸지 않는다")
+            before = _rules(sg)
+            if sg.get("IpPermissions"):
+                ec2.revoke_security_group_ingress(GroupId=sg["GroupId"], IpPermissions=sg["IpPermissions"])
+            if sg.get("IpPermissionsEgress"):
+                ec2.revoke_security_group_egress(GroupId=sg["GroupId"], IpPermissions=sg["IpPermissionsEgress"])
+            after = _rules(ec2.describe_security_groups(GroupIds=[sg["GroupId"]])["SecurityGroups"][0])
+            return {"before": json.dumps(before, default=str), "after": json.dumps(after, default=str),
+                    "changed": before != after}

@@ -131,6 +131,9 @@ resource "aws_instance" "dashboard" {
     vulnerability_source      = var.dashboard_vulnerability_source
     scan_results_bucket       = var.scan_results_bucket
     sns_topic_arn             = var.sns_topic_arn
+    auto_remediable_patterns  = join(",", var.auto_remediable_patterns)
+    auto_remediable_controls  = join(",", var.auto_remediable_controls)
+    enable_auto_remediation   = tostring(var.enable_auto_remediation)
     # 코드 zip 의 MD5. 코드가 바뀌면 user_data 가 바뀌어 인스턴스가 새로 뜬다.
     code_version = var.enable_dashboard_deploy ? data.archive_file.dashboard[0].output_md5 : "none"
   })

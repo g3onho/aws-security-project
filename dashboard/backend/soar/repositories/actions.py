@@ -3,6 +3,7 @@
 두 기록 형식을 모두 읽는다.
   - v20 이전: action_id=asr-<초>, region·account_id·status 없음
   - v20 이후: status·region·account_id·playbook_id·occurrence_count·last_seen_at·expires_at
+  - record_version 3(DEC-017): reason(판정 이유)·control_id(규칙 ID 또는 SEC-06A·SEC-06B)
 리전·계정이 없으면 finding_id(ARN)에서 추출한다. 그래도 모르면 None — 범위 제한 사용자에게는 보이지 않는다.
 """
 import re
@@ -12,7 +13,8 @@ from ..integrations.aws.paging import to_ms
 from .findings import event_id
 
 ARN = re.compile(r"^arn:aws[\w-]*:[\w-]+:(?P<region>[a-z]{2}(?:-[a-z]+)+-\d):(?P<account>\d{12}):")
-LEGACY_STATUS = {"manual-notified": "NOTIFIED", "dry-run": "DRY_RUN", "auto-executed": "IN_PROGRESS"}
+LEGACY_STATUS = {"manual-notified": "NOTIFIED", "dry-run": "DRY_RUN", "auto-executed": "IN_PROGRESS",
+                 "auto-skipped": "NO_CHANGE"}
 
 
 def _text(value):
@@ -38,6 +40,7 @@ def normalize(item):
         "beforeText": _text(item.get("before_state")), "afterText": _text(item.get("after_state")),
         "occurrenceCount": int(item.get("occurrence_count") or 1),
         "expiresAt": item.get("expires_at"),
+        "reason": _text(item.get("reason")), "controlId": _text(item.get("control_id")),
     }
 
 

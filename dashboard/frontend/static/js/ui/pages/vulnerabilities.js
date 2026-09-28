@@ -60,6 +60,23 @@ export function vulnGroups(rows){
  const rank=g=>SEV_ORDER.map(s=>g.counts[s]||0);
  return [...groups.values()].sort((a,b)=>{const ra=rank(a),rb=rank(b);for(let i=0;i<ra.length;i++)if(ra[i]!==rb[i])return rb[i]-ra[i];return (b.maxCvss??0)-(a.maxCvss??0);});
 }
+// v23: 왜 위험한지(대표 CVE 설명·공개 공격 코드·EPSS)와 어떻게 고치는지(수정 방법·업데이트 명령·재부팅)를 묶음 안에 보여준다.
+const FIX_METHOD_KO={'package-update':'패키지 업데이트','image-rebuild':'이미지 재빌드 후 다시 배포','function-update':'Lambda 코드·의존성 업데이트'};
+const pctScore=v=>v==null?'—':(v*100).toFixed(v<0.01?2:1)+'%';
+function cveLink(v){return v.referenceUrl?`<a class="doc-link" href="${esc(v.referenceUrl)}" target="_blank" rel="noreferrer">${esc(v.cveId||'—')}</a>`:esc(v.cveId||'—');}
+function fixPanel(g){
+ const items=g.items,rep=[...items].filter(v=>v.description).sort((a,b)=>(b.cvss??-1)-(a.cvss??-1))[0];
+ const command=items.find(v=>v.updateCommand&&v.updateCommandSource==='inspector')||items.find(v=>v.updateCommand);
+ const methods=[...new Set(items.map(v=>FIX_METHOD_KO[v.fixMethod]).filter(Boolean))];
+ const reboot=items.some(v=>v.rebootRequired===true),exploits=items.filter(v=>v.exploitAvailable==='YES').length;
+ const epss=Math.max(-1,...items.map(v=>v.epss??-1));
+ const allFixed=new Set(items.flatMap(v=>[...v.fixedVersions])),fixed=[...allFixed].slice(0,3);  // pending 은 vulnGroups 에서 이미 뺐다
+ return `<div class="vuln-fix"><div><h3>왜 위험한가</h3>${rep?`<p>${cveLink(rep)} — ${esc(rep.description.length>320?rep.description.slice(0,320)+'…':rep.description)}</p>`:'<p class="muted-mini">Inspector 설명이 없습니다(적재 형식 갱신 전이면 다음 대조 후 표시).</p>'}
+  <p class="muted-mini">공개 공격 코드 ${exploits?`<b class="bad-text">있음 ${exploits}건</b>`:'확인된 것 없음'} · 최고 EPSS(30일 내 악용 가능성) ${epss<0?'—':pctScore(epss)}</p></div>
+  <div><h3>어떻게 고치나</h3><p>${esc(methods.join(' · ')||'수정 방법 정보 없음')}${fixed.length?` · Inspector 수정 버전 ${fixed.map(esc).join(', ')}${fixed.length<allFixed.size?' 외':''}`:''}</p>
+  ${command?`<code class="cmd">${esc(command.updateCommand)}</code><p class="muted-mini">${command.updateCommandSource==='inspector'?'Inspector 제공 명령':'대시보드가 플랫폼·패키지로 만든 명령 — 적용 전 확인'}</p>`:''}
+  ${reboot?'<p class="reboot-note">커널 패키지입니다. 업데이트 후 재부팅해야 적용됩니다 — 시연 일정 중에는 재부팅 시각을 정해 진행하세요.</p>':''}</div></div>`;
+}
 function sevBar(counts,total){return `<div class="sev-bar" aria-hidden="true">${SEV_ORDER.filter(s=>counts[s]).map(s=>`<i style="width:${counts[s]/total*100}%;background:${SEV_COLOR[s]}"></i>`).join('')}</div>`;}
 function fixedVersionText(c){
  if(!c.fixedCount)return '미제공';
@@ -77,9 +94,10 @@ function vulnGroupMarkup(g){
   <div class="vg-main"><strong>${esc(g.package)}</strong><small>${where}</small></div>
   <div class="vg-count"><b>${g.items.length}</b><span>CVE 종류</span></div>
   <div class="vg-sev">${sevBar(g.counts,g.items.length)}<div class="vg-chips">${SEV_ORDER.filter(s=>g.counts[s]).map(s=>sevChip(s,g.counts[s])).join('')}</div></div>
-  <div class="vg-meta"><span>최고 CVSS <b>${g.maxCvss??'—'}</b></span>${fix}</div></summary>
+  <div class="vg-meta"><span>최고 CVSS <b>${g.maxCvss??'—'}</b></span>${fix}${g.items.some(v=>v.rebootRequired===true)?'<span class="fix-state reboot">재부팅 필요</span>':''}${g.items.some(v=>v.exploitAvailable==='YES')?'<span class="fix-state exploit">공격 코드 공개</span>':''}</div></summary>
+  ${fixPanel(g)}
   ${one?'':`<div class="vg-servers"><h3>영향받는 서버 ${g.serverList.length}대</h3><ul>${g.serverList.map(s=>`<li><button class="link-button" data-vuln-target="${esc(s.resource)}" title="${esc(s.resource)}">${esc(s.name)}</button><span>설치 ${esc(s.installed||'—')}</span><span>CVE ${s.count}건</span>${s.fixable?`<span class="fix-state ok">수정 버전 명시 ${s.fixable}건</span>`:'<span class="fix-state wait">수정 버전 미제공</span>'}</li>`).join('')}</ul></div>`}
-  <div class="table-scroll"><table><thead><tr><th>심각도</th><th>CVSS</th><th>CVE</th><th>Inspector 수정 버전</th><th>영향 서버</th></tr></thead><tbody>${top.map(v=>`<tr><td>${sevChip(v.severity,'')}</td><td>${v.cvss??'—'}</td><td>${esc(v.cveId||'—')}</td><td>${esc(fixedVersionText(v))}</td><td class="cve-hosts">${v.hosts.sort().map(h=>`<span>${esc(h)}</span>`).join('')}</td></tr>`).join('')}</tbody></table></div>
+  <div class="table-scroll"><table><thead><tr><th>심각도</th><th>CVSS</th><th>EPSS</th><th>CVE</th><th>공격 코드</th><th>Inspector 수정 버전</th><th>영향 서버</th></tr></thead><tbody>${top.map(v=>`<tr><td>${sevChip(v.severity,'')}</td><td>${v.cvss??'—'}</td><td>${pctScore(v.epss)}</td><td title="${esc(v.title||'')}">${cveLink(v)}</td><td>${v.exploitAvailable==='YES'?'<span class="bad-text">공개됨</span>':v.exploitAvailable==='NO'?'없음':'—'}</td><td>${esc(fixedVersionText(v))}</td><td class="cve-hosts">${v.hosts.sort().map(h=>`<span>${esc(h)}</span>`).join('')}</td></tr>`).join('')}</tbody></table></div>
   ${g.items.length>VULN_PREVIEW?`<p class="muted vg-more">CVSS 상위 ${VULN_PREVIEW}종만 표시 · 나머지 ${g.items.length-VULN_PREVIEW}종은 CVE CSV로 확인</p>`:''}
  </details>`;
 }

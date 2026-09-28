@@ -14,6 +14,7 @@ from boto3.dynamodb.types import TypeSerializer
 
 from soar import create_app
 from soar.auth import create_user
+from soar.guidance import AutoPolicy
 from soar.provider import AwsProvider
 from soar.settings import configure
 from soar.store import now_ms
@@ -52,13 +53,22 @@ def asff(fid, **extra):
     return {**base, **extra}
 
 
+# v23: 탐지 상세 필드(Types·Compliance·Remediation·Config 규칙 이름·긴 설명)도 두 경로 결과가 같아야 한다.
+LONG = "설명 " * 400  # 1,200자 → 적재 raw 는 1,000자로 자른다. 직접 조회도 같은 길이로 자른다.
+POLICY = AutoPolicy("restricted-ssh,EC2.19", "EC2.2", "true")
 SH = [
-    asff("gd-1", ProductFields={
+    asff("gd-1", Types=["TTPs/Initial Access/UnauthorizedAccess:EC2-SSHBruteForce"], ProductFields={
         "aws/guardduty/service/action/networkConnectionAction/remoteIpDetails/ipAddressV4": "198.51.100.7",
         "aws/guardduty/service/action/networkConnectionAction/remoteIpDetails/country/countryName": "Korea",
         "aws/guardduty/service/action/networkConnectionAction/remoteIpDetails/geoLocation/lat": "37.5",
         "aws/guardduty/service/action/networkConnectionAction/remoteIpDetails/geoLocation/lon": "127.0"}),
-    asff("cfg-1", ProductName="Config", Severity={"Label": "MEDIUM"}, UpdatedAt="2026-09-23T07:01:54.100Z"),
+    asff("cfg-1", ProductName="Config", Severity={"Label": "MEDIUM"}, UpdatedAt="2026-09-23T07:01:54.100Z",
+         Title="soar-sec-dev-restricted-ssh", Description=LONG, Compliance={"Status": "FAILED"},
+         Types=["Software and Configuration Checks/AWS Config Analysis"],
+         Remediation={"Recommendation": {"Text": "Remove 0.0.0.0/0 on port 22", "Url": "https://docs.aws.amazon.com/config/"}},
+         ProductFields={"aws/config/ConfigRuleName": "soar-sec-dev-restricted-ssh", "aws/config/ConfigRuleArn": "arn:x"},
+         Resources=[{"Id": "arn:aws:ec2:ap-northeast-2:1:security-group/sg-0abc", "Type": "AwsEc2SecurityGroup",
+                     "Details": {"AwsEc2SecurityGroup": {"VpcId": "vpc-1"}}}]),
     asff("waf-1", ProductName="Default", GeneratorId="soar-waf-alarm", Severity={"Label": "CRITICAL"}),
 ]
 CLOSED_SH = [asff("info", Severity={"Label": "INFORMATIONAL"}), asff("done", Workflow={"Status": "RESOLVED"})]
@@ -67,11 +77,15 @@ CLOSED_SH = [asff("info", Severity={"Label": "INFORMATIONAL"}), asff("done", Wor
 def inspector_finding(arn, severity="HIGH", last="2026-09-24T05:01:30.147Z", score=7.5, name="docker-host"):
     return {"findingArn": arn, "awsAccountId": ACCOUNT, "severity": severity, "status": "ACTIVE",
             "firstObservedAt": "2026-09-24T02:00:42.482Z", "lastObservedAt": last, "updatedAt": last,
-            "resources": [{"id": "i-1", "type": "AWS_EC2_INSTANCE", "region": "ap-northeast-2", "tags": {"Name": name}}],
-            "packageVulnerabilityDetails": {"vulnerabilityId": "CVE-" + arn[-1],
+            "resources": [{"id": "i-1", "type": "AWS_EC2_INSTANCE", "region": "ap-northeast-2", "tags": {"Name": name},
+                           "details": {"awsEc2Instance": {"platform": "UBUNTU_24_04", "imageId": "ami-1"}}}],
+            "packageVulnerabilityDetails": {"vulnerabilityId": "CVE-2026-000" + arn[-1],
+                                            "sourceUrl": "https://ubuntu.com/security/CVE-2026-0001",
                                             "vulnerablePackages": [{"name": "openssl", "version": "3.0.2",
-                                                                    "fixedInVersion": "3.0.13"}]},
-            "inspectorScoreDetails": {"adjustedCvss": {"score": score}}}
+                                                                    "fixedInVersion": "3.0.13", "packageManager": "OS"}]},
+            "inspectorScoreDetails": {"adjustedCvss": {"score": score}},
+            "title": "CVE-2026-0001 - openssl", "description": LONG, "fixAvailable": "YES", "exploitAvailable": "NO",
+            "epss": {"score": 0.00123}, "remediation": {"recommendation": {"text": "None Provided"}}}
 
 
 INSPECTOR = [inspector_finding("arn:v1"), inspector_finding("arn:v2", severity="CRITICAL", score=9.8),
@@ -121,7 +135,7 @@ def direct_provider():
     inspector = type("Inspector", (), {"list_findings": lambda self, **kw: {"findings": [
         f for f in INSPECTOR if f["severity"] == kw["filterCriteria"]["severity"][0]["value"]]}})()
     session.client = lambda name, **kw: {"securityhub": hub, "inspector2": inspector}.get(name) or FakeSession.client(session, name)
-    return AwsProvider("ap-northeast-2", session_factory=lambda region: session)
+    return AwsProvider("ap-northeast-2", session_factory=lambda region: session, auto_policy=POLICY)
 
 
 def stored_provider(data):
@@ -130,7 +144,7 @@ def stored_provider(data):
     session.client = lambda name, **kw: dynamo if name == "dynamodb" else FakeSession.client(session, name)
     provider = AwsProvider("ap-northeast-2", session_factory=lambda region: session,
                            findings_table="findings", vulnerabilities_table="vulnerabilities",
-                           event_source="dynamodb", vulnerability_source="dynamodb")
+                           event_source="dynamodb", vulnerability_source="dynamodb", auto_policy=POLICY)
     return provider, dynamo
 
 
@@ -145,6 +159,10 @@ def test_events_from_dynamodb_match_security_hub(sync):
     assert stored == direct
     assert next(r for r in stored if r["source"] == "WAF")["scenario"] == "SEC-08 웹 공격 차단"
     assert next(r for r in stored if r["sourceIp"])["sourceLocation"]["country"] == "Korea"
+    config = next(r for r in stored if r["source"] == "Config")
+    assert config["guidance"]["key"] == "config:restricted-ssh" and config["autoRemediation"]["mode"] == "conditional"
+    assert len(config["description"]) == 1000 and config["remediation"]["url"] == "https://docs.aws.amazon.com/config/"
+    assert next(r for r in stored if r["source"] == "GuardDuty")["findingType"] == "UnauthorizedAccess:EC2/SSHBruteForce"
 
 
 def test_event_period_and_region_filters_behave_the_same(sync):
@@ -159,7 +177,10 @@ def test_vulnerabilities_from_dynamodb_match_inspector(sync):
     direct = by_id(direct_provider().vulnerabilities({})["items"])
     stored = by_id(stored_provider(tables(sync))[0].vulnerabilities({})["items"])
     assert stored == direct and len(stored) == 3
-    assert next(v for v in stored if v["cveId"] == "CVE-2")["cvss"] == 9.8
+    assert next(v for v in stored if v["cveId"] == "CVE-2026-0002")["cvss"] == 9.8
+    detail = stored[0]
+    assert len(detail["description"]) == 1000 and detail["epss"] == 0.00123 and detail["rebootRequired"] is False
+    assert detail["updateCommand"].startswith("sudo apt-get") and detail["referenceUrl"].endswith(detail["cveId"])
 
 
 def test_stored_rows_are_cached_and_reused(sync):

@@ -8,6 +8,7 @@ from jinja2 import ChoiceLoader, FileSystemLoader
 from .auth import current_user, install_auth
 from .contracts import StandardService, envelope
 from .drills import DrillService
+from .guidance import AutoPolicy
 from .provider import AwsProvider, UnconfiguredProvider
 from .errors import install_errors
 from .settings import configure
@@ -32,7 +33,9 @@ def create_app(overrides=None):
                             findings_table=settings["FINDINGS_TABLE"],
                             vulnerabilities_table=settings["VULNERABILITIES_TABLE"],
                             event_source=settings["EVENT_SOURCE"],
-                            vulnerability_source=settings["VULNERABILITY_SOURCE"])
+                            vulnerability_source=settings["VULNERABILITY_SOURCE"],
+                            auto_policy=AutoPolicy.from_settings(settings),
+                            name_prefix=settings["NAME_PREFIX"])
                 if settings["DATA_PROVIDER"] == "aws" else UnconfiguredProvider())
     if provider.connected and not settings.get("TESTING"):
         provider.warm()  # 취약점 목록(Inspector 수천 건)을 기동 직후 미리 받아 둔다

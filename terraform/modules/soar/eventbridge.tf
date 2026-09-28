@@ -4,6 +4,7 @@
 #  ② GuardDuty finding      -> asr_trigger (IAM 키 노출 등 자동조치 판단)
 #  ③ Security Hub finding    -> asr_trigger (SG 노출 등 자동조치 판단)
 #  ④ WAF 차단 알람(ALARM)    -> waf_finding (Security Hub 로 가져오기, SEC-08)
+#  ⑤ 무차별 대입 알람(MySQL·SSH) -> asr_trigger (공격 IP NACL 자동 차단, SEC-06A·06B)
 ############################################
 
 # ① GuardDuty -> correlator
@@ -187,4 +188,54 @@ resource "aws_lambda_permission" "ssm_result_to_asr" {
   function_name = aws_lambda_function.asr_trigger.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.ssm_result_to_asr.arn
+}
+
+############################################
+# ⑤ 무차별 대입 알람(ALARM) → asr_trigger (SEC-06A MySQL · DEC-018 / SEC-06B SSH 22 거부 · DEC-019)
+# ALARM 으로 "바뀌는 순간" 한 번 온다. asr_trigger 가 알람 구간 로그(MySQL 오류 로그 / VPC Flow Logs)에서
+# 최다 출발지를 찾아 Private NACL 1~99 번대 Deny 로 막는다. 목록(auto_remediable_controls)에서 빼면 알람만 남는다.
+############################################
+
+locals {
+  bruteforce_alarm_names = compact([
+    contains(var.auto_remediable_controls, "SEC-06A") ? aws_cloudwatch_metric_alarm.mysql_bruteforce.alarm_name : "",
+    local.enable_ssh_reject ? aws_cloudwatch_metric_alarm.ssh_reject[0].alarm_name : "",
+  ])
+  enable_bruteforce_block = contains(var.auto_remediable_controls, "SEC-06A") || local.enable_ssh_reject
+}
+
+resource "aws_cloudwatch_event_rule" "bruteforce_alarm_to_asr" {
+  count = local.enable_bruteforce_block ? 1 : 0
+
+  name        = "${var.name_prefix}-bruteforce-asr"
+  description = "MySQL / SSH brute-force alarms (ALARM) to asr_trigger (SEC-06 NACL block)"
+
+  event_pattern = jsonencode({
+    source        = ["aws.cloudwatch"]
+    "detail-type" = ["CloudWatch Alarm State Change"]
+    detail = {
+      alarmName = local.bruteforce_alarm_names
+      state     = { value = ["ALARM"] }
+    }
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "bruteforce_alarm_to_asr" {
+  count = local.enable_bruteforce_block ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.bruteforce_alarm_to_asr[0].name
+  target_id = "asr-trigger"
+  arn       = aws_lambda_function.asr_trigger.arn
+}
+
+resource "aws_lambda_permission" "bruteforce_alarm_to_asr" {
+  count = local.enable_bruteforce_block ? 1 : 0
+
+  statement_id  = "AllowBruteforceAlarmAsr"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.asr_trigger.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.bruteforce_alarm_to_asr[0].arn
 }

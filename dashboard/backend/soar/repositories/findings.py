@@ -1,7 +1,10 @@
 """Security Hub finding → 대시보드 이벤트 도메인 자료."""
 import hashlib
 
+from .. import guidance
 from ..integrations.aws.paging import to_ms
+
+DESCRIPTION_LIMIT = 1000  # finding_sync 적재 raw 와 같은 길이 — 직접 조회와 적재 조회 결과가 같게
 
 
 def classify(finding):
@@ -50,9 +53,10 @@ def event_id(finding_id):
 
 
 class FindingRepository:
-    def __init__(self, securityhub, default_region):
+    def __init__(self, securityhub, default_region, policy=None):
         self._securityhub = securityhub
         self._region = default_region
+        self._policy = policy  # guidance.AutoPolicy — 자동 조치 판정(설정 기준 예상). 없으면 판정 없음
 
     def observations(self, query=None):
         """Normalize Security Hub findings into the dashboard read DTO."""
@@ -74,6 +78,7 @@ class FindingRepository:
             if severity not in {"CRITICAL", "HIGH", "MEDIUM", "LOW"}:
                 severity = "LOW"
             at = to_ms(finding.get("UpdatedAt") or finding.get("CreatedAt"))
+            description = (finding.get("Description") or "")[:DESCRIPTION_LIMIT] or None
             rows.append({
                 "id": event_id(finding_id), "title": finding.get("Title") or finding.get("Description") or finding_id,
                 **classify(finding), "region": region, "environment": "unknown",
@@ -82,10 +87,12 @@ class FindingRepository:
                 "execution": "NOT_RUN", "verification": "NOT_RUN", "at": at, "version": 1,
                 "planHash": hashlib.sha256(finding_id.encode()).hexdigest(), "actionable": False,
                 "allowedActions": [], "history": [], "before": None, "after": None,
-                "afterValue": None, "evidence": finding.get("Description"),
+                "afterValue": None, "evidence": description,
                 "recommendation": None, "criterion": None, "criterionVersion": None,
                 "accountId": finding.get("AwsAccountId"),
                 "observedAt": at, "externalFindingId": finding_id,
                 **remote_ip(finding.get("ProductFields")),
+                # 탐지 상세: AWS 원문 설명·조치 안내와 팀 설명·자동 조치 판정(guidance.py)
+                "description": description, **guidance.annotate(finding, self._policy),
             })
         return rows

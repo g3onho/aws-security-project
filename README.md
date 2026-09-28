@@ -180,13 +180,15 @@ Config는 선언된 리소스 유형과 관리형 규칙에 따라 설정을 평
 
 Security Hub finding과 Inspector 취약점은 EventBridge·`finding_sync` 경로에서 DynamoDB로 적재하거나, 대시보드가 AWS 원본을 직접 조회하는 설정이 있다. 탐지와 취약점 각각의 선택 모드가 실제 데이터 원천이다. 스케줄 대조, DLQ, `__sync__` 신선도 상태를 데이터 목록과 함께 해석한다. 자동조치 판정·상관분석은 별도 Lambda 경로를 사용한다. 수동 SSM 검사 문서가 S3에 남기는 Trivy 결과가 Inspector 취약점 목록에 자동 통합된다고 주장하지 않는다.
 
-MySQL 무차별 대입은 시연 MySQL의 로그와 CloudWatch 메트릭 경로로 확인한다. SSH 무차별 대입은 GuardDuty 경로로 따로 확인한다. CloudWatch CPU는 EC2 기본 지표, 메모리는 인스턴스 CloudWatch Agent에서 보내는 사용자 지정 지표다. 탐지·상관·수집 계약은 대시보드 및 Terraform 상세 설계와 [시나리오 명세](project-management/security-scenarios.md)에 연결한다.
+MySQL 무차별 대입은 시연 MySQL의 로그와 CloudWatch 메트릭 경로로 확인한다. SSH 무차별 대입은 GuardDuty 경로로 따로 확인하고, 자동 차단용으로는 VPC Flow Logs의 22번 REJECT 기록을 CloudWatch 알람으로 센다(DEC-019). CloudWatch CPU는 EC2 기본 지표, 메모리는 인스턴스 CloudWatch Agent에서 보내는 사용자 지정 지표다. 탐지·상관·수집 계약은 대시보드 및 Terraform 상세 설계와 [시나리오 명세](project-management/security-scenarios.md)에 연결한다.
 
 ### 4.4 SOAR · 상태·조치 계층
 
-`asr_trigger`는 GuardDuty 또는 Security Hub finding을 받고 코드에 연결된 SG 규칙 회수·노출 Access Key 비활성화 경로를 판정하며 SSM Automation을 시작한다. SSM 종료 이벤트는 별도 EventBridge 경로를 통해 자동 조치 이력을 갱신한다. **ASR-HardenNginx는 등록된 SSM Command 문서가 있어도 자동 Lambda 분기에 연결돼 있지 않으므로 수동 조치로 분류한다.** 공격 IP 차단의 NACL 조치와 DB 비밀값 회전 역시 승인된 수동 경로로 다룬다. 비밀 회전 문서만으로 DB와 애플리케이션까지 함께 정상 회전한다고 보지 않는다.
+`asr_trigger`는 GuardDuty 또는 Security Hub finding을 받고 코드에 연결된 SG 규칙 회수·노출 Access Key 비활성화 경로를 판정하며 SSM Automation을 시작한다. SSM 종료 이벤트는 별도 EventBridge 경로를 통해 자동 조치 이력을 갱신한다. **ASR-HardenNginx는 등록된 SSM Command 문서가 있어도 자동 Lambda 분기에 연결돼 있지 않으므로 수동 조치로 분류한다.** DB 비밀값 회전도 승인된 수동 경로로 다룬다. 비밀 회전 문서만으로 DB와 애플리케이션까지 함께 정상 회전한다고 보지 않는다.
 
-추가 검증 단계나 공통 자동조치 게이트 정책은 이번 기준에서 확정하지 않고 후속 설계 과제로 둔다. 자동화를 넓히거나 새 자산을 포함하기 전에 조치 대상·복구·중복·감사 요구를 결정 문서에서 해소해야 한다. 코드에 이미 있는 조치 분기의 실제 실행 여부와 실증 검증은 별도 추적한다.
+2026-09-28 사용자 결정으로 자동 경로를 두 가지 늘렸다. ① Security Hub 규칙 ID 정확 일치 7종(EC2.2·EC2.7·EC2.182·S3.1·IAM.7·SSM.6·SSM.7)은 규칙별 SSM 문서로 계정·리전 설정을 바꾼다 — 재부팅이 없고 Terraform이 관리하지 않는 설정만이다(DEC-017). ② MySQL 인증 실패 알람(SEC-06A)과 VPC 내부 출발지의 SSH(22) 거부 급증 알람(SEC-06B)은 알람 구간 로그에서 최다 출발지 IP를 찾아 Private NACL 1~99번 Deny로 막는다(DEC-018·DEC-019). 그 밖의 공격 IP 차단은 기존처럼 수동 승인 경로다. 자동 차단은 만료가 없어 시연 뒤 정리한다. 판정마다 이유(`reason`)와 규칙 ID(`control_id`)를 조치 이력에 남기고, 대시보드는 조치 직후 SSM 보고값(전/후)을 재검증 전 값으로 보여준다.
+
+추가 검증 단계나 공통 자동조치 게이트 정책은 이번 기준에서 확정하지 않고 후속 설계 과제로 둔다. 자동화를 넓히거나 새 자산을 포함하기 전에 조치 대상·복구·중복·감사 요구를 결정 문서에서 해소해야 한다(위 두 확장은 DEC-017~019에서 대상·게이트·멱등 조건을 정했다). 코드에 이미 있는 조치 분기의 실제 실행 여부와 실증 검증은 별도 추적한다.
 
 관제용 Flask 앱은 프런트엔드 Store·응답 어댑터·API·업무 계약·Provider/Repository를 통해 AWS를 조회한다. AWS 원본과 작업 이력은 서로 다른 읽기 자료다. 승인·작업 접수·감사 저장에 대한 설계 표준은 DynamoDB를 목표로 삼고, 현재 SQLite 구현과의 차이는 **구현 수정 대상**으로 기록한다. 실 조치와 실 재검증 Provider가 활성화됐다고 추정하지 않는다. DTO·인증·오류·데이터 계약은 [대시보드 설계](dashboard/dashboard-design.md)에 둔다. 관제 대시보드에는 승인된 모의 공격·부하 시험을 고르고 탐지·대응·재검증 흐름을 확인하는 ‘공격·대응 실습’ 화면이 있다. 현재 범위는 관측·구조(조회 전용)이며 실제 공격·부하·SSM 실행은 후속 과제로, 상세와 미결정은 대시보드 설계와 결정 기록에 둔다.
 
@@ -203,7 +205,7 @@ AI 허니팟은 본 계층의 설계 대상 후보로만 표시한다. 실제 �
 | SEC-03 | 3306 공개 및 자동/수동 비교 | Config·Security Hub, 별도 Hydra/MySQL 인증 실패는 CloudWatch 로그 | 시연 DB 한 대에 자동 대상·수동 대조군 SG 두 개가 붙는다. 하나의 SG 조치로 DB 포트 전체 차단을 주장하지 않는다. |
 | SEC-04 | EC2 또는 ECR 이미지의 CVE | Inspector와 승인된 Trivy 검사 결과 | 이미지 교체·재배포 뒤 동일 이미지 범위로 재검사한다. Trivy S3 결과의 화면 통합 여부는 별도 계약이다. |
 | SEC-05 | 노출된 자격증명·과도 권한 | GuardDuty·Access Analyzer·CloudTrail·Config | Access Key 자동 비활성화 코드는 권한과 대상 범위 검토가 필요하다. 최소권한 정책 수정은 수동이다. |
-| SEC-06 | MySQL·SSH 무차별 대입을 분리 검증 | MySQL Hydra → CloudWatch Logs/metric alarm; SSH Hydra → GuardDuty | 공격 원천·finding을 별도 증거로 기록한다. IP 차단은 기존 NACL 수동 승인 문서에 따른다. |
+| SEC-06 | MySQL·SSH 무차별 대입을 분리 검증 | MySQL Hydra → CloudWatch Logs/metric alarm; SSH Hydra → GuardDuty, 자동 차단용 SSH 22번 거부 → Flow Logs/metric alarm | 공격 원천·finding을 별도 증거로 기록한다. 두 알람은 최다 출발지 IP를 NACL로 자동 차단한다(DEC-018·019, VPC 내부 주소·보호 자산 제외). 그 밖의 IP 차단은 수동 승인 문서에 따른다. |
 | SEC-07 | 비밀값 노출·자격증명 분리 | 코드 검토·파일시스템 검사·Secrets Manager 이력 | DB·애플리케이션에 값이 적용되는지와 Terraform 소유권·복구를 확인한 뒤 회전 완료를 판정한다. |
 | SEC-08 | DVWA 웹 공격 및 WAF 반응 | 승인된 ZAP/SQLi 검사, WAF CloudWatch Alarm → Security Hub finding | DVWA는 별도 공개 시험 대상이다. WAF 생성·차단은 조건부이며 정책 변경은 수동 검토 경로다. |
 | SEC-09 | 감사·구성·서비스 로그 | CloudTrail/S3/KMS, Flow Logs, CloudWatch Logs, Config·Security Hub | 원본 로그 보관과 finding 통합을 분리하고 수집 누락·권한 부족을 확인한다. |

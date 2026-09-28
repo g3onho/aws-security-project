@@ -41,6 +41,13 @@ enable_guardduty_ai_protection = false
 enable_auto_remediation = true   # false 면 전체 dry-run(판단만)
 alert_email             = ""     # 예: "team2-secops@example.com"
 
+# 규칙 ID 정확 일치 자동 조치 + SEC-06A(MySQL)·SEC-06B(SSH 22 거부) NACL 자동 차단 (decisions.md DEC-017~019).
+# 기본값은 variables.tf 참고. 끄려면 항목을 뺀다. 예: 발표 전 NACL 자동 차단만 끄기
+# auto_remediable_controls = ["EC2.2", "EC2.7", "EC2.182", "S3.1", "IAM.7", "SSM.6", "SSM.7"]
+# ssh_reject_alarm_threshold = 10
+# 주의: auto_remediable_patterns·auto_remediable_controls·enable_auto_remediation 을 바꾸면 대시보드 user_data 도
+# 바뀌어 대시보드 인스턴스가 새로 뜬다(로그인 계정 SQLite 초기화). 시연 직전에는 바꾸지 않는다.
+
 ############################################
 # DB 비밀번호 — 비우면 Secrets Manager 에 랜덤 생성.
 # 값을 넣으면 tfstate 에 남으니 실습용으로만.

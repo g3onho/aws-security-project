@@ -1,0 +1,37 @@
+schemaVersion: '0.3'
+description: |
+  이 리전의 EBS 기본 암호화를 켭니다 (Security Hub EC2.7).
+  새로 만드는 EBS 볼륨만 암호화되고 기존 볼륨·실행 중인 인스턴스는 바뀌지 않습니다(재부팅 없음).
+  Terraform 은 이 계정 설정을 관리하지 않으므로(aws_ebs_encryption_by_default 0건) 다음 apply 가 되돌리지 않습니다.
+  되돌리기: aws ec2 disable-ebs-encryption-by-default
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  AutomationAssumeRole:
+    type: String
+    description: 이 문서를 실행할 역할 ARN
+mainSteps:
+  - name: enableEbsDefaultEncryption
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: Boolean
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      Script: |
+        import boto3
+        def handler(event, context):
+            ec2 = boto3.client("ec2")
+            before = ec2.get_ebs_encryption_by_default()["EbsEncryptionByDefault"]
+            if not before:
+                ec2.enable_ebs_encryption_by_default()
+            after = ec2.get_ebs_encryption_by_default()["EbsEncryptionByDefault"]
+            return {"before": f"EBS 기본 암호화={before}", "after": f"EBS 기본 암호화={after}",
+                    "changed": before != after}

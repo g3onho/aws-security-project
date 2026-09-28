@@ -136,7 +136,7 @@ def test_history_includes_automatic_records_without_calling_execution_a_resoluti
 
 
 def test_history_period_uses_last_occurrence(tmp_path):
-    """대응 이력 기간 필터 = 마지막 발생 시각(last_seen_at). 반복 판정은 한 줄이라 횟수는 누적이다."""
+    """조치 이력(옛 대응 이력) 기간 필터 = 마지막 발생 시각(last_seen_at). 반복 판정은 한 줄이라 횟수는 누적이다."""
     week_old = new_row(action_id="ssm-exec-old", last_seen_at=iso(NOW - timedelta(days=6)),
                        created_at=iso(NOW - timedelta(days=6)), updated_at=iso(NOW - timedelta(days=6)))
     client = client_for(tmp_path, Provider([new_row(), week_old]))

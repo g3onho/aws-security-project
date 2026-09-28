@@ -18,3 +18,7 @@ output "sg_attacker_id" {
 
 output "private_nacl_id" { value = aws_network_acl.private.id }
 
+# SEC-06B 22번 REJECT 지표 필터가 이 로그 그룹을 쓴다(DEC-019). Flow Logs 를 끄면 빈 문자열.
+output "flow_log_group_name" {
+  value = var.enable_flow_logs ? aws_cloudwatch_log_group.flowlogs[0].name : ""
+}

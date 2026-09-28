@@ -10,10 +10,12 @@ import hmac
 import json
 import logging
 import re
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from .errors import Problem
+from .guidance import control_title
 from .history_repository import HistoryRepository
 from .repositories.correlations import apply as apply_correlations
 from .scope import matches as scope_matches
@@ -36,9 +38,17 @@ QUERY_FIELDS = {
     "history": COMMON | LIST | {"eventId", "actionId", "jobId"},
 }
 # 자동조치 기록 status → 계약 actionState. 실행 성공(SUCCESS)은 EXECUTED 이지 VERIFIED(해결)가 아니다.
+# NO_CHANGE(이미 조치된 상태라 실행하지 않음, 예: 이미 NACL 에서 차단 중인 IP)는 실행하지 않았으므로 CANCELLED.
 AUTOMATIC_STATES = {"NOTIFIED": "PENDING_APPROVAL", "DRY_RUN": "PENDING_APPROVAL", "IN_PROGRESS": "RUNNING",
                     "SUCCESS": "EXECUTED", "FAILED": "EXECUTION_FAILED", "TIMED_OUT": "EXECUTION_FAILED",
-                    "CANCELLED": "EXECUTION_FAILED", "UNKNOWN": "RECONCILING"}
+                    "CANCELLED": "EXECUTION_FAILED", "NO_CHANGE": "CANCELLED", "UNKNOWN": "RECONCILING"}
+# 한 요청에서 새로 읽을 SSM 실행 결과 수. 나머지는 캐시만 보고 다음 새로고침에서 채운다(조회 지연 제한).
+EXECUTION_FETCH_LIMIT = 20
+# 3계층(보호 대상 docker-host 의 Nginx → Flask → MySQL). 대시보드는 컨테이너에 직접 접속하지 않고(설계:
+# /api/infra/status 는 저장된 증거만 조회), 계층 점검 결과를 저장하는 작업이 아직 없어 확인 불가로 둔다.
+TIERS = ({"id": "tier/web", "name": "Nginx", "role": "웹"},
+         {"id": "tier/app", "name": "Flask", "role": "애플리케이션"},
+         {"id": "tier/db", "name": "MySQL", "role": "데이터베이스"})
 LEGACY_STATES = {
     "NEW": "PENDING_APPROVAL", "PENDING_APPROVAL": "PENDING_APPROVAL", "APPROVED": "APPROVED",
     "EXECUTING": "RUNNING", "PENDING_VERIFICATION": "EXECUTED", "VERIFYING": "VERIFYING",
@@ -145,6 +155,10 @@ def event_dto(event, allowed_actions):
             "actionable": bool(event.get("actionable")),
             # correlator(DynamoDB)가 GuardDuty 위협 + 같은 자원 CVE 로 위험도를 올린 경우.
             "severityBumped": bool(event.get("severityBumped")), "relatedCves": list(event.get("relatedCves") or []),
+            # 탐지 상세(v23): AWS 원문(description·remediation)과 팀 설명(guidance), 자동 조치 판정(설정 기준 예상).
+            "description": event.get("description"), "controlId": event.get("controlId"),
+            "findingType": event.get("findingType"), "remediation": event.get("remediation"),
+            "guidance": event.get("guidance"), "autoRemediation": event.get("autoRemediation"),
             "dataMode": "live"}
 
 
@@ -154,6 +168,10 @@ def common_matches(row, q, timestamp, *, check_time=True):
 
 
 OPEN_VULNERABILITY_WINDOW_MS = 31 * 86_400_000  # 계약 최대 조회 구간 = 화면의 "열린 취약점" 기준
+# 취약점 상세(v23): 왜 위험한지(Inspector 원문·공개 공격 코드·악용 가능성)와 고치는 법(업데이트 명령·재부팅).
+VULNERABILITY_DETAIL = ("title", "description", "remediation", "fixAvailable", "exploitAvailable", "epss",
+                        "packageManager", "updateCommand", "updateCommandSource", "resourceType", "platform",
+                        "repository", "fixMethod", "rebootRequired", "referenceUrl")
 
 
 class StandardService:
@@ -293,7 +311,10 @@ class StandardService:
                               "resources": principal.get("scope", {}).get("resources"),
                               "region": q.get("region"), "resource": q.get("resource"), "from": iso(q["from"]), "to": iso(q["to"])},
                     "observedAt": iso(self.provider.as_of),
-                    "openVulnerabilities": self._open_vulnerabilities(q, principal, events)}
+                    "openVulnerabilities": self._open_vulnerabilities(q, principal, events),
+                    # 통합 관제 자동 대응 현황·경보 요약(v23). 읽기 실패는 요약 전체를 실패시키지 않는다 → null.
+                    "automation": self._automation_summary(q, principal, events),
+                    "alarms": self._alarm_summary(principal)}
         if kind == "vulnerabilities":
             rows = []
             for scan in self.provider.vulnerabilities(q, events)["items"]:
@@ -313,7 +334,9 @@ class StandardService:
                              "package": scan["package"], "severity": scan["severity"], "source": scan["source"],
                              "region": scan["region"], "observedAt": iso(observed),
                              "firstObservedAt": iso(scan.get("foundAt")), "fixedVersion": scan.get("fixedVersion"),
-                             "installedVersion": scan.get("installedVersion"), "cvss": scan.get("cvss"), "dataMode": "live", "_sortAt": observed})
+                             "installedVersion": scan.get("installedVersion"), "cvss": scan.get("cvss"),
+                             **{key: scan.get(key) for key in VULNERABILITY_DETAIL},
+                             "imageTags": list(scan.get("imageTags") or []), "dataMode": "live", "_sortAt": observed})
             return self._page(rows, q, binding, marker)
         if kind == "history":
             return self._history(events, q, binding, marker, principal)
@@ -366,18 +389,58 @@ class StandardService:
         return result
 
     def _infra(self, q, principal, events):
-        components, dependencies = [], []
+        """서버 가동 상태(EC2) + 3계층(확인 불가) + CloudWatch 경보. 서버 목록은 한 번만 조회한다."""
         status_map = {"UP": "healthy", "DEGRADED": "degraded", "DOWN": "unhealthy", "UNKNOWN": "unknown"}
-        for resource in self._resources(q, principal):
-            raw = self.provider.services({**q, "region": resource["region"], "resource": resource["id"]}, events)
+        notes = {"warnings": [], "partial": False}
+        resources = self._resources(q, principal)
+        raw = (self.provider.services({key: q[key] for key in ("region", "resource") if q.get(key)}, events)
+               if resources else {})
+        found = {item["id"]: item for item in raw.get("items", [])}
+        components = []
+        for resource in resources:
+            component = found.get(resource["id"])
+            if component is None:
+                continue
             prefix = resource["region"] + "/" + resource["id"] + "/"
-            for component in raw.get("items", []):
-                components.append({"id": prefix + component["id"], "name": component["name"],
-                                   "resource": resource["id"], "region": resource["region"],
-                                   "status": status_map.get(component["status"], "unknown"),
-                                   "observedAt": iso(raw.get("checkedAt")), "source": component.get("source"), "detail": component.get("detail")})
-            dependencies.extend(raw.get("dependencies", []))
-        return {"components": components, "dependencies": dependencies, "dataMode": "live"}
+            components.append({"id": prefix + component["id"], "name": component["name"],
+                               "resource": resource["id"], "region": resource["region"],
+                               "status": status_map.get(component["status"], "unknown"),
+                               "observedAt": iso(raw.get("checkedAt")), "source": component.get("source"),
+                               "detail": component.get("detail"), "kind": "server", "role": component.get("tier")})
+        tiers = [{**tier, "status": "unknown", "observedAt": None, "source": None,
+                  "detail": "점검 결과 없음"} for tier in TIERS]
+        result = {"components": components, "dependencies": raw.get("dependencies", []), "tiers": tiers,
+                  "alarms": self._alarms(principal, notes), "dataMode": "live"}
+        if notes["warnings"]:
+            result["_warnings"] = notes["warnings"]
+        return result
+
+    def _alarms(self, principal, notes):
+        """CloudWatch 지표 알람(사용자 범위 안). 설정이 없으면 None, 읽기 실패는 경고 + None."""
+        if not hasattr(self.provider, "alarms"):
+            return None
+        try:
+            data = self.provider.alarms()
+        except Exception:  # noqa: BLE001 — 내부 원인은 로그로만(설계 2.3 원칙 7)
+            logging.getLogger(__name__).exception("alarm read failed")
+            notes["warnings"].append("CloudWatch 경보 상태를 불러오지 못했습니다.")
+            return None
+        if not data.get("configured"):
+            return None
+        return [{**alarm, "updatedAt": iso(alarm.get("updatedAt"))} for alarm in data["items"]
+                if scope_matches({"accountId": alarm.get("accountId"), "region": alarm.get("region"),
+                                  "resource": alarm.get("resource")}, principal)]
+
+    def _alarm_summary(self, principal):
+        items = self._alarms(principal, {"warnings": [], "partial": False})
+        if items is None:
+            return None
+        firing = [alarm for alarm in items if alarm["state"] == "ALARM"]
+        return {"total": len(items), "alarm": len(firing),
+                "insufficientData": sum(alarm["state"] == "INSUFFICIENT_DATA" for alarm in items),
+                "noData": sum(bool(alarm.get("noData")) for alarm in items),
+                "firing": [{key: alarm.get(key) for key in ("name", "label", "scenario", "updatedAt", "autoResponse")}
+                           for alarm in firing[:5]]}
 
     @staticmethod
     def _evidence(event, *, record_id, actor, decision, created_at, updated_at, request_id=None, job_id=None, execution_id=None):
@@ -391,12 +454,30 @@ class StandardService:
                 "createdAt": iso(created_at), "updatedAt": iso(updated_at), "requestId": request_id,
                 "resource": event["resource"], "region": event["region"], "dataMode": "live"}
 
-    def _automatic_history(self, principal, notes, finding_id=None):
-        """DynamoDB 자동조치 기록 → Evidence 행. 설계 3.1: 외부 자동 SOAR 이력도 같은 조회 모델로."""
+    @staticmethod
+    def _guardduty_tails(events):
+        """GuardDuty 탐지의 원본 ID 끝 → 이벤트 ID. asr_trigger 가 GuardDuty 직접 이벤트(SEC-05)를 ARN 이 아닌
+        짧은 finding ID 로 기록해서, 상관분석처럼 ARN 끝부분으로 잇는다(repositories/correlations.py 와 같은 규칙)."""
+        tails = {}
+        for event in events:
+            external = str(event.get("externalFindingId") or "")
+            if ":guardduty:" in external and "/finding/" in external:
+                tails[external.rsplit("/finding/", 1)[-1]] = event["id"]
+        return tails
+
+    def _automation_records(self, principal, notes, finding_ids=None):
+        """DynamoDB 자동조치 기록(정규화) 중 사용자 범위 안의 것. 테이블 설정이 없으면 None(빈 목록으로 위장하지
+        않는다), 읽기 실패는 경고 + 부분 결과 표시 후 빈 목록. finding_ids 를 주면 그 finding 들만 인덱스로 읽는다."""
         if not hasattr(self.provider, "actions"):
-            return []
+            return None
         try:
-            data = self.provider.actions(finding_id) if finding_id else self.provider.actions()
+            if finding_ids:
+                found = [self.provider.actions(finding_id) for finding_id in finding_ids]
+                data = {"configured": all(item.get("configured") for item in found),
+                        "items": [row for item in found for row in item.get("items", [])],
+                        "truncated": any(item.get("truncated") for item in found)}
+            else:
+                data = self.provider.actions()
         except Exception:  # noqa: BLE001 — 내부 원인은 로그로만(설계 2.3 원칙 7)
             logging.getLogger(__name__).exception("action history read failed")
             notes["warnings"].append("자동조치 이력을 불러오지 못했습니다.")
@@ -404,38 +485,115 @@ class StandardService:
             return []
         if not data.get("configured"):
             notes["warnings"].append("자동조치 이력 테이블이 설정되지 않았습니다.")
-            return []
+            return None
         if data.get("truncated"):
             notes["warnings"].append("자동조치 이력이 많아 일부만 표시합니다.")
             notes["partial"] = True
-        rows = []
-        empty_hash = hashlib.sha256(encode({}).encode()).hexdigest()
+        records, seen = [], set()
         for record in data["items"]:
+            key = (record["actionId"], record["createdAt"])
             # 리전·계정을 모르는 기록은 범위 제한 사용자에게 보이지 않는다(안전 쪽).
-            if not scope_matches({"accountId": record["accountId"], "region": record["region"],
-                                  "resource": record["resource"]}, principal):
+            if key in seen or not scope_matches({"accountId": record["accountId"], "region": record["region"],
+                                                 "resource": record["resource"]}, principal):
                 continue
+            seen.add(key)
+            records.append(record)
+        return records
 
-            def text_state(text, at):
+    def _execution_evidence(self, record, budget, notes):
+        """자동 실행 기록의 SSM 실행 결과(조치 직후 보고값). 한 요청에서 새로 읽는 수는 EXECUTION_FETCH_LIMIT 까지."""
+        execution_id = record.get("executionId")
+        if not execution_id or not hasattr(self.provider, "execution") or budget["failed"]:
+            return None
+        try:
+            found, evidence = self.provider.execution(execution_id, fetch=False)
+            if not found and budget["left"] > 0:
+                budget["left"] -= 1
+                found, evidence = self.provider.execution(execution_id, fetch=True)
+        except Exception:  # noqa: BLE001 — 권한·일시 오류. 기록 자체는 그대로 보여준다.
+            logging.getLogger(__name__).exception("automation execution read failed")
+            budget["failed"] = True
+            notes["warnings"].append("SSM 실행 결과(조치 전/후)를 불러오지 못했습니다.")
+            return None
+        if not found:
+            budget["pending"] += 1
+        return evidence
+
+    @staticmethod
+    def _execution_dto(evidence):
+        if not evidence:
+            return None
+        return {**{key: evidence.get(key) for key in ("status", "document", "step", "before", "after", "removed",
+                                                       "added", "changed", "failureMessage")},
+                "startedAt": iso(evidence.get("startedAt")), "endedAt": iso(evidence.get("endedAt")),
+                # 조치 문서가 실행 직후 스스로 보고한 값. 같은 조건 재검증이 아니다.
+                "source": "ssm-output", "verification": "NOT_RUN"}
+
+    def _automatic_history(self, principal, notes, finding_ids=None, tails=None):
+        """DynamoDB 자동조치 기록 → Evidence 행. 설계 3.1: 외부 자동 SOAR 이력도 같은 조회 모델로."""
+        records = self._automation_records(principal, notes, finding_ids)
+        if not records:
+            return []
+        rows, tails = [], tails or {}
+        empty_hash = hashlib.sha256(encode({}).encode()).hexdigest()
+        budget = {"left": EXECUTION_FETCH_LIMIT, "pending": 0, "failed": False}
+        for record in records:
+            def text_state(text, at, source="asr_trigger"):
                 return None if text is None else {"value": None, "unit": None, "observedAt": iso(at),
-                                                  "source": "asr_trigger", "criterionVersion": None,
+                                                  "source": source, "criterionVersion": None,
                                                   "resource": record["resource"], "text": text}
+            evidence = self._execution_evidence(record, budget, notes)
+            before = text_state(record["beforeText"], record["createdAt"])
+            after = text_state(record["afterText"], record["updatedAt"])
+            # SSM 보고값이 있으면 전/후를 그것으로 보여준다(실행 결과 · 재검증 전).
+            if evidence and evidence.get("before") is not None:
+                before = text_state("\n".join(evidence["before"]), evidence.get("startedAt") or record["createdAt"], "ssm-output")
+            if evidence and evidence.get("after") is not None:
+                after = text_state("\n".join(evidence["after"]), evidence.get("endedAt") or record["updatedAt"], "ssm-output")
             rows.append({
                 "id": "auto:" + record["actionId"] + "@" + str(record["createdAt"]),
-                "eventId": record["eventId"], "actionId": record["actionId"], "jobId": None,
+                "eventId": tails.get(record["findingId"], record["eventId"]), "actionId": record["actionId"], "jobId": None,
                 "actor": "asr_trigger", "source": "automatic", "decision": record["decision"],
                 "playbookId": record["playbookId"], "playbookVersion": None, "parametersHash": empty_hash,
-                "beforeState": text_state(record["beforeText"], record["createdAt"]),
-                "afterState": text_state(record["afterText"], record["updatedAt"]),
+                "beforeState": before, "afterState": after,
                 "executionId": record["executionId"], "verification": "NOT_RUN",
                 "actionState": AUTOMATIC_STATES.get(record["status"], "RECONCILING"),
                 "automationStatus": record["status"], "occurrenceCount": record["occurrenceCount"],
                 "findingId": record["findingId"], "findingType": record["findingType"],
+                # 왜 이 판정인지(asr_trigger reason)와 규칙 ID·한글 이름, SSM 실행 결과(조치 전/후)
+                "reason": record.get("reason"), "controlId": record.get("controlId"),
+                "controlTitle": control_title(record.get("controlId"), record.get("findingType")),
+                "execution": self._execution_dto(evidence),
                 "createdAt": iso(record["createdAt"]), "updatedAt": iso(record["updatedAt"]),
                 "lastSeenAt": iso(record["lastSeenAt"]), "requestId": None,
                 "resource": record["resource"], "region": record["region"], "accountId": record["accountId"],
                 "dataMode": "live", "_sortAt": record["lastSeenAt"]})
+        if budget["pending"]:
+            notes["warnings"].append(f"SSM 실행 결과 {budget['pending']}건은 다음 새로고침에서 표시합니다.")
         return rows
+
+    def _automation_summary(self, q, principal, events):
+        """통합 관제 자동 대응 현황. 조치 이력과 같은 기간 기준(마지막 발생 시각)·리전·자원 필터."""
+        notes = {"warnings": [], "partial": False}
+        records = self._automation_records(principal, notes)
+        if records is None:
+            return {"configured": False}
+        if notes["partial"] and not records:
+            return None
+        rows = [record for record in records if common_matches(record, q, record["lastSeenAt"])]
+        status, decision = Counter(row["status"] for row in rows), Counter(row["decision"] for row in rows)
+        tails = self._guardduty_tails(events)
+        recent = sorted(rows, key=lambda row: (-row["lastSeenAt"], row["actionId"]))[:5]
+        return {"configured": True, "total": len(rows), "byStatus": dict(status), "byDecision": dict(decision),
+                "autoExecuted": decision.get("auto-executed", 0), "succeeded": status.get("SUCCESS", 0),
+                "failed": sum(status.get(key, 0) for key in ("FAILED", "TIMED_OUT", "CANCELLED")),
+                "inProgress": status.get("IN_PROGRESS", 0), "noChange": status.get("NO_CHANGE", 0),
+                "manual": decision.get("manual-notified", 0), "dryRun": decision.get("dry-run", 0),
+                "recent": [{"actionId": row["actionId"], "eventId": tails.get(row["findingId"], row["eventId"]),
+                            "findingType": row["findingType"], "controlId": row.get("controlId"),
+                            "controlTitle": control_title(row.get("controlId"), row["findingType"]), "decision": row["decision"],
+                            "status": row["status"], "reason": row.get("reason"), "resource": row["resource"],
+                            "lastSeenAt": iso(row["lastSeenAt"])} for row in recent]}
 
     def _history(self, events, q, binding, marker, principal):
         known = {event["id"]: event for event in events}
@@ -475,9 +633,13 @@ class StandardService:
                 row.update(afterState=measurement(job["result"]), verification="PASSED" if job["result"].get("passed") else "FAILED")
             selected_jobs.append(row)
         notes = {"warnings": [], "partial": False}
-        # eventId 로 좁힌 조회는 그 이벤트의 finding 만 인덱스로 읽는다.
-        finding_id = (known.get(q["eventId"]) or {}).get("externalFindingId") if q.get("eventId") else None
-        rows.extend(self._automatic_history(principal, notes, finding_id))
+        # eventId 로 좁힌 조회는 그 이벤트의 finding 만 인덱스로 읽는다. GuardDuty 는 짧은 ID 로도 기록된다.
+        tails = self._guardduty_tails(events)
+        external = (known.get(q["eventId"]) or {}).get("externalFindingId") if q.get("eventId") else None
+        finding_ids = [external] if external else None
+        if external and ":guardduty:" in external and "/finding/" in external:
+            finding_ids.append(external.rsplit("/finding/", 1)[-1])
+        rows.extend(self._automatic_history(principal, notes, finding_ids, tails))
         rows = [row for row in rows if common_matches(row, q, row["_sortAt"])
                 and all(not q.get(field) or q[field] == row.get(field) for field in ("eventId", "actionId", "jobId"))]
         result = self._page(rows, q, binding, marker)

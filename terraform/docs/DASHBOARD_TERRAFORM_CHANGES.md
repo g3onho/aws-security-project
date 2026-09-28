@@ -25,6 +25,19 @@ DASHBOARD_INSTANCE=/opt/dashboard/instance
 - `DASHBOARD_INSTANCE`: DB·세션 키·조치 이력의 영속 경로
 - `USE_DEMO_DATA`: 현재 백엔드에서 사용하지 않아 제거
 
+v23(2026-09-28)에서 다음 값을 더 전달합니다. 모두 기존 Terraform 변수에서 만들며 새 비밀값은 없습니다.
+
+```bash
+NAME_PREFIX=${project}                                  # CloudWatch 알람 이름 접두어(인프라 경보 표시)·메모리 지표 네임스페이스
+AUTO_REMEDIABLE_PATTERNS=${auto_remediable_patterns}    # asr_trigger 와 같은 화이트리스트(쉼표 구분)
+AUTO_REMEDIABLE_CONTROLS=${auto_remediable_controls}    # 규칙 ID 자동 조치 목록 + SEC-06A·SEC-06B
+ENABLE_AUTO_REMEDIATION=${enable_auto_remediation}      # 전체 dry-run 스위치
+```
+
+- 대시보드는 이 세 값으로 탐지 상세의 "자동 조치 여부"를 예상해 보여줍니다. 셋 중 하나라도 없으면 `확인 불가`로 표시합니다.
+- user_data 가 바뀌므로(`user_data_replace_on_change = true`) apply 때 대시보드 인스턴스가 새로 뜹니다. 대시보드 코드가 바뀌어도 같은 동작이므로 추가 영향은 없습니다. SQLite(로그인 계정·세션)는 인스턴스와 함께 새로 만들어집니다.
+- 조회 권한은 기존 정책(`cloudwatch:DescribeAlarms`, `ssm:GetAutomationExecution`)으로 충분해 IAM 변경은 없습니다.
+
 ### systemd 실행 명령
 
 기존:

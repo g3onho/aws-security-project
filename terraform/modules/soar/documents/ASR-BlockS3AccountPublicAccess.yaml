@@ -1,0 +1,47 @@
+schemaVersion: '0.3'
+description: |
+  계정 수준 S3 퍼블릭 액세스 차단 4개 항목을 모두 켭니다 (Security Hub S3.1).
+  이 프로젝트의 버킷(CloudTrail·Config·점검 결과·배포 zip)은 공개가 필요 없고, 서비스 주체·IAM 역할 접근은 영향을 받지 않습니다.
+  Terraform 은 계정 수준 차단을 관리하지 않으므로(aws_s3_account_public_access_block 0건) 다음 apply 가 되돌리지 않습니다.
+  되돌리기: aws s3control delete-public-access-block --account-id <계정 ID>
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  AutomationAssumeRole:
+    type: String
+    description: 이 문서를 실행할 역할 ARN
+mainSteps:
+  - name: blockAccountPublicAccess
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: Boolean
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      Script: |
+        import boto3, json
+        from botocore.exceptions import ClientError
+        KEYS = ("BlockPublicAcls", "IgnorePublicAcls", "BlockPublicPolicy", "RestrictPublicBuckets")
+        def _current(s3c, account):
+            try:
+                return s3c.get_public_access_block(AccountId=account)["PublicAccessBlockConfiguration"]
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") == "NoSuchPublicAccessBlockConfiguration":
+                    return {}
+                raise
+        def handler(event, context):
+            account = boto3.client("sts").get_caller_identity()["Account"]
+            s3c = boto3.client("s3control")
+            before = _current(s3c, account)
+            if not all(before.get(k) for k in KEYS):
+                s3c.put_public_access_block(AccountId=account,
+                                            PublicAccessBlockConfiguration={k: True for k in KEYS})
+            after = _current(s3c, account)
+            return {"before": json.dumps(before), "after": json.dumps(after), "changed": before != after}
