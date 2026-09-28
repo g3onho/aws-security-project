@@ -54,3 +54,11 @@ CWJSON
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/cw.json || true
 
 echo "web-dvwa user-data done. 외부 0.0.0.0/0 노출 금지 - SG 로 관리자 IP·ALB 만 허용."
+
+# --- 지리별 SSH 무차별 대입 데모용 취약화 (비번 로그인 + 약한 계정) ---
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+mkdir -p /etc/ssh/sshd_config.d
+echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/99-lab.conf
+systemctl restart ssh || systemctl restart sshd || true
+id victim || useradd -m victim
+echo "victim:password123" | chpasswd

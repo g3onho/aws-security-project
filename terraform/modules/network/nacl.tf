@@ -113,3 +113,17 @@ resource "aws_network_acl_rule" "private_out_all" {
   from_port      = 0
   to_port        = 0
 }
+
+# 지리별 공격(SSH 무차별 대입) 데모용 22 인바운드. enable_attacker_instance 일 때만 열림.
+# 없으면 공격 트래픽이 NACL deny 에 걸려 nmap filtered·hydra timeout 이 된다.
+resource "aws_network_acl_rule" "public_in_ssh" {
+  count          = var.enable_attacker_instance ? 1 : 0
+  network_acl_id = aws_network_acl.public.id
+  rule_number    = 90
+  egress         = false
+  protocol       = "tcp"
+  rule_action    = "allow"
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 22
+  to_port        = 22
+}
