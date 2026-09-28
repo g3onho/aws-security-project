@@ -101,6 +101,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .host-card-head small{font-size:10px;color:#8fa295}
 .host-metric{display:flex;justify-content:space-between;font-size:11px;color:#8fa295;margin-top:4px}
 .host-metric b{color:#e7eeec;font-size:12px}
+.host-metric small{font-size:10px;color:#8fa295}
+.host-metric-sub{margin-top:0;font-size:10px}
 .host-bar{position:relative;height:5px;background:#243029;border-radius:3px;overflow:visible}
 .host-bar-fill{height:100%;border-radius:3px}
 .host-bar i{position:absolute;top:-2px;width:1px;height:9px;background:#e7a064;opacity:.8}

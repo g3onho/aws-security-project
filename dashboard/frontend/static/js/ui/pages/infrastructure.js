@@ -3,6 +3,7 @@ import {state,metricsFor,servicesOf} from '../context.js?v=ui-1';
 import {esc,format,formatAt,milliseconds} from '../components/format.js?v=ui-1';
 import {header,empty,canvas} from '../components/panel.js?v=ui-1';
 import {drawChart} from '../charts/charts.js?v=ui-1';
+import {periodStops} from '../constants.js?v=ui-1';
 // ── 인프라 모니터링 ────────────────────────────────────────
 // 7934104(v17) 화면 — 호스트 카드 · CPU/메모리 차트 · 임계치 초과 구간 · 3계층 상태 — 을
 // 표준 API(/api/metrics 시계열, /api/infra/status 구성요소)에 맞춰 되살린 것.
@@ -12,6 +13,8 @@ const SERVICE_COLOR={healthy:'#32d4be',degraded:'#d8ca78',unhealthy:'#ef777f',un
 const periodLabel=s=>s==null?'—':s>=3600?`${s/3600}시간`:`${s/60}분`;
 const pct=v=>v==null?'—':Math.round(v*10)/10+'%';
 const metricKo=m=>m==='cpu'?'CPU':'메모리';
+// 기간 버튼과 같은 이름(15분·1시간·1일·1주일). 목록에 없는 값만 시간·분으로 적는다.
+const periodName=hours=>periodStops.find(s=>s.hours===hours)?.label||(hours<1?Math.round(hours*60)+'분':hours+'시간');
 let infraHost='';
 function servicePill(status){const c=SERVICE_COLOR[status]||SERVICE_COLOR.unknown;return `<span class="service-pill" style="color:${c}"><i style="background:${c}"></i>${SERVICE_TEXT[status]||esc(status)} <small>${esc(status)}</small></span>`;}
 // 임계치를 넘은 연속 표본을 한 구간으로 묶는다.
@@ -45,14 +48,16 @@ function breachPanel(h,span){
  if(!h.breaches.length)return `<div class="context-note">선택 구간에 ${h.threshold.cpu}% 임계치를 넘은 표본이 없습니다. CPU 최대 ${pct(h.stats.cpu.max)} · 메모리 최대 ${pct(h.stats.memory.max)}.</div>`;
  return `<ul class="breach-list">${h.breaches.map(b=>`<li><span class="breach-metric" style="color:${b.metric==='cpu'?'#e7a064':'#ef777f'}">${metricKo(b.metric)}</span><span>${formatAt(b.from,span)} — ${formatAt(b.to,span)} KST</span><b>최고 ${pct(b.peak)}</b><small>표본 ${b.samples}개 · 임계치 ${h.threshold[b.metric]}%</small></li>`).join('')}</ul>`;
 }
-function hostGrid(hosts,sel){
+// 카드 수치는 선택 기간의 평균·최대다(마지막 표본이 아니다) — 기간 버튼을 바꾸면 함께 바뀐다.
+function hostGrid(hosts,sel,label){
  const bar=(v,limit)=>`<div class="host-bar"><div class="host-bar-fill" style="width:${Math.min(100,v||0)}%;background:${v>limit?'#e7a064':'#32d4be'}"></div><i style="left:${limit}%"></i></div>`;
+ const row=(name,s)=>`<div class="host-metric"><span>${name} <small>${esc(label)} 평균</small></span><b>${pct(s.avg)}</b></div><div class="host-metric host-metric-sub"><span>최대</span><span>${pct(s.max)}</span></div>`;
  return `<div class="host-grid">${hosts.map(h=>{
   const over=h.breaches.length,on=h===sel;
   return `<button data-key="host-${esc(h.resource)}" class="host-card ${on?'selected':''} ${over?'over':''}" data-host="${esc(h.resource)}" aria-pressed="${on}">
    <div class="host-card-head"><strong>${esc(h.name)}</strong><small>EC2</small></div>
-   <div class="host-metric"><span>CPU</span><b>${pct(h.stats.cpu.now)}</b></div>${bar(h.stats.cpu.now,h.threshold.cpu)}
-   <div class="host-metric"><span>메모리</span><b>${pct(h.stats.memory.now)}</b></div>${bar(h.stats.memory.now,h.threshold.memory)}
+   ${row('CPU',h.stats.cpu)}${bar(h.stats.cpu.avg,h.threshold.cpu)}
+   ${row('메모리',h.stats.memory)}${bar(h.stats.memory.avg,h.threshold.memory)}
    <div class="host-card-foot">${over?`<span class="over-flag">임계 초과 ${over}구간</span>`:'<span>임계 초과 없음</span>'}<small>${esc(h.resource)}</small></div>
   </button>`;}).join('')}</div>`;
 }
@@ -68,11 +73,11 @@ export function infrastructure(){
  const m=metricsFor(),svc=servicesOf(),span=state.hours*3600000,hosts=hostViews(m);
  if(!hosts.length)return `<div class="view-intro"><span>CloudWatch · CPU / 메모리</span></div><section class="panel">${header('EC2 자원 사용률','대상 없음')}${empty('조회 기간에 수집된 EC2 지표가 없습니다.')}</section>
   <section class="panel full-panel">${header('3계층 서비스',svc?`${(svc.components||[]).length}개 구성요소`:'조회 실패')}${serviceFlow(svc,hosts)}</section>`;
- const h=selectedHost(hosts),overCpu=h.breaches.filter(b=>b.metric==='cpu').length,overMem=h.breaches.length-overCpu;
+ const label=periodName(state.hours),h=selectedHost(hosts),overCpu=h.breaches.filter(b=>b.metric==='cpu').length,overMem=h.breaches.length-overCpu;
  const samples=hosts.reduce((a,x)=>a+x.stats.cpu.samples,0);
- return `<div class="view-intro"><span>운영 중인 서버 ${hosts.length}대 · ${periodLabel(m.periodSeconds)} 평균 · 표본 ${samples}개</span><span>최근 ${state.hours<1?Math.round(state.hours*60)+'분':state.hours>=24?state.hours/24+'일':state.hours+'시간'} · 경보 임계치 <strong class="mint">${h.threshold.cpu}%</strong></span></div>
- <section class="panel">${header('운영 중인 서버',`${hosts.length}대 · 카드를 누르면 아래 상세 차트가 바뀝니다`)}${hostGrid(hosts,h)}
-  <div class="context-note">리전에서 조회된 EC2 전체입니다. CPU·메모리 모두 5분 평균입니다(CPU 는 EC2 기본 모니터링 5분 간격). 메모리는 CloudWatch Agent 가 설치된 호스트만 수집됩니다.</div></section>
+ return `<div class="view-intro"><span>운영 중인 서버 ${hosts.length}대 · ${periodLabel(m.periodSeconds)} 평균 · 표본 ${samples}개</span><span>최근 ${esc(label)} · 경보 임계치 <strong class="mint">${h.threshold.cpu}%</strong></span></div>
+ <section class="panel">${header('운영 중인 서버',`${hosts.length}대 · 카드를 누르면 아래 상세 차트가 바뀝니다`)}${hostGrid(hosts,h,label)}
+  <div class="context-note">리전에서 조회된 EC2 전체입니다. 카드 수치는 선택 기간(최근 ${esc(label)})의 5분 평균 표본을 다시 평균·최대로 낸 값이며, 기간 버튼을 바꾸면 함께 바뀝니다. 표본은 5분 평균입니다(CPU 는 EC2 기본 모니터링 5분 간격). 메모리는 CloudWatch Agent 가 설치된 호스트만 수집됩니다.</div></section>
  <div class="infrastructure-grid">
   <section class="panel">${header(`상세 · ${esc(h.name)}`,hostPicker(hosts,h))}<div class="metric-large">${canvas('metrics-chart',`CPU ${pct(h.stats.cpu.now)}, 메모리 ${pct(h.stats.memory.now)}, 임계치 ${h.threshold.cpu}%`)}</div>
    <div class="metric-stats"><div><span>CPU 현재</span><b>${pct(h.stats.cpu.now)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(h.stats.cpu.max)} / ${pct(h.stats.cpu.avg)}</b></div><div><span>메모리 현재</span><b>${pct(h.stats.memory.now)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(h.stats.memory.max)} / ${pct(h.stats.memory.avg)}</b></div></div>

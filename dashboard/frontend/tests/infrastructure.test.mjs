@@ -6,8 +6,8 @@ import {ROOT, until, makeFetchMock, appDOM} from './dom-test-support.mjs';
 
 test('infrastructure uses standard metrics and component status fields',async t=>{
  const network=makeFetchMock();const iso=new Date().toISOString();
- const earlier=new Date(Date.now()-300000).toISOString();
- network.respond('/api/metrics',{data:{series:[{resource:'i-fixture',name:'docker-host',region:'ap-northeast-2',metric:'cpu',unit:'%',collectionStatus:'available',observedAt:iso,points:[{timestamp:earlier,value:91},{timestamp:iso,value:42}]}],periodSeconds:300},meta:{schemaVersion:'1',asOf:iso}});
+ const earlier=new Date(Date.now()-300000).toISOString(),twoHours=new Date(Date.now()-2*3600000).toISOString();
+ network.respond('/api/metrics',{data:{series:[{resource:'i-fixture',name:'docker-host',region:'ap-northeast-2',metric:'cpu',unit:'%',collectionStatus:'available',observedAt:iso,points:[{timestamp:twoHours,value:10},{timestamp:earlier,value:91},{timestamp:iso,value:42}]}],periodSeconds:300},meta:{schemaVersion:'1',asOf:iso}});
  network.respond('/api/infra/status',{data:{components:[{id:'one',name:'EC2',resource:'i-fixture',status:'healthy',source:'EC2',detail:'running',observedAt:iso}],dependencies:[]},meta:{schemaVersion:'1',asOf:iso}});
  const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
@@ -30,6 +30,12 @@ test('infrastructure uses standard metrics and component status fields',async t=
  assert.equal(Date.parse(metricCall.url.searchParams.get('to'))-Date.parse(metricCall.url.searchParams.get('from')),7*86400000);
  await until(()=>$('#time-label').textContent.includes('임계 초과'));
  assert.match($('#time-label').textContent,/임계 초과 1구간/);
+ // 호스트 카드는 마지막 표본이 아니라 선택 기간의 평균·최대다 — 기간을 바꾸면 값도 바뀐다.
+ // 기본 1일: (10+91+42)/3=47.7 → 1시간: 2시간 전 표본이 빠져 (91+42)/2=66.5
+ assert.match($('.host-card').textContent,/1일 평균\s*47\.7%/);
+ click('[data-hours="1"]');
+ await until(()=>/1시간 평균\s*66\.5%/.test($('.host-card')?.textContent||''),'period change did not update host card');
+ assert.match($('.host-card').textContent,/최대\s*91%/);
  assert.deepEqual(errors,[]);
 });
 
