@@ -94,6 +94,21 @@ def drills_list():
     return jsonify(envelope(drills().run_list(), g.request_id))
 
 
+@bp.post("/api/drills/web-scan/start")
+def drills_web_scan_start():
+    # 실제 공격(SSM SendCommand)을 실행한다 → 조회 전용 게이트를 적용한다.
+    if not current_app.config["WRITE_ENABLED"]:
+        raise Problem(403, "현재 조회 전용 모드입니다.", "WRITE_DISABLED")
+    params = request.get_json(silent=True) if request.is_json else {}
+    result = drills().start_web_scan(params or {}, g.actor)
+    return jsonify(envelope(result, g.request_id)), 202
+
+
+@bp.get("/api/drills/web-scan/<string:run_id>/status")
+def drills_web_scan_status(run_id):
+    return jsonify(envelope(drills().web_scan_status(run_id), g.request_id))
+
+
 @bp.get("/api/drills/<string:run_id>")
 def drills_detail(run_id):
     return jsonify(envelope(drills().run_detail(run_id), g.request_id))

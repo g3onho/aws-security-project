@@ -42,3 +42,11 @@ class AwsSession:
         if name not in self._clients:
             self._clients[name] = self._session.client(name, region_name=self.region)
         return self._clients[name]
+
+    def regional_client(self, name, region):
+        """홈 리전이 아닌 리전의 클라이언트(지리별 공격자 SSM 호출용)."""
+        self.require_ready()
+        key = (name, region)
+        if key not in self._clients:
+            self._clients[key] = self._session.client(name, region_name=region)
+        return self._clients[key]

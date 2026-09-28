@@ -42,6 +42,15 @@ class UnconfiguredProvider:
     def measure(self, event):
         self.require_ready()
 
+    def discover_attackers(self, regions):
+        self.require_ready()
+
+    def run_web_attack(self, attackers, parameters):
+        self.require_ready()
+
+    def attack_command_status(self, commands):
+        self.require_ready()
+
     def status(self):
         return {"connected": False, "state": "not_configured", "detail": "DATA_PROVIDER is not configured"}
 
@@ -143,3 +152,56 @@ class AwsProvider:
 
     def measure(self, event):
         raise Problem(403, "실제 재검증 공급자는 아직 활성화되지 않았습니다.", "ACTION_PROVIDER_DISABLED")
+
+    # --- 지리별 공격 실행(웹보안검사 [시작]) ---------------------------------
+    # SSM Command 문서는 리전별 리소스라, 공격자가 있는 각 리전의 ssm 클라이언트로
+    # SendCommand 한다. 결과 지리 표시는 기존 GuardDuty finding(observations) 경로가 맡는다.
+
+    def discover_attackers(self, regions):
+        """각 리전에서 태그 AttackerFor=dvwa 인 running 인스턴스를 찾는다.
+        -> [{regionLabel, instanceId, regionCode}]. IP가 바뀌어도 견고하게 태그로 탐색."""
+        self.require_ready()
+        found = []
+        for code in regions:
+            ec2 = self._aws.regional_client("ec2", code)
+            try:
+                reservations = ec2.describe_instances(Filters=[
+                    {"Name": "tag:AttackerFor", "Values": ["dvwa"]},
+                    {"Name": "instance-state-name", "Values": ["running"]},
+                ]).get("Reservations", [])
+            except Exception:
+                continue
+            for res in reservations:
+                for inst in res.get("Instances", []):
+                    label = next((t["Value"] for t in inst.get("Tags", []) if t["Key"] == "RegionLabel"), code)
+                    found.append({"regionLabel": label, "instanceId": inst["InstanceId"], "regionCode": code})
+        return found
+
+    def run_web_attack(self, attackers, parameters):
+        """attackers: [{regionCode, instanceId, regionLabel, documentName}]. 실행한 command 목록을 돌려준다."""
+        self.require_ready()
+        launched = []
+        for a in attackers:
+            ssm = self._aws.regional_client("ssm", a["regionCode"])
+            params = {k: [str(v)] for k, v in parameters.items() if v is not None and v != ""}
+            params["RegionLabel"] = [a["regionLabel"]]
+            resp = ssm.send_command(DocumentName=a["documentName"], InstanceIds=[a["instanceId"]],
+                                    Parameters=params, TimeoutSeconds=600)
+            launched.append({"regionLabel": a["regionLabel"], "regionCode": a["regionCode"],
+                             "instanceId": a["instanceId"], "commandId": resp["Command"]["CommandId"]})
+        return launched
+
+    def attack_command_status(self, commands):
+        """commands: [{regionCode, instanceId, commandId, regionLabel}] -> 리전별 진행상태·출력 요약."""
+        self.require_ready()
+        out = []
+        for c in commands:
+            ssm = self._aws.regional_client("ssm", c["regionCode"])
+            try:
+                inv = ssm.get_command_invocation(CommandId=c["commandId"], InstanceId=c["instanceId"])
+                out.append({"regionLabel": c["regionLabel"], "status": inv["Status"],
+                            "output": (inv.get("StandardOutputContent") or "")[-4000:]})
+            except Exception as error:  # 등록 직후엔 InvocationDoesNotExist 가능
+                out.append({"regionLabel": c["regionLabel"], "status": "Pending",
+                            "detail": type(error).__name__})
+        return out

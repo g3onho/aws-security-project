@@ -31,6 +31,19 @@ def configure(overrides=None):
         "VULNERABILITIES_TABLE": os.getenv("VULNERABILITIES_TABLE") or None,
         "EVENT_SOURCE": os.getenv("EVENT_SOURCE", "securityhub").lower(),
         "VULNERABILITY_SOURCE": os.getenv("VULNERABILITY_SOURCE", "inspector").lower(),
+        # Terraform name_prefix. CloudWatch 알람 이름 접두어·메모리 지표 네임스페이스. 없으면 경보 상태를 읽지 않는다.
+        "NAME_PREFIX": os.getenv("NAME_PREFIX") or None,
+        # asr_trigger 와 같은 자동 조치 설정(dashboard.sh.tftpl). 탐지 상세의 "자동 조치 여부" 예상에 쓴다.
+        # 셋 중 하나라도 없으면 예상하지 않고 '확인 불가'로 표시한다.
+        "AUTO_REMEDIABLE_PATTERNS": os.getenv("AUTO_REMEDIABLE_PATTERNS"),
+        "AUTO_REMEDIABLE_CONTROLS": os.getenv("AUTO_REMEDIABLE_CONTROLS"),
+        "ENABLE_AUTO_REMEDIATION": os.getenv("ENABLE_AUTO_REMEDIATION"),
+        # 지리별 공격 실행(웹보안검사 [시작]). terraform 이 dashboard.sh 로 주입.
+        # 공격자 인스턴스는 런타임에 태그(AttackerFor=dvwa)로 각 리전에서 탐색한다(순환참조 회피).
+        "ATTACK_REGIONS": os.getenv("ATTACK_REGIONS") or None,  # "us-east-1,ap-southeast-1,..."
+        "ATTACK_DOCUMENT_NAME": os.getenv("ATTACK_DOCUMENT_NAME") or None,
+        "DVWA_TARGET_IP": os.getenv("DVWA_TARGET_IP") or None,
+        "SCAN_RESULTS_BUCKET": os.getenv("SCAN_RESULTS_BUCKET") or None,
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),

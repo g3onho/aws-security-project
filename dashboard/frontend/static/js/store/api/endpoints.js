@@ -4,4 +4,6 @@ export const endpoints=Object.freeze({
  events:'/api/events',summary:'/api/summary',metrics:'/api/metrics',infra:'/api/infra/status',
  vulnerabilities:'/api/vulnerabilities',history:'/api/history',health:'/health',
  drillsCatalog:'/api/drills/catalog',drills:'/api/drills',
+ drillWebScanStart:'/api/drills/web-scan/start',
+ drillWebScanStatus:runId=>`/api/drills/web-scan/${encodeURIComponent(runId)}/status`,
 });

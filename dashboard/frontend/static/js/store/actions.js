@@ -161,6 +161,19 @@ export const actions={
    return {items:result.items,nextCursor:result.nextCursor??null};
   }catch(error){markRequest('drills',{status:'error',error:error.message});throw error;}
  },
+ // 지리별 웹보안검사 실행/상태. 실제 공격(SSM)이라 서버가 WRITE_ENABLED 로 막을 수 있다(403).
+ async startWebScan(params={}){
+  markRequest('startWebScan',{status:'loading'});
+  try{
+   const result=envelope(await request(endpoints.drillWebScanStart,{method:'POST',body:JSON.stringify(params||{})})).data;
+   markRequest('startWebScan',{status:'success',lastUpdated:Date.now(),error:null});
+   return result;
+  }catch(error){markRequest('startWebScan',{status:'error',error:error.message});throw error;}
+ },
+ async webScanStatus(runId){
+  const result=envelope(await request(endpoints.drillWebScanStatus(runId))).data;
+  return result;
+ },
  async logout(){session.controller?.abort();session.generation++;await request(endpoints.logout,{method:'POST',body:'{}'});reset();location.assign('/login');},
  // CSV 내보내기용 이벤트 전체(현재 기간·리전·위험도·상태 필터). 파일 만들기·내려받기는 화면(downloads.js) 몫이다.
  async exportEvents(){const {items}=await pages(endpoints.events,query());return {items};},

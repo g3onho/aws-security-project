@@ -94,13 +94,64 @@ class DrillRuns:
         import json
         return json.loads(row[0])
 
+    def save(self, run):
+        import json
+        from .store import now_ms
+        with self.store.connect(write=True) as db:
+            db.execute("INSERT INTO drills (run_id, payload, created_at) VALUES (?,?,?)",
+                       (run["runId"], json.dumps(run), now_ms()))
+
 
 class DrillService:
-    """조회 전용 실습 서비스. 실제 실행·측정 공급자는 호출하지 않는다."""
+    """실습 서비스. 조회 + 지리별 웹보안검사 실행(SSM). 실행은 라우트에서 WRITE_ENABLED 로 막는다.
 
-    def __init__(self, store, provider):
+    attack_config(선택): {documentName, targetIp, scanBucket, regions:[리전코드…]}
+    공격자 인스턴스는 실행 시점에 각 리전에서 태그로 탐색한다. 미배포면 409.
+    """
+
+    def __init__(self, store, provider, attack_config=None):
         self.runs = DrillRuns(store)
         self.provider = provider
+        self.attack_config = attack_config or {}
+
+    def attack_ready(self):
+        cfg = self.attack_config
+        return bool(cfg.get("documentName") and cfg.get("targetIp") and cfg.get("regions"))
+
+    def start_web_scan(self, params, actor):
+        cfg = self.attack_config
+        if not self.attack_ready():
+            raise Problem(409, "지리별 공격 설정이 없습니다. terraform enable_geo_attackers 를 켜고 대시보드 env를 확인하세요.",
+                          "GEO_ATTACKERS_NOT_CONFIGURED")
+        attackers = self.provider.discover_attackers(cfg["regions"]) or []
+        if not attackers:
+            raise Problem(409, "실행 중인 공격자 노드를 찾지 못했습니다(태그 AttackerFor=dvwa). 배포·부팅을 확인하세요.",
+                          "GEO_ATTACKERS_NOT_FOUND")
+
+        parameters = {
+            "TargetHost": cfg["targetIp"],
+            "ScanBucket": cfg.get("scanBucket", ""),
+            "SshUser": (params or {}).get("sshUser", "victim"),
+            "DvwaSession": (params or {}).get("dvwaSession", ""),
+        }
+        targets = [{**a, "documentName": cfg["documentName"]} for a in attackers]
+        launched = self.provider.run_web_attack(targets, parameters)
+
+        import uuid
+        from .store import now_ms
+        run = {"runId": str(uuid.uuid4()), "type": "web-scan", "variant": "web-dvwa",
+               "actor": actor, "startedAt": now_ms(), "targetIp": cfg["targetIp"],
+               "commands": launched}
+        self.runs.save(run)
+        return {"runId": run["runId"], "launched": launched}
+
+    def web_scan_status(self, run_id):
+        run = self.runs.get(run_id)
+        if run is None:
+            raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
+        regions = self.provider.attack_command_status(run.get("commands", []))
+        return {"runId": run_id, "targetIp": run.get("targetIp"),
+                "startedAt": run.get("startedAt"), "regions": regions}
 
     def environment(self):
         status = self.provider.status()
@@ -111,6 +162,7 @@ class DrillService:
             "region": status.get("region"),
             "isolationVerified": "unknown",
             "executionMode": "live",
+            "webScanReady": self.attack_ready(),
         }
 
     def catalog(self):

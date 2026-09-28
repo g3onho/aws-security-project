@@ -17,6 +17,17 @@ from .worker import Worker
 from .workflow import Workflow
 
 
+def _attack_config(settings):
+    """지리별 웹보안검사 실행 설정. 값이 없으면 실행 경로는 409(미배포)로 남는다."""
+    regions = [r.strip() for r in (settings.get("ATTACK_REGIONS") or "").split(",") if r.strip()]
+    return {
+        "documentName": settings.get("ATTACK_DOCUMENT_NAME"),
+        "targetIp": settings.get("DVWA_TARGET_IP"),
+        "scanBucket": settings.get("SCAN_RESULTS_BUCKET"),
+        "regions": regions,
+    }
+
+
 def create_app(overrides=None):
     settings = configure(overrides)
     frontend = Path(settings["FRONTEND_PATH"]).resolve()
@@ -41,7 +52,7 @@ def create_app(overrides=None):
     app.extensions.update(store=store, provider=provider, workflow=workflow,
                           worker=worker,
                           standard_service=StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"]),
-                          drill_service=DrillService(store, provider))
+                          drill_service=DrillService(store, provider, attack_config=_attack_config(settings)))
 
     @app.before_request
     def request_context():
