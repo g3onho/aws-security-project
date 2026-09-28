@@ -25,7 +25,9 @@ test('canonical events, vulnerabilities, and history render without legacy reque
  await until(()=>$('#content .event-link'));
  click('#content .event-link');
  await until(()=>$('#event-dialog').open&&$('#dialog-content').textContent.includes('i-fixture'));
- assert($('#dialog-content').textContent.includes('표준 이벤트 API'));
+ assert($('#dialog-content').textContent.includes('무엇이 문제인가'));
+ await until(()=>$('#event-history')?.textContent.includes('자동 조치 판정 기록이 없습니다'),'event history loads through the Store');
+ assert(network.calls.some(call=>call.pathname==='/api/history'&&call.url.searchParams.get('eventId')==='EVT-0003'));
  assert.equal($('#dialog-content').querySelector('[data-action="approve"]'),null);
  click('#dialog-content [data-action="close"]');
  click('nav [data-view="vulnerabilities"]');

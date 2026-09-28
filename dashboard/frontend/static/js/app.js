@@ -38,8 +38,8 @@ function render({loadPanels=false}={}){
    renderContent(`<div id="vulns" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
    if(loadPanels)pending.push(renderVulnerabilities());
  }else if(state.view==='responses'){
-  // 탐지 목록이 아니라 조치 기록을 보여준다(v20).
-  renderContent(`<div class="view-intro"><span>자동조치 판정과 수동 조치 기록입니다(선택 기간에 마지막으로 발생한 기록, 최대 30일 보존). '실행 완료'는 재검증 전 상태이며 해결을 뜻하지 않습니다.</span></div><section class="panel full-panel">${header('대응 이력','HISTORY')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
+  // 탐지 목록이 아니라 조치 기록을 보여준다(v20). 설명 문구는 패널 안에 둔다(v23).
+  renderContent(`<section class="panel full-panel">${header('조치 이력','선택 기간에 마지막으로 발생한 기록')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
   if(loadPanels)pending.push(renderAudit().then(()=>renderTrack()));   // 1주일 이력이 오면 트랙을 이력 수로 다시 그린다
  }else if(state.view==='drills'){
   renderContent(`<div id="drills" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
@@ -54,7 +54,7 @@ function render({loadPanels=false}={}){
   renderContent(head+before+table(visible,true)+after);
   if(state.view==='responses'&&loadPanels)pending.push(renderAudit().then(()=>renderTrack()));
  }
- renderNotifications(rows);
+ renderNotifications();
  $('#footer-asof').textContent=`기준 데이터 ${format(summary.asOf)} KST`;
  cleanCharts();
  syncUrl();
@@ -62,11 +62,11 @@ function render({loadPanels=false}={}){
 }
 function rangeEnd(){return summary.queryTo||Date.now();}
 // 기간 트랙(v20.5): 지금 → 15분·1시간·1일·1주일 누적 곡선. 지점 = 기간 버튼. 화면마다 세는 대상이 다르다.
-//  통합 관제·보안 이벤트 = 탐지 / 인프라 = 임계 초과 구간(끝 시각 기준 → 기간과 겹치는 구간, 화면 표와 같은 수) / 대응 이력 = 이력(마지막 발생 시각)
-const historyAt=row=>Date.parse(row.lastSeenAt||row.createdAt);   // 서버 대응 이력 기간 기준과 같다
+//  통합 관제·보안 이벤트 = 탐지 / 인프라 = 임계 초과 구간(끝 시각 기준 → 기간과 겹치는 구간, 화면 표와 같은 수) / 조치 이력 = 이력(마지막 발생 시각)
+const historyAt=row=>Date.parse(row.lastSeenAt||row.createdAt);   // 서버 조치 이력 기간 기준과 같다
 function trackSource(){
  if(state.view==='infrastructure')return {noun:'임계 초과',unit:'구간',times:selectors.metricWeek()?hostViews(selectors.metricWeek()).flatMap(h=>h.breaches.map(b=>b.to)):null};
- if(state.view==='responses'){const week=selectors.historyWeek();return {noun:'대응 이력',unit:'건',times:week?week.map(historyAt):null};}
+ if(state.view==='responses'){const week=selectors.historyWeek();return {noun:'조치 이력',unit:'건',times:week?week.map(historyAt):null};}
  return {noun:'탐지',unit:'건',times:(selectors.week()||selectEvents()).map(e=>e.at)};
 }
 function renderTrack(end=rangeEnd()){
@@ -139,7 +139,8 @@ async function refresh(options={}){
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
   $('#session-user').textContent=config().user.name+' · '+(config().role==='operator'?'조치 담당':'조회 전용');
   applyModeLabels();
-  $('#worker-state').textContent=(summary.health.checks.worker==='ok'?'작업 처리기 정상':'조치 실행 비활성 · 조회 전용')+(summary.warnings?.length?' · ⚠ '+summary.warnings.join(' · '):'');
+  // v23: '조치 실행 비활성 · 조회 전용' 고정 문구는 뺐다(대시보드는 조회 전용이고 자동 조치는 SOAR 가 한다). 경고만 보인다.
+  $('#worker-state').textContent=summary.warnings?.length?'⚠ '+summary.warnings.join(' · '):'';
  }catch(e){
   if(serial!==ui.refreshSerial||e.name==='AbortError')return;
   applyModeLabels();

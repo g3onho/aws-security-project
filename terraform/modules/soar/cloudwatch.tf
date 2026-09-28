@@ -88,16 +88,77 @@ resource "aws_cloudwatch_log_metric_filter" "mysql_auth_fail" {
   }
 }
 
+# 무차별 대입 알람 평가 구간(SEC-06A MySQL · SEC-06B SSH 공통). asr_trigger 가 같은 값으로 로그를 읽을
+# 구간을 정한다(lambda.tf ALARM_WINDOW_SECONDS, DEC-018·DEC-019).
+locals {
+  bruteforce_alarm_period             = 300
+  bruteforce_alarm_evaluation_periods = 1
+}
+
 resource "aws_cloudwatch_metric_alarm" "mysql_bruteforce" {
   alarm_name          = "${var.name_prefix}-mysql-bruteforce"
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
+  evaluation_periods  = local.bruteforce_alarm_evaluation_periods
   metric_name         = "MySQLAuthFailure"
   namespace           = "${var.name_prefix}/security"
-  period              = 300
+  period              = local.bruteforce_alarm_period
   statistic           = "Sum"
   threshold           = var.mysql_auth_fail_threshold
   alarm_description   = "MySQL auth failures >= ${var.mysql_auth_fail_threshold} in 5 min (possible brute force)"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = merge(var.tags, { Scenario = "SEC-06" })
+}
+
+############################################
+# SEC-06B — SSH(22) 접속 시도 거부 급증 (DEC-019)
+# 22번은 어떤 보안그룹도 열지 않으므로 두드리면 VPC Flow Logs 에 REJECT 로 남는다(방화벽 거부 로그처럼 읽는다).
+# VPC 내부 출발지만 센다 — 공인 IP(DVWA)로 들어오는 인터넷 상시 스캔까지 세면 알람이 멈추지 않는다.
+# 출발지는 VPC CIDR 앞 옥텟(/16 이면 10.0.*)으로 거르고, 정확한 CIDR·보호 자산 확인은 asr_trigger 가 한다.
+# 와일드카드는 CloudWatch 필터 문법 문서 예시(status_code = 4*)처럼 따옴표 없이 쓴다.
+# 정확히 일치할 값(22·6·REJECT)은 Flow Logs 문서 예시처럼 따옴표로 쓴다.
+# 필드 순서는 Flow Logs 기본 형식(v2). GuardDuty 는 SSH 공격 탐지 검증 경로로 그대로 둔다(DEC-005).
+############################################
+
+locals {
+  enable_ssh_reject = var.enable_flow_logs && contains(var.auto_remediable_controls, "SEC-06B")
+  vpc_cidr_octets   = max(1, floor(tonumber(split("/", var.vpc_cidr)[1]) / 8))
+  vpc_source_prefix = join(".", slice(split(".", cidrhost(var.vpc_cidr, 0)), 0, local.vpc_cidr_octets))
+  ssh_reject_pattern = join(" ", [
+    "[version, account, eni, srcaddr=${local.vpc_source_prefix}.*, dstaddr, srcport,",
+    "dstport=\"22\", protocol=\"6\", packets, bytes, start, end, action=\"REJECT\", status]",
+  ])
+}
+
+resource "aws_cloudwatch_log_metric_filter" "ssh_reject" {
+  count = local.enable_ssh_reject ? 1 : 0
+
+  name           = "${var.name_prefix}-ssh-reject"
+  log_group_name = var.log_group_flowlogs
+  pattern        = local.ssh_reject_pattern
+
+  metric_transformation {
+    name          = "SSHRejectCount"
+    namespace     = "${var.name_prefix}/security"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ssh_reject" {
+  count = local.enable_ssh_reject ? 1 : 0
+
+  alarm_name          = "${var.name_prefix}-ssh-reject"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = local.bruteforce_alarm_evaluation_periods
+  metric_name         = "SSHRejectCount"
+  namespace           = "${var.name_prefix}/security"
+  period              = local.bruteforce_alarm_period
+  statistic           = "Sum"
+  threshold           = var.ssh_reject_alarm_threshold
+  alarm_description   = "Rejected SSH(22) attempts from inside the VPC >= ${var.ssh_reject_alarm_threshold} in 5 min (SEC-06B)"
   treat_missing_data  = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]

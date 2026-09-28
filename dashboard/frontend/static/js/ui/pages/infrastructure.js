@@ -1,4 +1,4 @@
-// 인프라 모니터링: 호스트 카드·CPU/메모리 차트·임계치 초과 구간·3계층 상태. PR-6 이 고칠 곳.
+// 인프라 모니터링: 호스트 카드·CPU/메모리 차트·임계치 초과 구간·CloudWatch 경보·서버 가동 상태·3계층(확인 불가).
 import {state,metricsFor,servicesOf} from '../context.js?v=ui-1';
 import {esc,format,formatAt,milliseconds} from '../components/format.js?v=ui-1';
 import {header,empty,canvas} from '../components/panel.js?v=ui-1';
@@ -65,18 +65,44 @@ function hostGrid(hosts,sel,label){
    <div class="host-card-foot">${over?`<span class="over-flag">임계 초과 ${over}구간</span>`:'<span>임계 초과 없음</span>'}<small>${esc(h.resource)}</small></div>
   </button>`;}).join('')}</div>`;
 }
-function serviceFlow(svc,hosts){
- if(!svc)return `<div class="context-note">3계층 상태를 불러오지 못했습니다. 새로고침 후에도 같으면 백엔드 /api/infra/status 응답을 확인하세요.</div>`;
+// v23: EC2 가동 상태와 3계층(Nginx·Flask·MySQL)을 나눈다. EC2 목록을 화살표로 이어 계층처럼 보이게 하지 않는다.
+function serverStatus(svc,hosts){
+ if(!svc)return `<div class="context-note">서버 상태를 불러오지 못했습니다. 새로고침 후에도 같으면 백엔드 /api/infra/status 응답을 확인하세요.</div>`;
  const items=svc.components||[];
- if(!items.length)return empty('저장된 인프라 상태 증거가 없습니다.');
- const nameOf=id=>hosts.find(h=>h.resource===id)?.name||id;
- return `<div class="service-flow">${items.map((c,i)=>`${i?`<span class="service-arrow" style="color:${SERVICE_COLOR[c.status]||SERVICE_COLOR.unknown}">→</span>`:''}<div class="service-node ${c.status==='unhealthy'?'down':esc(c.status)}"><strong>${esc(c.name)}</strong>${servicePill(c.status)}<small>${esc(nameOf(c.resource))}</small></div>`).join('')}</div>
- <div class="table-scroll"><table class="service-table"><caption class="sr-only">계층별 점검 결과</caption><thead><tr><th>계층</th><th>자원</th><th>상태</th><th>판정 근거</th><th>관측 시각</th></tr></thead><tbody>${items.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(nameOf(c.resource))}<br><small class="muted">${esc(c.resource)}</small></td><td>${servicePill(c.status)}</td><td>${esc(c.detail||'—')}<br><small class="muted">${esc(c.source||'')}</small></td><td>${format(milliseconds(c.observedAt))}</td></tr>`).join('')}</tbody></table></div>`;
+ if(!items.length)return empty('조회 범위에 EC2 서버가 없습니다.');
+ const nameOf=c=>hosts.find(h=>h.resource===c.resource)?.name||c.name||c.resource;
+ return `<div class="table-scroll"><table class="service-table"><caption class="sr-only">서버 가동 상태</caption><thead><tr><th>서버</th><th>역할</th><th>가동 상태</th><th>근거</th><th>관측 시각</th></tr></thead><tbody>${items.map(c=>`<tr><td>${esc(nameOf(c))}<br><small class="muted">${esc(c.resource)}</small></td><td>${esc(c.role||'—')}</td><td>${servicePill(c.status)}</td><td>${esc(c.detail||'—')}<br><small class="muted">${esc(c.source||'')}</small></td><td>${format(milliseconds(c.observedAt))}</td></tr>`).join('')}</tbody></table></div>
+ <div class="context-note">EC2 인스턴스 상태(running 등)입니다. 서버 안의 서비스가 응답하는지는 뜻하지 않습니다.</div>`;
+}
+function tierFlow(svc){
+ const tiers=svc?.tiers||[];
+ if(!tiers.length)return `<div class="context-note">3계층 상태 정보가 없습니다.</div>`;
+ return `<div class="service-flow">${tiers.map((t,i)=>`${i?'<span class="service-arrow" aria-hidden="true">→</span>':''}<div class="service-node ${esc(t.status)}"><strong>${esc(t.name)}</strong>${servicePill(t.status)}<small>${esc(t.role||'')}</small></div>`).join('')}</div>
+ <div class="context-note">보호 대상 docker-host 의 웹(Nginx) → 앱(Flask) → DB(MySQL)입니다. 대시보드는 컨테이너에 직접 접속하지 않고, 계층 점검 결과를 저장하는 작업이 아직 없어 '확인 불가'로 표시합니다(정상이라는 뜻이 아닙니다).</div>`;
+}
+const ALARM_TEXT={ALARM:'경보',OK:'정상',INSUFFICIENT_DATA:'데이터 부족'};
+function alarmState(a){
+ if(a.state==='OK'&&a.noData)return '<span class="alarm-state muted" title="treat_missing_data=notBreaching — 데이터가 없어 정상으로 처리">데이터 없음</span>';
+ return `<span class="alarm-state ${a.state==='ALARM'?'bad':a.state==='OK'?'ok':'muted'}">${ALARM_TEXT[a.state]||esc(a.state)}</span>`;
+}
+const compareKo={GreaterThanThreshold:'>',GreaterThanOrEqualToThreshold:'≥',LessThanThreshold:'<',LessThanOrEqualToThreshold:'≤'};
+function alarmTable(svc){
+ const alarms=svc?.alarms;
+ if(alarms==null)return `<div class="context-note">CloudWatch 경보 정보를 불러오지 못했거나 대시보드에 알람 이름 접두어(NAME_PREFIX)가 설정되지 않았습니다.</div>`;
+ if(!alarms.length)return empty('조회 범위에 CloudWatch 경보가 없습니다.');
+ return `<div class="table-scroll"><table class="alarm-table"><caption class="sr-only">CloudWatch 경보</caption><thead><tr><th>상태</th><th>경보</th><th>조건</th><th>자동 대응</th><th>마지막 변경 (KST)</th></tr></thead><tbody>${alarms.map(a=>`<tr><td>${alarmState(a)}</td><td>${esc(a.label||a.name)}${a.scenario?` <span class="scenario-tag">${esc(a.scenario)}</span>`:''}<br><small class="muted">${esc(a.name)}</small></td><td>${esc(a.metric||'')} ${esc(compareKo[a.comparison]||a.comparison||'')} ${esc(a.threshold??'')}<br><small class="muted">${a.periodSeconds?`${Math.round(a.periodSeconds/60)}분`:''}${a.evaluationPeriods?` × ${a.evaluationPeriods}회`:''}${a.notifies?' · SNS 알림':''}</small></td><td>${a.autoResponse?`<span class="auto-chip ${a.autoResponse.mode==='auto'?'ok':a.autoResponse.mode==='dry-run'?'muted':'warn'}" title="${esc(a.autoResponse.detail||'')}">${esc(a.autoResponse.label)}</span>`:'<span class="muted">알림</span>'}</td><td>${format(milliseconds(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div>
+ <div class="context-note">'데이터 없음'은 지표·로그가 들어오지 않아 CloudWatch 가 정상으로 처리한 상태입니다. MySQL·Flow Logs 로그 전송 경로를 확인하세요.</div>`;
+}
+function infraSections(svc,hosts){
+ const alarms=svc?.alarms,firing=(alarms||[]).filter(a=>a.state==='ALARM').length;
+ return `<section class="panel full-panel">${header('CloudWatch 경보',alarms==null?'정보 없음':`${alarms.length}개 · 경보 ${firing}개`)}${alarmTable(svc)}</section>
+ <section class="panel full-panel">${header('서버 가동 상태',svc?`EC2 ${(svc.components||[]).length}대`:'조회 실패')}${serverStatus(svc,hosts)}</section>
+ <section class="panel full-panel">${header('3계층 서비스','Nginx → Flask → MySQL')}${tierFlow(svc)}</section>`;
 }
 export function infrastructure(){
  const m=metricsFor(),svc=servicesOf(),span=state.hours*3600000,hosts=hostViews(m);
  if(!hosts.length)return `<div class="view-intro"><span>CloudWatch · CPU / 메모리</span></div><section class="panel">${header('EC2 자원 사용률','대상 없음')}${empty('조회 기간에 수집된 EC2 지표가 없습니다.')}</section>
-  <section class="panel full-panel">${header('3계층 서비스',svc?`${(svc.components||[]).length}개 구성요소`:'조회 실패')}${serviceFlow(svc,hosts)}</section>`;
+  ${infraSections(svc,hosts)}`;
  const label=periodName(state.hours),h=selectedHost(hosts),overCpu=h.breaches.filter(b=>b.metric==='cpu').length,overMem=h.breaches.length-overCpu;
  const samples=hosts.reduce((a,x)=>a+x.stats.cpu.samples,0);
  return `<div class="view-intro"><span>운영 중인 서버 ${hosts.length}대 · ${periodLabel(m.periodSeconds)} 평균 · 표본 ${samples}개</span><span>최근 ${esc(label)} · 경보 임계치 <strong class="mint">${h.threshold.cpu}%</strong></span></div>
@@ -88,8 +114,7 @@ export function infrastructure(){
    <div class="context-note">${esc(h.resource)} — x축은 선택 기간 전체를 표시합니다. 최근 수치는 그 기간의 마지막 수집 표본입니다. 빈 구간에는 수집된 지표가 없습니다.${h.instanceIds.length>1?` 이전 인스턴스 ${h.instanceIds.length-1}개의 CloudWatch 기록을 연결했습니다. 세로 점선은 서버 교체 시점입니다.`:''}</div></section>
   <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(h,span)}
    <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>
-  <section class="panel full-panel">${header('3계층 서비스',svc?`${(svc.components||[]).length}개 구성요소 · 수집된 상태`:'조회 실패')}${serviceFlow(svc,hosts)}</section>
- </div>`;
+ </div>${infraSections(svc,hosts)}`;
 }
 // 5분 표본(v20.5)은 1주일에 2,016개라 그대로 그린다. 그보다 많아지면(집계 간격을 줄일 때) 구간 최댓값으로
 // 묶어 그린다(임계치 초과가 평균에 묻히지 않게). 통계·초과 구간 계산은 원본 표본 그대로다.

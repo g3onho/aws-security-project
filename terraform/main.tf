@@ -100,7 +100,16 @@ module "soar" {
 
   enable_auto_remediation  = var.enable_auto_remediation
   auto_remediable_patterns = var.auto_remediable_patterns
+  auto_remediable_controls = var.auto_remediable_controls
   alert_email              = var.alert_email
+
+  # SEC-06A·SEC-06B NACL 자동 차단 (DEC-018·DEC-019)
+  private_nacl_id            = module.network.private_nacl_id
+  vpc_id                     = module.network.vpc_id
+  vpc_cidr                   = var.vpc_cidr
+  enable_flow_logs           = var.enable_flow_logs
+  log_group_flowlogs         = module.network.flow_log_group_name
+  ssh_reject_alarm_threshold = var.ssh_reject_alarm_threshold
 
   enable_guardduty    = var.enable_guardduty
   enable_security_hub = var.enable_security_hub
@@ -172,6 +181,11 @@ module "compute" {
 
   ssm_automation_role_name = local.ssm_automation_role_name
   sns_topic_arn            = local.sns_topic_arn
+
+  # 대시보드 탐지 상세의 "자동 조치 대상" 표시용 — asr_trigger 와 같은 목록(DEC-015·DEC-017).
+  auto_remediable_patterns = var.auto_remediable_patterns
+  auto_remediable_controls = var.auto_remediable_controls
+  enable_auto_remediation  = var.enable_auto_remediation
 
   tags = local.common_tags
 }

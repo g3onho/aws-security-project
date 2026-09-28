@@ -78,7 +78,7 @@ export const actions={
    if(filters.view==='infrastructure')calls.push(request(endpoints.metrics+'?'+chartQuery,{signal}),request(endpoints.infra+'?'+metricQuery,{signal}));
    // 기간 트랙(v20.5)은 지금부터 1주일 전까지 누적 탐지 수를 그린다 → 1주일 목록. 1주일을 보고 있으면 본 목록을 그대로 쓴다.
    const weekQuery=new URLSearchParams(q);weekQuery.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());
-   // 인프라(임계 초과)·대응 이력(이력 수)은 트랙에 탐지를 쓰지 않는다.
+   // 인프라(임계 초과)·조치 이력(이력 수)은 트랙에 탐지를 쓰지 않는다.
    const weekRequest=['vulnerabilities','infrastructure','responses'].includes(filters.view)?Promise.resolve(null)
     :filters.hours===168?eventRequest:pages(endpoints.events,weekQuery,signal);
    const [[events,all,summaryResponse,health,metricsResponse,infraResponse],week]=await Promise.all([Promise.all(calls),weekRequest]);
@@ -100,6 +100,8 @@ export const actions={
    const resolved=rows.filter(e=>e.actionState==='VERIFIED').length;
    Object.assign(summary,{total:filters.source||filters.search?rows.length:standardSummary.totalEvents,resolved,
     openVulnerabilities:standardSummary.openVulnerabilities??null,
+    // v23 통합 관제: 자동 대응 현황(조치 이력 기준)·CloudWatch 경보 요약. 서버가 못 읽으면 null.
+    automation:standardSummary.automation??null,alarms:standardSummary.alarms??null,
     resolutionRate:rows.length?resolved/rows.length*100:null,asOf,queryTo:Date.parse(q.get('to')),collectedAt:asOf,snapshot:events.meta?.requestId,
     health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}},
     // 적재 지연·실패(v21, meta.warnings)와 형식 오류로 뺀 행 수(어댑터)를 숨기지 않는다.
@@ -118,6 +120,12 @@ export const actions={
  async detail(id){const event=details.get(id);if(!event)throw Error('현재 조회 범위에서 이벤트를 찾을 수 없습니다.');return event;},
  async change(){throw Error('조치 공급자가 연결되지 않아 읽기 전용입니다.');},
  async job(id,jobId){const q=query();q.set('jobId',jobId);const result=envelope(await request(endpoints.history+'?'+q)).data;return {execution:result.jobs.find(job=>job.jobId===jobId)};},
+ // 탐지 상세의 조치 기록(v23): 그 탐지의 자동조치 판정·실행 기록. 화면 기간과 무관하게 계약 최대 구간(최근 31일).
+ async eventHistory(eventId){
+  const to=Date.now(),q=new URLSearchParams({eventId,from:new Date(to-31*86400000).toISOString(),to:new Date(to).toISOString()});
+  const result=await pages(endpoints.history,q);const adapted=adaptHistory(result.items,result.extra.jobs);
+  return {items:adapted.rows,warnings:unique([...result.warnings,...adapted.warnings])};
+ },
  async vulnerabilities({target='',fixableOnly=false}={}){
   // 취약점은 현재 상태 — 화면의 기간과 무관하게 계약 최대 구간(최근 31일)으로 요청한다(v20.5, API 규칙은 그대로).
   const q=query(),to=Date.now();q.delete('status');q.set('from',new Date(to-31*86400000).toISOString());q.set('to',new Date(to).toISOString());if(target)q.set('resource',target);
@@ -133,7 +141,7 @@ export const actions={
   }catch(error){markRequest('vulnerabilities',{status:'error',error:error.message});throw error;}
  },
  async history(){
-  // 기간 트랙(v20.5)이 1주일 대응 이력 수를 세므로 1주일을 받고, 표에는 선택 기간만 남긴다.
+  // 기간 트랙(v20.5)이 1주일 조치 이력 수를 세므로 1주일을 받고, 표에는 선택 기간만 남긴다.
   // 기간 기준 = 서버와 같은 '마지막 발생 시각'(자동: lastSeenAt, 수동: 기록 시각 createdAt).
   const q=query();q.delete('severity');q.delete('status');
   const from=Date.parse(q.get('from'));q.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());

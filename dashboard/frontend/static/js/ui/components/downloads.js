@@ -12,9 +12,10 @@ export function eventCsv(items) {
 }
 
 export function vulnerabilityCsv(data,target='') {
-  const columns=['심각도','CVSS','CVE','패키지','설치 버전','수정 버전','대상','출처'];
+  const columns=['심각도','CVSS','CVE','패키지','설치 버전','수정 버전','대상','출처','EPSS','공격 코드 공개','재부팅 필요','업데이트 명령','참고 링크'];
   const rows=data.items.filter(item=>!target||item.resource===target).map(item=>
-    [item.severity,item.cvss,item.cveId,item.package,item.installedVersion,item.fixedVersion,item.resource,item.source]);
+    [item.severity,item.cvss,item.cveId,item.package,item.installedVersion,item.fixedVersion,item.resource,item.source,
+     item.epss,item.exploitAvailable,item.rebootRequired==null?'':item.rebootRequired?'예':'아니요',item.updateCommand,item.referenceUrl]);
   return '\uFEFF'+[columns,...rows].map(row=>row.map(cell).join(',')).join('\r\n');
 }
 

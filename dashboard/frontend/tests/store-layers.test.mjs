@@ -116,7 +116,9 @@ test('screen shows valid rows, reports skipped rows and uses accurate labels',as
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content').textContent.includes('Contract test event'),'valid rows must still render');
  await until(()=>$('#worker-state').textContent.includes('1건이 형식 오류로 목록에서 제외'),'skipped row count must be visible');
- assert($('#worker-state').textContent.startsWith('조치 실행 비활성 · 조회 전용'));
+ // v23: 고정 문구 '조치 실행 비활성 · 조회 전용'은 없다. 경고만 보인다.
+ assert($('#worker-state').textContent.startsWith('⚠'));
+ assert(!$('#worker-state').textContent.includes('조치 실행 비활성'));
  assert([...$('#source').options].some(o=>o.value==='IAM Access Analyzer'));
  assert.doesNotMatch($('.map-legend').textContent,/제공되지 않음/);
  assert.deepEqual(errors,[]);

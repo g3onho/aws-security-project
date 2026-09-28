@@ -35,7 +35,21 @@ variable "action_history_ttl_days" {
   default = 30
 }
 variable "auto_remediable_patterns" { type = list(string) }
+# 규칙 ID 정확 일치 자동 조치 목록(DEC-017)과 "SEC-06A"(DEC-018). 루트 variables.tf 설명 참고.
+variable "auto_remediable_controls" { type = list(string) }
 variable "alert_email" { type = string }
+
+# SEC-06A·06B NACL 자동 차단 대상(Private NACL)과 차단을 허용할 주소 범위(VPC CIDR). DEC-018·DEC-019.
+variable "private_nacl_id" { type = string }
+variable "vpc_cidr" { type = string }
+
+# EC2.2 기본 보안그룹 자동 조치는 이 VPC 의 것만 한다(계정 기본 VPC 등은 수동). DEC-017.
+variable "vpc_id" { type = string }
+
+# SEC-06B — VPC Flow Logs 로그 그룹(network 모듈 출력)과 22번 거부 알람 임계치. DEC-019.
+variable "enable_flow_logs" { type = bool }
+variable "log_group_flowlogs" { type = string }
+variable "ssh_reject_alarm_threshold" { type = number }
 
 variable "enable_guardduty" { type = bool }
 variable "enable_security_hub" { type = bool }

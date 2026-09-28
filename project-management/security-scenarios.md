@@ -108,16 +108,20 @@ flowchart LR
 
 IAM Access Key 비활성화 경로에는 확인한 코드상 화이트리스트와 전역 ENABLE_AUTO 검사는 있으나, 보안 그룹 태그 검사는 없다. 따라서 두 경로를 동일한 “3중 안전장치”라고 문서화하지 않는다. 사용자는 현 단계의 자동 조치에 추가 확인 단계를 넣지 않고, 확장된 승인·정책 설계는 후속 과제로 두도록 결정했다. 이미 연결된 자동 경로의 실행 전 확인 게이트를 이번 기준에서 새로 추가하지 않는다.
 
-NACL의 ASR-BlockIpWithNacl 문서는 별도 수동 승인 방식으로 작성되어 있다. 이를 자동 조치로 바꾸거나 접속 즉시 차단하는 정책은 확정된 사실이 아니다. 해당 문서가 요구하는 승인 흐름은 별도 설계 결정 전까지 유지한다. Private NACL이 애플리케이션 및 DB 서브넷에서 공유될 수 있으므로 차단 영향 범위를 확인한다.
+NACL의 ASR-BlockIpWithNacl 문서는 별도 수동 승인 방식으로 작성되어 있다. 사용자는 2026-09-28에 무차별 대입 알람 두 가지(SEC-06A MySQL 인증 실패, SEC-06B VPC 내부 출발지 SSH 22번 거부 급증)에 한해 이 문서의 자동 실행을 확정했다(DEC-018·DEC-019). 그 밖의 IP 차단과 접속 즉시 차단(허니팟 등)은 확정되지 않았으며 수동 승인 흐름을 유지한다. Private NACL이 애플리케이션 및 DB 서브넷에서 공유될 수 있으므로 차단 영향 범위를 확인한다. 자동 차단은 VPC CIDR 안 주소만, 보호 자산(Role 태그 service-3tier·database·soar-dashboard 인스턴스와 ALB·VPC 엔드포인트 등 AWS 관리 ENI) 주소는 제외하며, NACL은 같은 서브넷 안 트래픽을 거르지 못하므로(decisions GAP-009) 공격 대상은 다른 서브넷 자원으로 두고, 자동 만료가 없으므로 시연 후 1~99번 Deny를 직접 정리한다.
+
+Security Hub 규칙 ID 정확 일치 자동 조치 7종(EC2.2·EC2.7·EC2.182·S3.1·IAM.7·SSM.6·SSM.7, DEC-017)은 재부팅이 없고 Terraform이 관리하지 않는 계정·리전 설정만 바꾼다. 게이트는 규칙 목록과 전역 ENABLE_AUTO이며 태그 검사는 없다. 문서는 현재 값을 먼저 읽고 위반일 때만 바꾼다.
 
 | 조치 경로 | 확인된 제어 조건 | 사용자 확인 단계 | 재검증 기준 |
 |---|---|---|---|
 | 보안 그룹 인바운드 회수 | 화이트리스트 + ENABLE_AUTO + AutoRemediation 태그 | 현 기준에서 추가 확인 게이트를 새로 요구하지 않음 | SG 규칙을 다시 읽어 허용이 제거됐는지 확인 |
 | IAM Access Key 비활성화 | 화이트리스트 + ENABLE_AUTO | 현 기준에서 추가 확인 게이트를 새로 요구하지 않음 | 키 상태를 재조회하고 소유자 영향 확인 |
-| NACL IP 차단 문서 | 전용 SSM 문서의 범위·규칙 제약, 수동 승인 주석 | 문서가 명시한 사람의 승인 후 실행 | NACL 규칙과 공유 서브넷 영향, 정리 상태 확인 |
+| NACL IP 차단 문서 (수동) | 전용 SSM 문서의 범위·규칙 제약, 수동 승인 주석 | 문서가 명시한 사람의 승인 후 실행 | NACL 규칙과 공유 서브넷 영향, 정리 상태 확인 |
+| NACL IP 자동 차단 (SEC-06A·06B) | 목록 토큰(SEC-06A·SEC-06B) + ENABLE_AUTO + VPC CIDR 안 + 보호 자산 제외 + 이미 차단이면 생략, 규칙 1~99 | 현 기준에서 추가 확인 게이트를 새로 요구하지 않음(DEC-018·019) | NACL을 다시 읽어 Deny 규칙 확인, 알람 OK 복귀, 차단 대상의 정상 트래픽 영향 확인 |
+| 규칙 ID 자동 조치 7종 | 규칙 목록 정확 일치 + ENABLE_AUTO (EC2.2는 프로젝트 VPC 기본 보안그룹만) | 현 기준에서 추가 확인 게이트를 새로 요구하지 않음(DEC-017) | 설정을 다시 읽고 Security Hub 규칙 재평가가 PASSED 인지 확인 |
 | Nginx 강화 문서 | 수동 실행 대상. 현재 SOAR Lambda 연결 미확인 | 변경 승인에 따른 수동 실행 | 설정 검증, 실제 리스너·인증서·헤더 확인 |
 
-현재 자동 이벤트의 중복 실행 방지는 코드에서 확인되지 않았다. SSM 요청 결과가 모호한 경우 같은 finding을 다시 넣기 전에 실행 ID, 대상의 현 상태, 기록 저장 결과를 조회한다. 이 기준은 중복 방지가 구현되었다는 주장이 아니며, 실제 멱등성 계약과 재시도 설계는 구현 수정 및 별도 추적 대상이다. 조치 이력 저장에 실패해도 실행이 계속될 수 있는 경로가 확인되므로, 감사 기록의 내구성은 추적표와 결정 기록에서 다룬다.
+현재 자동 이벤트의 중복 실행 방지는 SG·키 경로에서 확인되지 않았다(규칙 ID 경로는 같은 finding의 진행 중 실행을 건너뛴다). SSM 요청 결과가 모호한 경우 같은 finding을 다시 넣기 전에 실행 ID, 대상의 현 상태, 기록 저장 결과를 조회한다. 이 기준은 중복 방지가 구현되었다는 주장이 아니며, 실제 멱등성 계약과 재시도 설계는 구현 수정 및 별도 추적 대상이다. 조치 이력 저장에 실패해도 실행이 계속될 수 있는 경로가 확인되므로, 감사 기록의 내구성은 추적표와 결정 기록에서 다룬다.
 
 ## 5. SEC 시나리오 카탈로그
 
@@ -128,8 +132,8 @@ NACL의 ASR-BlockIpWithNacl 문서는 별도 수동 승인 방식으로 작성�
 | SEC-03 | 테스트 DB의 3306 노출 및 태그 기반 자동/수동 비교 | Config/Security Hub 구성 탐지 → EventBridge/SOAR 조건 | 격리된 테스트 SG에서만 확인. 자동 대상은 태그 조건 충족 시 회수, 그 외 경로는 알림/검토. 규칙을 재조회 |
 | SEC-04 | 컨테이너 이미지 취약점 검토 | 기존 가이드의 Inspector/ECR/Trivy 경로 | 취약 이미지 판정과 교체를 수동 검토. 실제 연결·자동 배포 여부는 tracking.md 근거에 한해 기술 |
 | SEC-05 | IAM 자격 증명 위험 탐지 및 키 비활성화 | Access Analyzer/GuardDuty/CloudTrail 중 확인된 finding 경로 | 화이트리스트와 전역 토글을 확인하고 키 상태를 재조회. 실사용 키가 아닌 테스트 키 사용 |
-| SEC-06A | MySQL 인증 실패 행위 검증 | MySQL 로그 → CloudWatch metric filter/alarm → 알림 | Hydra 경로는 격리된 MySQL 테스트 대상에 제한. 로그·지표·경보 각각을 확인하고 계정 잠금 등 부작용을 점검 |
-| SEC-06B | SSH 공격 시도의 보안 탐지 검증 | SSH 경로 → GuardDuty finding 확인 | MySQL CloudWatch 경로와 분리. GuardDuty finding이 실제 생성되는지 증명해야 하며 현재 SOAR 필터가 자동 조치 연결을 보장하지 않음 |
+| SEC-06A | MySQL 인증 실패 행위 검증 | MySQL 로그 → CloudWatch metric filter/alarm → 알림, ALARM → asr_trigger → 공격 IP NACL 자동 차단(DEC-018) | Hydra 경로는 격리된 MySQL 테스트 대상에 제한. 로그·지표·경보·차단 각각을 확인하고 계정 잠금 등 부작용을 점검 |
+| SEC-06B | SSH 공격 시도의 보안 탐지 검증 | SSH 경로 → GuardDuty finding 확인. 자동 차단은 VPC Flow Logs 22번 REJECT → CloudWatch 알람 → asr_trigger → NACL(DEC-019) | MySQL CloudWatch 경로와 분리. GuardDuty finding이 실제 생성되는지 증명해야 하며 GuardDuty→SOAR 필터는 자동 조치에 연결하지 않음. Flow Logs 경로는 VPC 내부 출발지만 센다 |
 | SEC-07 | 비밀정보 노출 예방 확인 | 코드·이미지 스캔, Secrets Manager 관련 기존 가이드 | 합성 테스트 비밀만 사용. 노출 흔적 제거, 회전 필요성, 로그 유출 여부 확인 |
 | SEC-08 | DVWA 대상 웹 공격 및 WAF 차단 결과 확인 | DVWA 별도 리스너, 허가된 ZAP/SQLi 검증, WAF 지표/로그 | DVWA는 보호 대상 서비스와 별도 실습 대상. WAF 차단 규칙과 대상 매핑을 검증하고 실제 차단 결과를 재조회 |
 | SEC-09 | CloudTrail, Config, VPC Flow Logs 등 감사 신호 확인 | 원천별 콘솔/API 조회 및 중앙 관측 | 원천별 수집·보존·권한 상태를 기록. 누락 원천은 데이터 없음으로 합치지 않음 |
@@ -175,13 +179,13 @@ CloudTrail 및 GuardDuty finding의 주체, 키 식별자, 리소스, 시각을 
 
 사용자가 선택한 MySQL 인증 실패 검증의 관측 경로는 CloudWatch다. 확인한 Terraform에는 MySQL 로그 그룹, “Access denied for user” 문자열 metric filter, MySQLAuthFailure 지표가 있다. 알람 기본값은 변수로 조정 가능하며 코드 기본 구성에서 임계값 10, 300초 기간, 1회 평가, Sum, missing data 미위반으로 처리한다. 이 기본값은 프로젝트의 승인된 보안 임계값으로 승격하지 않는다.
 
-검증은 로그가 실제로 CloudWatch에 도착하는지, metric filter가 합성된 인증 실패를 세는지, alarm 상태와 SNS 전달이 예상대로 이어지는지 분리해서 확인한다. Hydra는 소유권과 격리가 확인된 DB 대상에서만 허가된 범위로 사용하고, 실제 계정 또는 실사용 암호를 대상으로 하지 않는다. 오류 로그가 없거나 쿼리 권한이 없는 경우 관측 0회로 표기하지 않는다.
+검증은 로그가 실제로 CloudWatch에 도착하는지, metric filter가 합성된 인증 실패를 세는지, alarm 상태와 SNS 전달이 예상대로 이어지는지 분리해서 확인한다. (DEC-018) 알람이 ALARM이 되면 asr_trigger가 알람 구간의 MySQL 오류 로그에서 최다 출발지 IP를 찾아 Private NACL 1~99번에 Deny를 추가한다. 차단 결과는 NACL 재조회로 확인하고, 출발지를 찾지 못하면(로그 미도착) 수동 알림으로 남는다. Hydra는 소유권과 격리가 확인된 DB 대상에서만 허가된 범위로 사용하고, 실제 계정 또는 실사용 암호를 대상으로 하지 않는다. 오류 로그가 없거나 쿼리 권한이 없는 경우 관측 0회로 표기하지 않는다.
 
 ### SEC-06B: SSH Hydra 검증은 GuardDuty 경로
 
 SSH 무차별 대입 검증은 MySQL과 별도 시나리오로 GuardDuty를 관측한다. Config의 restricted-ssh finding은 SSH 포트 노출 상태만 검증하며 Hydra 행위 탐지의 대체 증거가 아니다. GuardDuty에서 어떤 finding type이 생성되어야 하는지, 공격 시뮬레이션이 그 조건을 충족하는지 검증 환경에서 사전 확인한다.
 
-현 Terraform EventBridge→ASR 규칙은 IAM 자격 증명 유형을 대상으로 하므로 SSH finding을 자동 조치에 연결한다고 간주하지 않는다. GuardDuty 이벤트가 대시보드 또는 상관분석에 표시되는지, ASR 이벤트 입력·필터·실행·재검증이 실제 연결되어 있는지 별도로 기록한다. SSH 자동 차단은 확정되지 않았다.
+현 Terraform EventBridge→ASR 규칙은 IAM 자격 증명 유형을 대상으로 하므로 GuardDuty SSH finding을 자동 조치에 연결한다고 간주하지 않는다. GuardDuty 이벤트가 대시보드 또는 상관분석에 표시되는지 별도로 기록한다. SSH 자동 차단은 2026-09-28 DEC-019로 GuardDuty가 아닌 **VPC Flow Logs 경로**에 확정했다: 22번은 어떤 보안그룹도 열지 않으므로 두드리면 Flow Logs에 REJECT로 남고, VPC 내부 출발지의 거부가 5분간 임계치(기본 10, 승인된 운영값 아님) 이상이면 알람 → asr_trigger가 같은 구간의 REJECT 기록에서 최다 출발지 IP를 찾아 NACL로 막는다. 인터넷 상시 스캔은 세지 않는다. 검증은 Flow Logs 로그 그룹 수집, 알람 상태, NACL 규칙 추가를 각각 확인한다.
 
 ### SEC-08: DVWA와 WAF
 

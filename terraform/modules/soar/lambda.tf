@@ -103,10 +103,32 @@ data "aws_iam_policy_document" "asr_trigger" {
   }
 
   # 반복 판정은 같은 행의 횟수만 갱신(Query → UpdateItem), SSM 종료 결과도 같은 행에 갱신한다.
+  # 인덱스(finding_id-created_at)는 같은 finding 의 자동 실행이 진행 중인지 볼 때 쓴다(DEC-017).
   statement {
     sid       = "RecordActions"
     actions   = ["dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"]
-    resources = [aws_dynamodb_table.actions.arn]
+    resources = [aws_dynamodb_table.actions.arn, "${aws_dynamodb_table.actions.arn}/index/*"]
+  }
+
+  # SEC-06A·06B — 알람 구간의 MySQL 인증 실패 로그 / VPC Flow Logs 22번 거부 기록에서 출발지 IP 를 읽는다.
+  statement {
+    sid     = "ReadBruteforceLogs"
+    actions = ["logs:FilterLogEvents"]
+    resources = concat(
+      [aws_cloudwatch_log_group.mysql.arn, "${aws_cloudwatch_log_group.mysql.arn}:*"],
+      var.log_group_flowlogs == "" ? [] : [
+        "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:${var.log_group_flowlogs}",
+        "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:${var.log_group_flowlogs}:*",
+      ],
+    )
+  }
+
+  # SEC-06A·06B — 보호 자산 주소(보호 역할 인스턴스, ALB·VPC 엔드포인트 등 AWS 관리 ENI) 확인,
+  # NACL 빈 규칙 번호·중복 차단 확인(읽기 전용).
+  statement {
+    sid       = "InspectBlockTargets"
+    actions   = ["ec2:DescribeInstances", "ec2:DescribeNetworkAcls", "ec2:DescribeNetworkInterfaces"]
+    resources = ["*"]
   }
 
   statement {
@@ -166,6 +188,26 @@ resource "aws_lambda_function" "asr_trigger" {
       DOC_NGINX_HARDEN          = aws_ssm_document.command["ASR-HardenNginx"].name
       AUTOMATION_ROLE_ARN       = aws_iam_role.ssm_automation.arn
       ACTION_TTL_DAYS           = tostring(var.action_history_ttl_days)
+      AUTO_REMEDIABLE_CONTROLS  = join(",", var.auto_remediable_controls)
+      DOC_DEFAULT_SG            = aws_ssm_document.automation["ASR-RemoveDefaultSgRules"].name
+      DOC_EBS_ENCRYPTION        = aws_ssm_document.automation["ASR-EnableEbsDefaultEncryption"].name
+      DOC_SNAPSHOT_BPA          = aws_ssm_document.automation["ASR-BlockEbsSnapshotPublicAccess"].name
+      DOC_S3_ACCOUNT_BPA        = aws_ssm_document.automation["ASR-BlockS3AccountPublicAccess"].name
+      DOC_PASSWORD_POLICY       = aws_ssm_document.automation["ASR-SetIamPasswordPolicy"].name
+      DOC_SSM_AUTOMATION_LOG    = aws_ssm_document.automation["ASR-EnableSsmAutomationLogging"].name
+      DOC_SSM_PUBLIC_SHARING    = aws_ssm_document.automation["ASR-BlockSsmDocumentPublicSharing"].name
+      DOC_BLOCK_IP              = aws_ssm_document.automation["ASR-BlockIpWithNacl"].name
+      ACTIONS_FINDING_INDEX     = "finding_id-created_at"
+      MYSQL_ALARM_NAME          = aws_cloudwatch_metric_alarm.mysql_bruteforce.alarm_name
+      MYSQL_LOG_GROUP           = aws_cloudwatch_log_group.mysql.name
+      SSH_ALARM_NAME            = local.enable_ssh_reject ? aws_cloudwatch_metric_alarm.ssh_reject[0].alarm_name : ""
+      FLOWLOG_GROUP             = var.log_group_flowlogs
+      FLOWLOG_REJECT_PATTERN    = local.ssh_reject_pattern
+      ALARM_WINDOW_SECONDS      = tostring(local.bruteforce_alarm_period * local.bruteforce_alarm_evaluation_periods)
+      PRIVATE_NACL_ID           = var.private_nacl_id
+      PROJECT_VPC_ID            = var.vpc_id
+      VPC_CIDR                  = var.vpc_cidr
+      PROTECTED_ROLES           = "service-3tier,database,soar-dashboard"
     }
   }
 

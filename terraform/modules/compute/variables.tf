@@ -89,6 +89,22 @@ variable "sns_topic_arn" {
   default     = ""
 }
 
+# 대시보드가 탐지마다 "자동 조치 대상인지" 표시할 때 asr_trigger 와 같은 목록을 쓴다(DEC-015·DEC-017).
+variable "auto_remediable_patterns" {
+  type    = list(string)
+  default = []
+}
+
+variable "auto_remediable_controls" {
+  type    = list(string)
+  default = []
+}
+
+variable "enable_auto_remediation" {
+  type    = bool
+  default = false
+}
+
 # 대시보드 코드를 S3 로 배포하고 인스턴스가 자동 기동할지 여부.
 # false 면 호스트만 준비되고 서비스는 뜨지 않는다(기존 동작).
 variable "enable_dashboard_deploy" {
