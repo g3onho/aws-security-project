@@ -204,8 +204,16 @@ class AwsProvider:
             ssm = self._aws.regional_client("ssm", a["regionCode"])
             params = {k: [str(v)] for k, v in parameters.items() if v is not None and v != ""}
             params["RegionLabel"] = [a["regionLabel"]]
-            resp = ssm.send_command(DocumentName=a["documentName"], InstanceIds=[a["instanceId"]],
-                                    Parameters=params, TimeoutSeconds=600)
+            try:
+                resp = ssm.send_command(DocumentName=a["documentName"], InstanceIds=[a["instanceId"]],
+                                        Parameters=params, TimeoutSeconds=600)
+            except Exception as error:  # AccessDenied(IAM 미부여)·InvalidDocument(문서 미등록) 등을 명확히 전달
+                name = type(error).__name__
+                code = getattr(getattr(error, "response", None), "get", lambda *_: {})("Error", {}).get("Code", name) \
+                    if hasattr(error, "response") else name
+                raise Problem(502, f"{a['regionLabel']} 공격 실행 실패: {code}. "
+                              "대시보드 롤의 ssm:SendCommand 권한과 리전별 ATK 문서를 확인하세요.",
+                              "GEO_ATTACK_SEND_FAILED")
             launched.append({"regionLabel": a["regionLabel"], "regionCode": a["regionCode"],
                              "instanceId": a["instanceId"], "commandId": resp["Command"]["CommandId"]})
         return launched
