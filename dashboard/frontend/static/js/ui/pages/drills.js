@@ -87,7 +87,7 @@ function configPanel(){
  if(type.id==='web-scan'){
   const ready=catalog?.environment?.webScanReady===true;
   picker+=`<label class="drill-field"><span>SSH 계정</span><input type="text" data-web-ssh-user value="victim" ${webRun.busy?'disabled':''}></label>`;
-  picker+=`<label class="drill-field"><span>DVWA PHPSESSID <small>(비우면 웹 로그인 공격 생략)</small></span><input type="text" data-web-dvwa-session placeholder="선택 입력" ${webRun.busy?'disabled':''}></label>`;
+  // DVWA 웹 공격은 스크립트가 ALB 로 자동 로그인해 세션을 얻는다(PHPSESSID 수동 입력 제거).
   const startAttr=ready&&!webRun.busy?'data-web-scan-start':'disabled';
   const label=webRun.busy?'실행 중…':'시작';
   const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#32d4be"></span>실행 가능 · 지리별 공격자(미국·싱가포르·시드니·뭄바이·도쿄)</div>`
@@ -210,10 +210,9 @@ async function pollWebScan(){
 async function startWebScan(){
  if(webRun.busy)return;
  const user=($('[data-web-ssh-user]')?.value||'victim').trim();
- const dvwa=($('[data-web-dvwa-session]')?.value||'').trim();
  webRun.busy=true;webRun.error=null;webRun.done=false;webRun.regions=[];webRun.runId=null;rerender();
  try{
-  const result=await api.startWebScan({sshUser:user,dvwaSession:dvwa});
+  const result=await api.startWebScan({sshUser:user});
   webRun.runId=result.runId;
   webRun.regions=(result.launched||[]).map(l=>({regionLabel:l.regionLabel,status:'Pending'}));
   rerender();

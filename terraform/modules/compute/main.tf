@@ -136,6 +136,8 @@ resource "aws_instance" "dashboard" {
     enable_auto_remediation   = tostring(var.enable_auto_remediation)
     # 지리별 웹보안검사 [시작] 대상 DVWA 공인 IP (없으면 실행 경로는 409로 비활성).
     dvwa_target_ip = var.enable_dvwa_instance ? aws_instance.web_dvwa[0].public_ip : ""
+    # 웹 공격(hydra) 대상 URL — ALB:8081(WAF 경유). DVWA IP 직접은 WAF 를 안 타 빨간선이 안 뜬다.
+    dvwa_web_url = var.enable_alb && var.enable_dvwa_instance ? "http://${aws_lb.main[0].dns_name}:8081" : ""
     # 코드 zip 의 MD5. 코드가 바뀌면 user_data 가 바뀌어 인스턴스가 새로 뜬다.
     code_version = var.enable_dashboard_deploy ? data.archive_file.dashboard[0].output_md5 : "none"
   })

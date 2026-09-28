@@ -24,6 +24,7 @@ def _attack_config(settings):
     return {
         "documentName": settings.get("ATTACK_DOCUMENT_NAME"),
         "targetIp": settings.get("DVWA_TARGET_IP"),
+        "webUrl": settings.get("DVWA_WEB_URL"),
         "scanBucket": settings.get("SCAN_RESULTS_BUCKET"),
         "regions": regions,
     }

@@ -43,6 +43,7 @@ def configure(overrides=None):
         "ATTACK_REGIONS": os.getenv("ATTACK_REGIONS") or None,  # "us-east-1,ap-southeast-1,..."
         "ATTACK_DOCUMENT_NAME": os.getenv("ATTACK_DOCUMENT_NAME") or None,
         "DVWA_TARGET_IP": os.getenv("DVWA_TARGET_IP") or None,
+        "DVWA_WEB_URL": os.getenv("DVWA_WEB_URL") or None,  # ALB:8081, 웹 공격(WAF 경유) 대상
         "SCAN_RESULTS_BUCKET": os.getenv("SCAN_RESULTS_BUCKET") or None,
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),

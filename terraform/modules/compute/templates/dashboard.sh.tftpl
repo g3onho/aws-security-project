@@ -61,6 +61,8 @@ ENABLE_AUTO_REMEDIATION=${enable_auto_remediation}
 ATTACK_REGIONS=us-east-1,ap-southeast-1,ap-southeast-2,ap-south-1,ap-northeast-1
 ATTACK_DOCUMENT_NAME=${project}-ATK-WebAttack
 DVWA_TARGET_IP=${dvwa_target_ip}
+# 웹 공격은 ALB(WAF 경유) 대상이라야 빨간 흐름선이 뜬다. DVWA IP:80 직접은 filtered.
+DVWA_WEB_URL=${dvwa_web_url}
 ENVEOF
 
 ############################################

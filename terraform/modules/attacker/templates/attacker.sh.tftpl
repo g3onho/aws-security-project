@@ -32,6 +32,8 @@ RUN apt-get update \
 EOF
 
 # 흔한 약한 비밀번호. DVWA(admin/password)와 SSH(victim/password123) 둘 다 걸리도록 포함.
+# 개수를 늘려 시도량을 확보한다 — SSH BruteForce(GuardDuty)·WAF 차단(빨간선) 임계치를 넘기려면
+# 소수로는 부족하다. hydra 는 -f 없이 전체 리스트를 시도한다.
 cat >/opt/attacker/wordlists/pass.txt <<'EOF'
 password
 123456
@@ -43,6 +45,45 @@ root
 toor
 ubuntu
 P@ssw0rd
+12345678
+123456789
+12345
+1234567
+1234567890
+qwerty123
+1q2w3e4r
+abc123
+password1
+iloveyou
+000000
+111111
+123123
+admin123
+root123
+welcome
+monkey
+dragon
+master
+login
+princess
+qwertyuiop
+passw0rd
+starwars
+hello123
+freedom
+whatever
+trustno1
+superman
+batman
+football
+baseball
+sunshine
+shadow
+michael
+changeme
+secret
+test123
+letmein123
 EOF
 
 cat >/opt/attacker/wordlists/users.txt <<'EOF'

@@ -132,7 +132,8 @@ class DrillService:
             "TargetHost": cfg["targetIp"],
             "ScanBucket": cfg.get("scanBucket", ""),
             "SshUser": (params or {}).get("sshUser", "victim"),
-            "DvwaSession": (params or {}).get("dvwaSession", ""),
+            # 웹 공격 대상은 ALB(WAF 경유). 스크립트가 이 URL 로 자동 로그인해 세션을 얻는다.
+            "WebBaseUrl": cfg.get("webUrl") or "",
         }
         targets = [{**a, "documentName": cfg["documentName"]} for a in attackers]
         launched = self.provider.run_web_attack(targets, parameters)
