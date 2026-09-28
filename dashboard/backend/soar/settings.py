@@ -38,12 +38,15 @@ def configure(overrides=None):
         "AUTO_REMEDIABLE_PATTERNS": os.getenv("AUTO_REMEDIABLE_PATTERNS"),
         "AUTO_REMEDIABLE_CONTROLS": os.getenv("AUTO_REMEDIABLE_CONTROLS"),
         "ENABLE_AUTO_REMEDIATION": os.getenv("ENABLE_AUTO_REMEDIATION"),
+<<<<<<< HEAD
         # 지리별 공격 실행(웹보안검사 [시작]). terraform 이 dashboard.sh 로 주입.
         # 공격자 인스턴스는 런타임에 태그(AttackerFor=dvwa)로 각 리전에서 탐색한다(순환참조 회피).
         "ATTACK_REGIONS": os.getenv("ATTACK_REGIONS") or None,  # "us-east-1,ap-southeast-1,..."
         "ATTACK_DOCUMENT_NAME": os.getenv("ATTACK_DOCUMENT_NAME") or None,
         "DVWA_TARGET_IP": os.getenv("DVWA_TARGET_IP") or None,
         "SCAN_RESULTS_BUCKET": os.getenv("SCAN_RESULTS_BUCKET") or None,
+=======
+>>>>>>> 89e747c7d7312bdff32c7380556020fce8405e37
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),

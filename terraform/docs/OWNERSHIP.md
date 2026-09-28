@@ -27,7 +27,14 @@ SOAR 조치(asr_trigger → SSM Automation, 대시보드 수동 조치)가 바�
 |---|---|---|---|---|---|
 | `ASR-RevokeSecurityGroupIngress` (자동) | 01·03 | SG 의 `0.0.0.0/0`·`::/0` 인바운드 규칙 | `sg.tf` 전부 `aws_vpc_security_group_*_rule` 개별 선언. 취약 규칙·토글 없음 | 취약 규칙 = demo 스크립트 주입(Terraform 밖) | **유지** |
 | `ASR-DisableExposedAccessKey` (자동) | 05 | access key `Status` | `aws_iam_access_key` 없음 | Terraform 밖 | **유지** |
-| `ASR-BlockIpWithNacl` (수동) | 06 | NACL 인바운드 Deny 1~99 | `nacl.tf` 인라인 블록 없음, `aws_network_acl_rule` 개별 선언(100 이상만) | 1~99 = SOAR | **유지** |
+| `ASR-BlockIpWithNacl` (자동 SEC-06A·06B + 수동) | 06 | NACL 인바운드 Deny 1~99 | `nacl.tf` 인라인 블록 없음, `aws_network_acl_rule` 개별 선언(100 이상만) | 1~99 = SOAR | **유지** |
+| `ASR-RemoveDefaultSgRules` (자동, EC2.2) | — | 프로젝트 VPC 기본 보안그룹의 인바운드·아웃바운드 규칙 | `aws_default_security_group` 없음 | Terraform 밖 | **유지** |
+| `ASR-EnableEbsDefaultEncryption` (자동, EC2.7) | — | 리전 EBS 기본 암호화 | `aws_ebs_encryption_by_default` 없음 | Terraform 밖 | **유지** |
+| `ASR-BlockEbsSnapshotPublicAccess` (자동, EC2.182) | — | 리전 스냅샷 퍼블릭 액세스 차단 상태 | `aws_ebs_snapshot_block_public_access` 없음 | Terraform 밖 | **유지** |
+| `ASR-BlockS3AccountPublicAccess` (자동, S3.1) | — | 계정 수준 S3 퍼블릭 액세스 차단 4개 | `aws_s3_account_public_access_block` 없음(버킷 수준 `aws_s3_bucket_public_access_block` 만) | Terraform 밖 | **유지** |
+| `ASR-SetIamPasswordPolicy` (자동, IAM.7) | — | 계정 비밀번호 정책 | `aws_iam_account_password_policy` 없음 | Terraform 밖 | **유지** |
+| `ASR-EnableSsmAutomationLogging` (자동, SSM.6) | — | SSM 서비스 설정 `customer-script-log-destination` | `aws_ssm_service_setting` 없음 | Terraform 밖 | **유지** |
+| `ASR-BlockSsmDocumentPublicSharing` (자동, SSM.7) | — | SSM 서비스 설정 `public-sharing-permission` | `aws_ssm_service_setting` 없음 | Terraform 밖 | **유지** |
 | `ASR-RotateDbSecret` (수동) | 07 | Secrets Manager 시크릿 새 버전(`AWSCURRENT`) | `compute/secrets.tf` `aws_secretsmanager_secret_version.db` 가 초기 값 소유 | 공유 | **조건부 — 확인 필요** (3장) |
 | `ASR-HardenNginx` (미배선·수동) | 02 | docker-host 내부 `nginx/default.conf` | 인스턴스 내부 파일. Terraform 속성 아님 | Terraform 밖 | 유지. 단 인스턴스 재생성·user_data 재실행 시 사라짐 |
 | WAF 관리형·Rate 규칙 | 08 | Web ACL 규칙 | `compute/alb.tf` `aws_wafv2_web_acl.main` (`enable_alb && enable_waf`) | Terraform | 콘솔 변경은 **원복**. 규칙 변경은 코드로 |
@@ -36,6 +43,7 @@ SOAR 조치(asr_trigger → SSM Automation, 대시보드 수동 조치)가 바�
 
 - Terraform 코드에 `lifecycle { ignore_changes }` 는 현재 0건.
 - `aws_default_network_acl`, `aws_default_security_group` 사용 0건.
+- 규칙 ID 자동 조치 7종(DEC-017)이 바꾸는 계정·리전 설정은 Terraform 에 선언이 없다. 나중에 Terraform 으로 관리하기로 하면 먼저 import 하고 SOAR 자동 조치 목록(`auto_remediable_controls`)에서 해당 규칙을 뺀다 — 둘이 같은 칸을 쓰면 apply 와 SOAR 가 서로 되돌린다.
 
 ---
 

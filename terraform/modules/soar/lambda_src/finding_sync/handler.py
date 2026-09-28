@@ -21,6 +21,13 @@ finding_sync — Security Hub 탐지·Inspector 취약점을 DynamoDB 에 적재
     대시보드 asOf·지연 경고, 배포 후 원본/저장 건수 대조에 쓴다.
   - 실패는 예외로 올린다 → Lambda 재시도 후 DLQ(SQS), 오류 알람(SNS).
   - 원본 전체를 저장하지 않는다. 대시보드 변환 코드가 읽는 필드만 원본 이름 그대로 raw 에 둔다.
+  - raw 형식을 바꾸면 RECORD_VERSION 을 올린다. 같은 원본 version 이라도 옛 형식 행은 대조가 한 번 다시 쓴다
+    (원본 version 이 더 새로운 행을 옛 정보로 덮지는 않는다).
+    v2 (decisions.md DEC-015): 탐지 설명·조치 안내 표시용 필드 추가
+      Security Hub — Types, Compliance.SecurityControlId, Remediation.Recommendation(Text·Url),
+                     예전 형식 ProductFields.ControlId·RecommendationUrl, ProductFields aws/config/ConfigRuleName
+      Inspector    — title, description, remediation.recommendation, fixAvailable, exploitAvailable, epss.score,
+                     패키지 remediation(업데이트 명령)·packageManager, sourceUrl, 자원 details(ECR 저장소·태그, EC2 플랫폼)
 """
 import json
 import os
@@ -36,6 +43,7 @@ FINDINGS_TABLE = os.environ["FINDINGS_TABLE"]
 VULNERABILITIES_TABLE = os.environ["VULNERABILITIES_TABLE"]
 TTL_DAYS = int(os.environ.get("FINDING_TTL_DAYS", "30"))
 SYNC_KEY = "__sync__"
+RECORD_VERSION = 2  # raw 형식 버전(위 규칙). 올리면 대조가 옛 형식 행을 다시 쓴다.
 FINDING_INDEX = "view_state-updated_at"
 VULN_INDEX = "view_state-last_observed_at"
 
@@ -107,7 +115,14 @@ def finding_item(finding):
     updated = iso(finding.get("UpdatedAt")) or iso(finding.get("CreatedAt")) or _now_iso()
     is_open = (finding.get("RecordState") == "ACTIVE" and workflow not in {"RESOLVED", "SUPPRESSED"}
                and severity != "INFORMATIONAL" and finding.get("Sample") is not True)
-    remote = {k: v for k, v in (finding.get("ProductFields") or {}).items() if "remoteIpDetails" in k}
+    product_fields = finding.get("ProductFields") or {}
+    remote = {k: v for k, v in product_fields.items() if "remoteIpDetails" in k}
+    # 예전(비통합) 규칙 finding 의 규칙 ID·조치 링크(통합 규칙 finding 은 Compliance·Remediation 에 있다)와
+    # Config 규칙 이름(대시보드 설명표가 이 프로젝트 Config 규칙을 찾는 키).
+    remote.update({k: product_fields[k] for k in ("ControlId", "RecommendationUrl", "aws/config/ConfigRuleName")
+                   if product_fields.get(k)})
+    compliance = finding.get("Compliance") or {}
+    recommendation = (finding.get("Remediation") or {}).get("Recommendation") or {}
     raw = {
         "Id": finding.get("Id"), "ProductArn": finding.get("ProductArn"), "ProductName": finding.get("ProductName"),
         "GeneratorId": finding.get("GeneratorId"), "Title": finding.get("Title"),
@@ -116,13 +131,16 @@ def finding_item(finding):
         "UpdatedAt": updated, "CreatedAt": iso(finding.get("CreatedAt")),
         "Resources": [{"Id": r.get("Id"), "Type": r.get("Type")} for r in (finding.get("Resources") or [])[:5]],
         "ProductFields": remote, "RecordState": finding.get("RecordState"), "Workflow": {"Status": workflow},
-        "Compliance": {"Status": (finding.get("Compliance") or {}).get("Status")},
+        "Compliance": {"Status": compliance.get("Status"), "SecurityControlId": compliance.get("SecurityControlId")},
+        "Types": (finding.get("Types") or [])[:3],
+        "Remediation": {"Recommendation": {"Text": (recommendation.get("Text") or "")[:500],
+                                           "Url": recommendation.get("Url")}},
         "Sample": finding.get("Sample") is True or None,
     }
     item = {"finding_id": finding["Id"], "view_state": "OPEN" if is_open else "CLOSED", "updated_at": updated,
             "version": updated, "region": finding.get("Region"), "account_id": finding.get("AwsAccountId"),
             "product_name": finding.get("ProductName"), "severity": severity, "raw": raw,
-            "ingested_at": _now_iso(), "record_version": 1}
+            "ingested_at": _now_iso(), "record_version": RECORD_VERSION}
     if not is_open:
         item["expires_at"] = _expires()
     return _clean(item)
@@ -139,24 +157,40 @@ def vulnerability_item(finding, region=None):
     status = finding.get("status") or "ACTIVE"
     cvss = ((finding.get("inspectorScoreDetails") or {}).get("adjustedCvss") or {}).get("score")
     resource_region = first_resource.get("region") or finding.get("region") or region
+    recommendation = (finding.get("remediation") or {}).get("recommendation") or {}
+    details = first_resource.get("details") or {}
+    ecr = details.get("awsEcrContainerImage") or {}
     raw = {
         "findingArn": finding.get("findingArn"), "awsAccountId": finding.get("awsAccountId"),
         "severity": finding.get("severity"), "status": status, "region": resource_region,
         "firstObservedAt": first_seen, "lastObservedAt": last_seen, "updatedAt": updated,
         "resourceId": finding.get("resourceId") or first_resource.get("id"),
         "resources": [{"id": first_resource.get("id"), "type": first_resource.get("type"),
-                       "tags": {"Name": (first_resource.get("tags") or {}).get("Name")}}],
+                       "tags": {"Name": (first_resource.get("tags") or {}).get("Name")},
+                       "details": {"awsEcrContainerImage": {"repositoryName": ecr.get("repositoryName"),
+                                                            "imageTags": (ecr.get("imageTags") or [])[:3]},
+                                   "awsEc2Instance": {"platform": (details.get("awsEc2Instance") or {}).get("platform")}}}],
         "packageVulnerabilityDetails": {"vulnerabilityId": package_details.get("vulnerabilityId"),
+                                        "sourceUrl": package_details.get("sourceUrl"),
                                         "vulnerablePackages": [{"name": package.get("name"),
                                                                 "version": package.get("version"),
-                                                                "fixedInVersion": package.get("fixedInVersion")}]},
+                                                                "fixedInVersion": package.get("fixedInVersion"),
+                                                                "remediation": (package.get("remediation") or "")[:500],
+                                                                "packageManager": package.get("packageManager")}]},
         "inspectorScoreDetails": {"adjustedCvss": {"score": cvss}},
+        "title": (finding.get("title") or "")[:300],
+        "description": (finding.get("description") or "")[:1000],
+        "remediation": {"recommendation": {"text": (recommendation.get("text") or "")[:500],
+                                           "Url": recommendation.get("Url")}},
+        "fixAvailable": finding.get("fixAvailable"),
+        "exploitAvailable": finding.get("exploitAvailable"),
+        "epss": {"score": (finding.get("epss") or {}).get("score")},
     }
     item = {"finding_arn": finding["findingArn"], "view_state": "ACTIVE" if status == "ACTIVE" else "CLOSED",
             "last_observed_at": last_seen, "version": max(last_seen, updated), "region": resource_region,
             "account_id": finding.get("awsAccountId"), "severity": finding.get("severity"),
             "cve_id": package_details.get("vulnerabilityId"), "raw": raw, "ingested_at": _now_iso(),
-            "record_version": 1}
+            "record_version": RECORD_VERSION}
     if item["view_state"] == "CLOSED":
         item["expires_at"] = _expires()
     return _clean(item)
@@ -165,14 +199,16 @@ def vulnerability_item(finding, region=None):
 # --- 쓰기 ----------------------------------------------------------------------
 
 def put_if_newer(table, key, item):
-    """저장값보다 새 정보면 쓴다. 같은 version 인데 상태만 다르면(대조가 잘못 닫은 경우 등) 쓴다.
-    옛 정보는 버린다. 썼으면 True."""
+    """저장값보다 새 정보면 쓴다. 같은 version 인데 상태만 다르거나(대조가 잘못 닫은 경우 등) 저장 행이 옛 raw
+    형식(record_version)이면 쓴다. 옛 정보(더 오래된 version)는 형식과 상관없이 버린다. 썼으면 True."""
     try:
         table.put_item(
             Item=item,
-            ConditionExpression="attribute_not_exists(#k) OR #v < :v OR (#v = :v AND #s <> :s)",
-            ExpressionAttributeNames={"#k": key, "#v": "version", "#s": "view_state"},
-            ExpressionAttributeValues={":v": item["version"], ":s": item["view_state"]})
+            ConditionExpression="attribute_not_exists(#k) OR #v < :v OR "
+                                "(#v = :v AND (#s <> :s OR attribute_not_exists(#rv) OR #rv < :rv))",
+            ExpressionAttributeNames={"#k": key, "#v": "version", "#s": "view_state", "#rv": "record_version"},
+            ExpressionAttributeValues={":v": item["version"], ":s": item["view_state"],
+                                       ":rv": item.get("record_version", RECORD_VERSION)})
         return True
     except ClientError as error:
         if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
@@ -199,14 +235,15 @@ def close_if_unchanged(table, key, key_value, seen_version, open_state):
 
 
 def stored_open(table, index, open_state, key):
-    """표에 열려 있는 행 {키: version}. 인덱스 Query(열린 행만)."""
+    """표에 열려 있는 행 {키: (version, record_version)}. 인덱스 Query(열린 행만)."""
     rows, kwargs = {}, {"IndexName": index, "KeyConditionExpression": "#s = :s",
-                        "ExpressionAttributeNames": {"#s": "view_state", "#k": key, "#v": "version"},
-                        "ExpressionAttributeValues": {":s": open_state}, "ProjectionExpression": "#k, #v"}
+                        "ExpressionAttributeNames": {"#s": "view_state", "#k": key, "#v": "version",
+                                                     "#rv": "record_version"},
+                        "ExpressionAttributeValues": {":s": open_state}, "ProjectionExpression": "#k, #v, #rv"}
     while True:
         page = table.query(**kwargs)
         for row in page.get("Items", []):
-            rows[row[key]] = row.get("version")
+            rows[row[key]] = (row.get("version"), int(row.get("record_version") or 0))
         if not page.get("LastEvaluatedKey"):
             return rows
         kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
@@ -257,8 +294,8 @@ def reconcile_table(name, table, key, index, open_state, source_items):
     for item in source_items:
         known = stored.get(item[key])
         if item["view_state"] == open_state:
-            if known == item["version"]:
-                continue  # 이미 같다 — 쓰지 않는다(비용)
+            if known and known[0] == item["version"] and known[1] >= item["record_version"]:
+                continue  # 이미 같다(내용·형식) — 쓰지 않는다(비용)
         elif item[key] not in stored:
             continue  # 원본에서도 닫힌 건이고 표에도 열려 있지 않다
         if put_if_newer(table, key, item):
@@ -269,7 +306,7 @@ def reconcile_table(name, table, key, index, open_state, source_items):
         skipped = True  # 원본이 0건: 조회 이상일 수 있어 한꺼번에 닫지 않는다
     else:
         for key_value in missing:
-            if close_if_unchanged(table, key, key_value, stored[key_value], open_state):
+            if close_if_unchanged(table, key, key_value, stored[key_value][0], open_state):
                 closed += 1
     table_open = count_open(table, index, open_state)
     status = {key: SYNC_KEY, "last_attempt_at": started, "last_success_at": _now_iso(),

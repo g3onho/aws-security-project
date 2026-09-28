@@ -12,7 +12,11 @@ export const $=s=>document.querySelector(s);
 export const $$=s=>[...document.querySelectorAll(s)];
 export const activity=createRequestActivity($('#network-activity'));
 // Track UI requests without changing either backend adapter or synchronous cache reads.
+<<<<<<< HEAD
 export const REQUEST_ACTIONS=['init','load','detail','change','job','eventHistory','vulnerabilities','history','logout','exportEvents','drillsCatalog','drills','startWebScan','webScanStatus'];
+=======
+export const REQUEST_ACTIONS=['init','load','detail','change','job','eventHistory','vulnerabilities','history','logout','exportEvents','drillsCatalog','drills'];
+>>>>>>> 89e747c7d7312bdff32c7380556020fce8405e37
 export const api=Object.fromEntries(REQUEST_ACTIONS.map(name=>[name,(...args)=>activity.run(()=>storeApi[name](...args))]));
 api.get=id=>storeApi.get(id);
 export const notifications=createNotificationPopover({button:$('#notifications'),panel:$('#notification-panel')});

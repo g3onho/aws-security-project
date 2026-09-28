@@ -37,8 +37,10 @@ class FakeTable:
         old = self.rows.get(Item[self.key])
         if ConditionExpression and old is not None:
             newer = old["version"] < Item["version"]
-            same_but_state = old["version"] == Item["version"] and old.get("view_state") != Item["view_state"]
-            if not (newer or same_but_state):
+            same = old["version"] == Item["version"]
+            state_changed = old.get("view_state") != Item["view_state"]
+            old_format = old.get("record_version", 0) < Item.get("record_version", 0)
+            if not (newer or (same and (state_changed or old_format))):
                 raise conditional_failed()
         self.rows[Item[self.key]] = dict(Item)
         self.writes += 1
@@ -59,7 +61,8 @@ class FakeTable:
         rows = [r for r in self.rows.values() if r.get("view_state") == ExpressionAttributeValues[":s"]]
         if Select == "COUNT":
             return {"Count": len(rows)}
-        return {"Items": [{self.key: r[self.key], "version": r["version"]} for r in rows]}
+        return {"Items": [{self.key: r[self.key], "version": r["version"], "record_version": r.get("record_version")}
+                          for r in rows]}
 
 
 class Fakes:
@@ -213,6 +216,61 @@ def test_one_source_failure_still_reconciles_other_and_raises():
         assert "findings" in str(error)
     assert set(f.vulns) == {"v1"}
     assert "TooManyRequests" in f.tables["findings"].rows[handler.SYNC_KEY]["last_error"]
+
+
+def test_v2_raw_keeps_explanation_fields():
+    """DEC-015 — 대시보드 탐지 상세의 AWS 원문 설명·조치 안내·규칙 ID, 취약점 설명·업데이트 명령."""
+    f = Fakes()
+    control = asff("ctl") | {
+        "Types": ["Software and Configuration Checks/Industry and Regulatory Standards", "b", "c", "d"],
+        "Compliance": {"Status": "FAILED", "SecurityControlId": "EC2.2", "AssociatedStandards": [{"x": 1}]},
+        "Remediation": {"Recommendation": {"Text": "For directions ... documentation.",
+                                           "Url": "https://docs.aws.amazon.com/console/securityhub/EC2.2/remediation"}}}
+    handler.handler(sh_event(control), None)
+    raw = f.findings["ctl"]["raw"]
+    assert raw["Compliance"] == {"Status": "FAILED", "SecurityControlId": "EC2.2"}
+    assert raw["Remediation"]["Recommendation"]["Url"].endswith("/EC2.2/remediation") and len(raw["Types"]) == 3
+    assert f.findings["ctl"]["record_version"] == handler.RECORD_VERSION
+    legacy = asff("old") | {"ProductFields": {"ControlId": "EC2.19", "RecommendationUrl": "https://x", "other": "drop"}}
+    handler.handler(sh_event(legacy), None)
+    assert f.findings["old"]["raw"]["ProductFields"] == {"ControlId": "EC2.19", "RecommendationUrl": "https://x"}
+
+    rich = insp("v9") | {"title": "CVE-2024-0001 - openssl", "description": "d" * 1500, "fixAvailable": "YES",
+                         "exploitAvailable": "NO", "epss": {"score": 0.0123},
+                         "remediation": {"recommendation": {"text": "None Provided"}}}
+    rich["packageVulnerabilityDetails"]["vulnerablePackages"][0] |= {
+        "remediation": "apt-get install --only-upgrade openssl", "packageManager": "OS"}
+    rich["packageVulnerabilityDetails"]["sourceUrl"] = "https://ubuntu.com/security/CVE-2024-0001"
+    rich["resources"][0]["details"] = {"awsEcrContainerImage": {"repositoryName": "app", "imageTags": ["app-1.0.0"]}}
+    handler.handler({"source": "aws.inspector2", "region": "ap-northeast-2", "detail": rich}, None)
+    raw = f.vulns["v9"]["raw"]
+    package = raw["packageVulnerabilityDetails"]["vulnerablePackages"][0]
+    assert package["remediation"].startswith("apt-get") and package["packageManager"] == "OS"
+    assert raw["fixAvailable"] == "YES" and raw["exploitAvailable"] == "NO" and str(raw["epss"]["score"]) == "0.0123"
+    assert len(raw["description"]) == 1000 and raw["title"].startswith("CVE-2024-0001")
+    assert raw["resources"][0]["details"]["awsEcrContainerImage"] == {"repositoryName": "app", "imageTags": ["app-1.0.0"]}
+
+
+def test_reconcile_rewrites_old_format_rows_once():
+    f = Fakes(sh=[asff("a")], insp=[insp("v1")])
+    handler.handler({"action": "reconcile"}, None)
+    for table in f.tables.values():  # v1 형식으로 저장돼 있던 행(배포 전 적재분)을 흉내 낸다
+        for key, row in table.rows.items():
+            if key != handler.SYNC_KEY:
+                row["record_version"] = 1
+    result = handler.handler({"action": "reconcile"}, None)
+    assert result["findings"]["corrected"] == 1 and result["vulnerabilities"]["corrected"] == 1
+    assert f.findings["a"]["record_version"] == handler.RECORD_VERSION
+    again = handler.handler({"action": "reconcile"}, None)
+    assert again["findings"]["corrected"] == 0 and again["vulnerabilities"]["corrected"] == 0
+
+
+def test_old_event_never_overwrites_newer_row_even_if_row_is_old_format():
+    f = Fakes()
+    handler.handler(sh_event(asff("a", updated="2026-09-24T05:00:00Z", workflow="RESOLVED")), None)
+    f.tables["findings"].rows["a"]["record_version"] = 1
+    handler.handler(sh_event(asff("a", updated="2026-09-24T04:00:00Z")), None)  # 늦게 도착한 옛 정보
+    assert f.findings["a"]["view_state"] == "CLOSED" and f.findings["a"]["record_version"] == 1
 
 
 def test_newer_event_during_reconcile_is_not_closed():

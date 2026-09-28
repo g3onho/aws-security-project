@@ -1,0 +1,39 @@
+schemaVersion: '0.3'
+description: |
+  이 리전에서 SSM 문서 공개 공유를 차단합니다 (Security Hub SSM.7).
+  이 프로젝트의 ASR-*·SCAN-* 문서는 공개 공유하지 않으므로 기능 영향이 없습니다(인스턴스 영향 없음).
+  Terraform 은 이 서비스 설정을 관리하지 않으므로 다음 apply 가 되돌리지 않습니다.
+  되돌리기: aws ssm update-service-setting --setting-id /ssm/documents/console/public-sharing-permission --setting-value Enable
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  AutomationAssumeRole:
+    type: String
+    description: 이 문서를 실행할 역할 ARN
+mainSteps:
+  - name: blockPublicSharing
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: Boolean
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      Script: |
+        import boto3
+        SETTING = "/ssm/documents/console/public-sharing-permission"
+        WANT = "Disable"
+        def handler(event, context):
+            ssm = boto3.client("ssm")
+            before = ssm.get_service_setting(SettingId=SETTING)["ServiceSetting"]["SettingValue"]
+            if before != WANT:
+                ssm.update_service_setting(SettingId=SETTING, SettingValue=WANT)
+            after = ssm.get_service_setting(SettingId=SETTING)["ServiceSetting"]["SettingValue"]
+            return {"before": f"공개 공유 권한={before}", "after": f"공개 공유 권한={after}",
+                    "changed": before != after}

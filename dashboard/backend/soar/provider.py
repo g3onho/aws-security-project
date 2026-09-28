@@ -7,13 +7,16 @@ AwsProvider 는 조립만 한다(설계 2.3):
 """
 from .errors import Problem
 from .integrations.aws.cache import SharedCache
+from .integrations.aws.cloudwatch import Alarms
 from .integrations.aws.dynamodb import DynamoTable
 from .integrations.aws.inspector import InspectorFindings
 from .integrations.aws.securityhub import SecurityHubFindings
 from .integrations.aws.session import AwsSession
+from .integrations.aws.ssm import AutomationExecutions
 from .integrations.aws.stored import StoredFindings, StoredVulnerabilities
-from .repositories import infra
+from .repositories import executions, infra
 from .repositories.actions import ActionRepository
+from .repositories.alarms import AlarmRepository
 from .repositories.correlations import CorrelationRepository
 from .repositories.findings import FindingRepository, classify, remote_ip  # noqa: F401 — 기존 import 경로 유지
 from .repositories.metrics import MetricRepository
@@ -66,7 +69,7 @@ class AwsProvider:
 
     def __init__(self, region, session_factory=None, actions_table=None, correlated_table=None,
                  findings_table=None, vulnerabilities_table=None, event_source="securityhub",
-                 vulnerability_source="inspector"):
+                 vulnerability_source="inspector", auto_policy=None, name_prefix=None):
         self.region = region
         self.regions = (region,)
         self._aws = AwsSession(region, session_factory)
@@ -82,7 +85,8 @@ class AwsProvider:
                            else InspectorFindings(self._aws, cache))
         securityhub = (StoredFindings(self._aws, findings_table, cache) if stored_events
                        else SecurityHubFindings(self._aws, cache))
-        self._findings = FindingRepository(securityhub, region)
+        # auto_policy: 자동 조치 판정(설정 기준 예상, guidance.AutoPolicy). 없으면 이벤트에 판정을 싣지 않는다.
+        self._findings = FindingRepository(securityhub, region, auto_policy)
         self._sync = {"events": ("탐지", securityhub) if stored_events else None,
                       "vulnerabilities": ("취약점", self._inspector) if stored_vulns else None}
         self._resources = ResourceRepository(self._aws, region)
@@ -91,6 +95,10 @@ class AwsProvider:
         # DynamoDB (Terraform modules/soar 가 만든 테이블. 이름은 배포 설정 env 로 주입)
         self._actions = ActionRepository(DynamoTable(self._aws, actions_table)) if actions_table else None
         self._correlations = CorrelationRepository(DynamoTable(self._aws, correlated_table)) if correlated_table else None
+        # 인프라 모니터링 경보(이름 접두어 = Terraform name_prefix)와 자동 조치 SSM 실행 결과(조치 전/후)
+        self._alarms = (AlarmRepository(Alarms(self._aws, name_prefix), region, self.account_id, auto_policy)
+                        if name_prefix else None)
+        self._executions = AutomationExecutions(self._aws)
 
     @property
     def as_of(self):
@@ -138,6 +146,17 @@ class AwsProvider:
 
     def correlations(self):
         return self._correlations.by_guardduty_id() if self._correlations else {}
+
+    def alarms(self):
+        """CloudWatch 지표 알람 상태. 이름 접두어 설정(NAME_PREFIX)이 없으면 configured=False."""
+        if self._alarms is None:
+            return {"configured": False, "items": []}
+        return self._alarms.list()
+
+    def execution(self, execution_id, fetch=True):
+        """자동 조치 SSM 실행의 전/후 증거(실행 결과이지 재검증이 아니다). (found, evidence|None)."""
+        found, raw = self._executions.get(execution_id, fetch=fetch)
+        return found, executions.evidence(raw) if found else None
 
     def services(self, query=None, events=None):
         resources = self._resources.list(query or {})

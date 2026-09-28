@@ -1,0 +1,41 @@
+schemaVersion: '0.3'
+description: |
+  이 리전의 EBS 스냅샷 퍼블릭 액세스 차단을 block-all-sharing 으로 켭니다 (Security Hub EC2.182).
+  스냅샷을 공개 공유할 수 없게 하는 계정 설정이며 인스턴스·볼륨에는 영향이 없습니다(재부팅 없음).
+  Terraform 은 이 계정 설정을 관리하지 않으므로 다음 apply 가 되돌리지 않습니다.
+  실행 환경의 boto3 가 이 API(2023-11 추가)를 모르면 바꾸지 않고 실패합니다 → 콘솔에서 수동 설정.
+  되돌리기: aws ec2 disable-snapshot-block-public-access
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  AutomationAssumeRole:
+    type: String
+    description: 이 문서를 실행할 역할 ARN
+mainSteps:
+  - name: blockSnapshotPublicAccess
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: Boolean
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      Script: |
+        import boto3
+        WANT = "block-all-sharing"
+        def handler(event, context):
+            ec2 = boto3.client("ec2")
+            if not hasattr(ec2, "get_snapshot_block_public_access_state"):
+                raise RuntimeError("실행 환경 boto3 가 스냅샷 퍼블릭 액세스 차단 API 를 지원하지 않음. 콘솔(EC2 > 설정)에서 수동으로 켠다")
+            before = ec2.get_snapshot_block_public_access_state()["State"]
+            if before != WANT:
+                ec2.enable_snapshot_block_public_access(State=WANT)
+            after = ec2.get_snapshot_block_public_access_state()["State"]
+            return {"before": f"스냅샷 퍼블릭 액세스 차단={before}", "after": f"스냅샷 퍼블릭 액세스 차단={after}",
+                    "changed": before != after}

@@ -216,6 +216,18 @@ variable "auto_remediable_patterns" {
   ]
 }
 
+variable "auto_remediable_controls" {
+  description = <<-EOT
+    Security Hub 규칙 ID 정확 일치 자동 조치 목록(project-management/decisions.md DEC-017)과 SEC-06A(DEC-018).
+    규칙 ID 는 부분 일치하지 않는다(EC2.2 가 EC2.21 을 잡지 않음). 재부팅이 없고 Terraform 이 관리하지 않는
+    계정·리전 설정만 넣는다. "SEC-06A" 는 MySQL 무차별 대입 알람 → 공격 IP NACL 자동 차단,
+    "SEC-06B" 는 VPC 내부 출발지의 SSH(22) 거부 급증(Flow Logs) → 같은 NACL 자동 차단이다(DEC-019).
+    항목을 빼면 그 finding 은 기존 패턴 화이트리스트 규칙대로 판정된다(대부분 수동 알림).
+  EOT
+  type        = list(string)
+  default     = ["EC2.2", "EC2.7", "EC2.182", "S3.1", "IAM.7", "SSM.6", "SSM.7", "SEC-06A", "SEC-06B"]
+}
+
 variable "alert_email" {
   description = "SNS 구독 이메일. 비우면 구독을 만들지 않습니다(콘솔에서 수동 추가)."
   type        = string
@@ -288,6 +300,12 @@ variable "memory_alarm_threshold" {
 
 variable "mysql_auth_fail_threshold" {
   description = "5분간 MySQL 인증 실패 횟수 임계치 (SEC-06 Hydra 무차별 대입 탐지)"
+  type        = number
+  default     = 10
+}
+
+variable "ssh_reject_alarm_threshold" {
+  description = "5분간 VPC 내부 출발지의 SSH(22) 거부 흐름 수 임계치 (SEC-06B, DEC-019). MySQL 알람 기본값과 맞춘 값이며 승인된 운영 기준은 아니다."
   type        = number
   default     = 10
 }

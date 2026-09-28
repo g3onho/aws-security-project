@@ -1,0 +1,42 @@
+schemaVersion: '0.3'
+description: |
+  SSM Automation 스크립트 출력(executeScript)을 CloudWatch Logs 로 보내도록 서비스 설정을 켭니다 (Security Hub SSM.6).
+  로그 그룹을 따로 지정하지 않으므로 기본 그룹 /aws/ssm/automation/executeScript 를 씁니다(없으면 SSM 이 만든다).
+  ASR-* 문서의 실행 로그가 남아 조치 증적에도 쓸 수 있습니다. 인스턴스에는 영향이 없습니다.
+  Terraform 은 이 서비스 설정을 관리하지 않으므로 다음 apply 가 되돌리지 않습니다.
+  되돌리기: aws ssm reset-service-setting --setting-id <아래 설정 ARN>
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  AutomationAssumeRole:
+    type: String
+    description: 이 문서를 실행할 역할 ARN
+mainSteps:
+  - name: enableAutomationLogging
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: Boolean
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      Script: |
+        import boto3
+        WANT = "CloudWatch"
+        def handler(event, context):
+            session = boto3.session.Session()
+            account = boto3.client("sts").get_caller_identity()["Account"]
+            setting = f"arn:aws:ssm:{session.region_name}:{account}:servicesetting/ssm/automation/customer-script-log-destination"
+            ssm = boto3.client("ssm")
+            before = ssm.get_service_setting(SettingId=setting)["ServiceSetting"]["SettingValue"]
+            if before != WANT:
+                ssm.update_service_setting(SettingId=setting, SettingValue=WANT)
+            after = ssm.get_service_setting(SettingId=setting)["ServiceSetting"]["SettingValue"]
+            return {"before": f"스크립트 로그 대상={before}", "after": f"스크립트 로그 대상={after}",
+                    "changed": before != after}

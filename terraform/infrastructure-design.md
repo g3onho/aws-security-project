@@ -120,7 +120,8 @@ Terraform은 로그와 finding을 같은 데이터로 취급하지 않는다. Gu
 | 위협·취약점 | GuardDuty + Inspector2 finding; `correlator`가 동일 EC2/Inspector CVE를 상관분석 | EC2 식별자 기준 상관에 한정; 누락/타입 불일치 시 상관되지 않았음을 드러냄 |
 | Finding 적재 | `finding_sync`가 Security Hub/Inspector 자료를 findings/vulnerabilities DynamoDB에 동기화 | 동기화 상태 행, 원본 시각/version, `view_state`, 실패 경고를 보존; 실패한 sync를 정상 빈 목록으로 취급하지 않음 |
 | 수동 점검 증거 | SSM `SCAN-*` 문서가 nmap/ZAP/Trivy 등 결과를 S3에 저장 | 결과 파일은 로그 스트림이나 SOAR 조치 결과와 별개. S3 접근·보존·삭제 정책을 정의 |
-| 자동조치 상태 | EventBridge → `asr_trigger` → 게이트/SSM/SNS → `remediation_actions` DynamoDB | 판단 이력과 SSM 실행 결과를 구분; 실행 성공만으로 재검증/해결완료가 아님 |
+| 자동조치 상태 | EventBridge → `asr_trigger` → 게이트/SSM/SNS → `remediation_actions` DynamoDB | 판단 이력과 SSM 실행 결과를 구분; 실행 성공만으로 재검증/해결완료가 아님. 기록에 판정 이유(`reason`)·규칙 ID(`control_id`)를 남긴다 |
+| 무차별 대입 자동 차단 | MySQL 인증 실패 알람(SEC-06A)·Flow Logs SSH(22) 거부 알람(SEC-06B, VPC 내부 출발지) → EventBridge → `asr_trigger` → 로그에서 최다 출발지 IP → `ASR-BlockIpWithNacl` | DEC-018·DEC-019. VPC CIDR 밖·보호 자산 주소는 알림만. 1~99번 Deny, 자동 만료 없음. 로그 전송 경로가 없으면 출발지를 못 찾아 수동 알림 |
 | Nginx 강화 | `ASR-HardenNginx` SSM Command 문서는 확인되나 자동 Lambda 호출 경로는 연결되지 않음 | 사용자 선택에 따라 수동 조치 기준으로 둠. Terraform이 이를 자동조치했다고 표현하지 않음 |
 | AI 허니팟 | 조사한 네 모듈과 compute 리소스에서 별도 AI 허니팟 배포 모듈·자원은 확인되지 않음 | 프로젝트 목표에 포함하되 기술·데이터 경로·비용·격리·차단 정책은 미결정. 허니팟 설계 문서에서 제안과 사실을 구분 |
 
@@ -142,6 +143,8 @@ MySQL 인증 실패 경보는 `Access denied for user` metric filter → `MySQLA
 ### SOAR 안전장치와 실행 경계
 
 현재 Terraform 자료는 `asr_trigger`의 유형 화이트리스트, SG `AutoRemediation=enabled` 태그, 전역 `enable_auto_remediation` 토글을 게이트로 설명한다. 소스 주석과 실제 코드 설명에는 **태그 게이트가 SG 조치 분기에만 적용되고 노출 IAM key 경로는 2개 검사만 거친다**는 차이가 기록되어 있다. 모든 유형이 동일한 3개 게이트를 통과한다고 단정하지 않는다. `enable_auto_remediation=false`는 판정 후 실행을 막는 전체 dry-run 용도다.
+
+Security Hub 규칙 ID가 `auto_remediable_controls`에 정확히 있으면(DEC-017) 패턴 화이트리스트보다 먼저 규칙별 문서를 실행한다. 대상은 EC2.2·EC2.7·EC2.182·S3.1·IAM.7·SSM.6·SSM.7로, 재부팅이 없고 Terraform이 관리하지 않는 계정·리전 설정이다. 이 경로의 게이트는 규칙 목록과 전역 토글이며 태그 검사는 없다. EC2.2는 프로젝트 VPC(`vpc_id`)의 기본 보안그룹만 바꾸고, 문서도 이름·VPC를 다시 확인한다. 같은 finding의 실행이 `IN_PROGRESS`면 다시 실행하지 않고, 문서는 현재 값이 이미 준수면 바꾸지 않는다. 자동화 역할에는 각 설정의 읽기·쓰기 권한만 추가했다(SSM 서비스 설정은 두 설정 ARN으로 한정).
 
 자동 실행 전에 사람 확인을 추가할 정책은 사용자가 후속 설계 과제로 지정했다. 따라서 기존 Terraform/EventBridge/Lambda 경로의 실제 동작을 관찰·기록하되 확인 단계가 구현되어 있다고 쓰지 않는다. 추가 승인을 실제 적용하기 전에는 트리거 유형별 영향, 권한, 대상 범위, 예외, rollback, 중복 실행, 결과 유실 시 조정, 자동 실행 책임을 결정 기록에서 승인한다.
 
