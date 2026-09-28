@@ -15,6 +15,7 @@ import {overviewCharts} from './ui/pages/overview.js?v=ui-1';
 import {table,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=ui-1';
 import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=ui-1';
 import {renderAudit} from './ui/pages/history.js?v=ui-1';
+import {renderDrills} from './ui/pages/drills.js?v=ui-1';
 import {renderVulnerabilities,selectVulnTarget,stepVulnPage,setVulnSize,setVulnFixable,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=ui-1';
 function render({loadPanels=false}={}){
  const pending=[];
@@ -23,7 +24,8 @@ function render({loadPanels=false}={}){
  $$('nav [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===state.view);b.setAttribute('aria-current',b.dataset.view===state.view?'page':'false');});
  $('#map-section').hidden=state.view!=='overview';
  // 취약점은 현재 상태라 기간을 쓰지 않는다 — 기간 막대를 숨긴다(v20.5).
- $('.timeline').hidden=state.view==='vulnerabilities';
+ $('.timeline').hidden=state.view==='vulnerabilities'||state.view==='drills';
+ $('.filters').hidden=state.view==='drills';
  const span=state.hours*3600000,end=clockNow()-state.endOffset*3600000;
  renderTrack(end);
  $$('[data-hours]').forEach(b=>{b.classList.toggle('active',+b.dataset.hours===state.hours);b.setAttribute('aria-pressed',String(+b.dataset.hours===state.hours));});
@@ -39,6 +41,9 @@ function render({loadPanels=false}={}){
   // 탐지 목록이 아니라 조치 기록을 보여준다(v20).
   renderContent(`<div class="view-intro"><span>자동조치 판정과 수동 조치 기록입니다(선택 기간에 마지막으로 발생한 기록, 최대 30일 보존). '실행 완료'는 재검증 전 상태이며 해결을 뜻하지 않습니다.</span></div><section class="panel full-panel">${header('대응 이력','HISTORY')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
   if(loadPanels)pending.push(renderAudit().then(()=>renderTrack()));   // 1주일 이력이 오면 트랙을 이력 수로 다시 그린다
+ }else if(state.view==='drills'){
+  renderContent(`<div id="drills" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
+  if(loadPanels)pending.push(renderDrills());
  }else {
   const visible=visibleRows();
   const intro=state.view==='responses'?'실행 결과와 재검증 결과를 구분하여 확인합니다.':'탐지 근거에서 대응과 재검증까지 추적합니다.';

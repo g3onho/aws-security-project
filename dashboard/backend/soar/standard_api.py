@@ -11,6 +11,10 @@ def service():
     return current_app.extensions["standard_service"]
 
 
+def drills():
+    return current_app.extensions["drill_service"]
+
+
 def read(kind):
     data = service().read(kind, dict(request.args.lists()), g.actor)
     # 서비스가 붙인 경고·부분 결과 표시를 meta 로 옮긴다(설계 2.3 원칙 6).
@@ -78,3 +82,19 @@ def execute():
 @bp.post("/verify")
 def verify():
     return command("verify")
+
+
+@bp.get("/api/drills/catalog")
+def drills_catalog():
+    return jsonify(envelope(drills().catalog(), g.request_id))
+
+
+@bp.get("/api/drills")
+def drills_list():
+    return jsonify(envelope(drills().run_list(), g.request_id))
+
+
+@bp.get("/api/drills/<string:run_id>")
+def drills_detail(run_id):
+    return jsonify(envelope(drills().run_detail(run_id), g.request_id))
+

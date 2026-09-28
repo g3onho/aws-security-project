@@ -7,6 +7,7 @@ from jinja2 import ChoiceLoader, FileSystemLoader
 
 from .auth import current_user, install_auth
 from .contracts import StandardService, envelope
+from .drills import DrillService
 from .provider import AwsProvider, UnconfiguredProvider
 from .errors import install_errors
 from .settings import configure
@@ -39,7 +40,8 @@ def create_app(overrides=None):
     worker = Worker(store, provider, settings["WORKER_LEASE_SECONDS"])
     app.extensions.update(store=store, provider=provider, workflow=workflow,
                           worker=worker,
-                          standard_service=StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"]))
+                          standard_service=StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"]),
+                          drill_service=DrillService(store, provider))
 
     @app.before_request
     def request_context():

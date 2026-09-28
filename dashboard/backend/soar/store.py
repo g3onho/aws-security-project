@@ -53,6 +53,9 @@ class Store:
                 CREATE TABLE IF NOT EXISTS login_limits (
                     key TEXT PRIMARY KEY, failures INTEGER NOT NULL, until_ms INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS drills (
+                    run_id TEXT PRIMARY KEY, payload TEXT NOT NULL, created_at INTEGER NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 PRAGMA user_version=1;
             """)

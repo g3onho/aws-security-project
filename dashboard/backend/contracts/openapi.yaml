@@ -224,6 +224,46 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/VerifyQueuedEnvelope'}
         default: {$ref: '#/components/responses/Error'}
+  /api/drills/catalog:
+    get:
+      operationId: getDrillCatalog
+      x-permission: dashboard:read
+      description: >-
+        공격·대응 실습(1차 관측·구조)의 실행 유형과 SEC 시나리오 카탈로그, 실행 환경 상태.
+        support 는 보안 시나리오 문서의 정적 분류이며 실행 승인이 아니다.
+      responses:
+        '200':
+          description: 실행 유형·시나리오·환경·지원상태 범례
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrillCatalogEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/drills:
+    get:
+      operationId: listDrills
+      x-permission: dashboard:read
+      description: 실습 실행 이력 목록. 1차 범위에는 실행 경로가 없어 비어 있다.
+      responses:
+        '200':
+          description: 실습 실행 목록
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DrillListEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/drills/{runId}:
+    get:
+      operationId: getDrill
+      x-permission: dashboard:read
+      parameters:
+        - {name: runId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: 실습 실행 상세와 타임라인
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Envelope'}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     session: {type: apiKey, in: cookie, name: soar_session}
@@ -288,6 +328,61 @@ components:
     ActionState:
       type: string
       enum: [PENDING_APPROVAL, APPROVED, CANCELLED, QUEUED, RUNNING, EXECUTED, EXECUTION_FAILED, VERIFY_QUEUED, VERIFYING, VERIFIED, VERIFICATION_FAILED, VERIFICATION_ERROR, RECONCILING]
+    DrillSupport: {type: string, enum: [runnable, prep-needed, observe-only, design-needed]}
+    DrillType:
+      type: object
+      required: [id, name, tool, kind, sources]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        tool: {type: string}
+        kind: {type: string, enum: [attack, scenario, load]}
+        sources: {type: array, items: {type: string}}
+        note: {type: string}
+    DrillScenario:
+      type: object
+      required: [id, purpose, types, sources, response, support, supportLabel, observation]
+      properties:
+        id: {type: string}
+        purpose: {type: string}
+        types: {type: array, items: {type: string}}
+        sources: {type: array, items: {type: string}}
+        response: {type: string}
+        support: {$ref: '#/components/schemas/DrillSupport'}
+        supportLabel: {type: string}
+        observation: {type: string, enum: [connected, disconnected]}
+        note: {type: string}
+    DrillCatalogEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [types, scenarios, environment, supportLegend]
+              properties:
+                types: {type: array, items: {$ref: '#/components/schemas/DrillType'}}
+                scenarios: {type: array, items: {$ref: '#/components/schemas/DrillScenario'}}
+                environment:
+                  type: object
+                  properties:
+                    dataSourceConnected: {type: boolean}
+                    providerState: {type: [string, 'null']}
+                    region: {type: [string, 'null']}
+                    isolationVerified: {type: string}
+                    executionMode: {type: string}
+                supportLegend: {type: object, additionalProperties: {type: string}}
+    DrillListEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, nextCursor]
+              properties:
+                items: {type: array, items: {type: object}}
+                nextCursor: {type: [string, 'null']}
     Measurement:
       type: [object, 'null']
       properties:

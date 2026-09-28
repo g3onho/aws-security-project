@@ -145,6 +145,22 @@ export const actions={
    return {items:adapted.rows.filter(row=>historyAt(row)>=from),jobs:adapted.jobs,warnings:unique([...result.warnings,...adapted.warnings]),partial:result.meta?.partial===true};
   }catch(error){markRequest('history',{status:'error',error:error.message});throw error;}
  },
+ async drillsCatalog(){
+  markRequest('drillsCatalog',{status:'loading'});
+  try{
+   const result=envelope(await request(endpoints.drillsCatalog)).data;
+   markRequest('drillsCatalog',{status:'success',lastUpdated:Date.now(),error:null});
+   return result;
+  }catch(error){markRequest('drillsCatalog',{status:'error',error:error.message});throw error;}
+ },
+ async drills(){
+  markRequest('drills',{status:'loading'});
+  try{
+   const result=listEnvelope(await request(endpoints.drills)).data;
+   markRequest('drills',{status:'success',lastUpdated:Date.now(),error:null});
+   return {items:result.items,nextCursor:result.nextCursor??null};
+  }catch(error){markRequest('drills',{status:'error',error:error.message});throw error;}
+ },
  async logout(){session.controller?.abort();session.generation++;await request(endpoints.logout,{method:'POST',body:'{}'});reset();location.assign('/login');},
  // CSV 내보내기용 이벤트 전체(현재 기간·리전·위험도·상태 필터). 파일 만들기·내려받기는 화면(downloads.js) 몫이다.
  async exportEvents(){const {items}=await pages(endpoints.events,query());return {items};},

@@ -3,4 +3,5 @@ export const endpoints=Object.freeze({
  session:'/api/auth/session',logout:'/api/auth/logout',
  events:'/api/events',summary:'/api/summary',metrics:'/api/metrics',infra:'/api/infra/status',
  vulnerabilities:'/api/vulnerabilities',history:'/api/history',health:'/health',
+ drillsCatalog:'/api/drills/catalog',drills:'/api/drills',
 });
