@@ -26,7 +26,7 @@ function render({loadPanels=false}={}){
  // 취약점은 현재 상태라 기간을 쓰지 않는다 — 기간 막대를 숨긴다(v20.5).
  $('.timeline').hidden=state.view==='vulnerabilities'||state.view==='drills';
  $('.filters').hidden=state.view==='drills';
- const span=state.hours*3600000,end=clockNow()-state.endOffset*3600000;
+ const end=rangeEnd();
  renderTrack(end);
  $$('[data-hours]').forEach(b=>{b.classList.toggle('active',+b.dataset.hours===state.hours);b.setAttribute('aria-pressed',String(+b.dataset.hours===state.hours));});
  syncTimeRange();
@@ -55,12 +55,12 @@ function render({loadPanels=false}={}){
   if(state.view==='responses'&&loadPanels)pending.push(renderAudit().then(()=>renderTrack()));
  }
  renderNotifications(rows);
- $('#footer-asof').textContent=`기준 데이터 ${format(clockNow())} KST`;
+ $('#footer-asof').textContent=`기준 데이터 ${format(summary.asOf)} KST`;
  cleanCharts();
  syncUrl();
  return Promise.all(pending);
 }
-function clockNow(){return summary.asOf||Date.now();}
+function rangeEnd(){return summary.queryTo||Date.now();}
 // 기간 트랙(v20.5): 지금 → 15분·1시간·1일·1주일 누적 곡선. 지점 = 기간 버튼. 화면마다 세는 대상이 다르다.
 //  통합 관제·보안 이벤트 = 탐지 / 인프라 = 임계 초과 구간(끝 시각 기준 → 기간과 겹치는 구간, 화면 표와 같은 수) / 대응 이력 = 이력(마지막 발생 시각)
 const historyAt=row=>Date.parse(row.lastSeenAt||row.createdAt);   // 서버 대응 이력 기간 기준과 같다
@@ -69,9 +69,9 @@ function trackSource(){
  if(state.view==='responses'){const week=selectors.historyWeek();return {noun:'대응 이력',unit:'건',times:week?week.map(historyAt):null};}
  return {noun:'탐지',unit:'건',times:(selectors.week()||selectEvents()).map(e=>e.at)};
 }
-function renderTrack(end=clockNow()-state.endOffset*3600000){
+function renderTrack(end=rangeEnd()){
  const span=state.hours*3600000,{noun,unit,times}=trackSource(),from=end-span;
- const count=times==null?null:times.filter(t=>t!=null&&t>=from&&t<=end).length;
+ const count=times==null?null:times.filter(t=>t!=null&&t>=from&&t<end).length;
  $('#time-label').innerHTML=`${format(from)} — ${format(end)} KST<br>최근 ${periodStops[periodIndex()].label} · ${noun} <strong>${count??'…'}</strong>${unit}`;
  $('#period-track').innerHTML=periodTrackMarkup(times,state.hours,end,{noun,unit});
 }

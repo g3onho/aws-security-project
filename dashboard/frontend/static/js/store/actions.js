@@ -43,9 +43,9 @@ async function pages(path,q,signal){
 function activeSession(epoch){if(epoch!==session.epoch)throw new DOMException('세션이 변경되었습니다.','AbortError');}
 const searchMatches=term=>e=>[e.id,e.title,e.resource,e.scenario].some(v=>String(v||'').toLocaleLowerCase().includes(term));
 
-// 1주일 지표에서 선택 기간(from 이후) 표본만 남긴다. 서버에 그 기간으로 따로 물은 결과와 같은 5분 표본이다.
-export function sliceMetrics(metric,from){
- return {...metric,series:(metric.series||[]).map(s=>{const points=(s.points||[]).filter(p=>Date.parse(p.timestamp)>=from);
+// 1주일 지표에서 선택 기간 [from,to) 표본만 남기고, 차트 축에 쓸 조회 경계도 보존한다.
+export function sliceMetrics(metric,from,to){
+ return {...metric,rangeFrom:from,rangeTo:to,series:(metric.series||[]).map(s=>{const points=(s.points||[]).filter(p=>Date.parse(p.timestamp)>=from&&Date.parse(p.timestamp)<to);
   return {...s,points,observedAt:points.length?points[points.length-1].timestamp:null,
    collectionStatus:points.some(p=>p.value!=null)?'available':'missing'};})};
 }
@@ -94,16 +94,16 @@ export const actions={
     if(filters.search)weekRows=weekRows.filter(searchMatches(filters.search.toLocaleLowerCase()));
     data.week=weekRows;}else data.week=null;
    const metricWeek=metricsResponse?envelope(metricsResponse).data:null;
-   data.metricWeek=metricWeek;data.metric=metricWeek?sliceMetrics(metricWeek,Date.parse(q.get('from'))):null;
+   data.metricWeek=metricWeek;data.metric=metricWeek?sliceMetrics(metricWeek,Date.parse(q.get('from')),Date.parse(q.get('to'))):null;
    data.infra=infraResponse?envelope(infraResponse).data:null;
    const asOf=milliseconds(events.meta?.asOf)||Date.now();setAsOf(asOf);
    const resolved=rows.filter(e=>e.actionState==='VERIFIED').length;
    Object.assign(summary,{total:filters.source||filters.search?rows.length:standardSummary.totalEvents,resolved,
     openVulnerabilities:standardSummary.openVulnerabilities??null,
-    resolutionRate:rows.length?resolved/rows.length*100:null,asOf,collectedAt:asOf,snapshot:events.meta?.requestId,
+    resolutionRate:rows.length?resolved/rows.length*100:null,asOf,queryTo:Date.parse(q.get('to')),collectedAt:asOf,snapshot:events.meta?.requestId,
     health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}},
     // 적재 지연·실패(v21, meta.warnings)와 형식 오류로 뺀 행 수(어댑터)를 숨기지 않는다.
-    warnings:unique([...events.warnings,...warningsOf(summaryResponse),...adapted.warnings])});
+    warnings:unique([...events.warnings,...warningsOf(summaryResponse),...(metricsResponse?warningsOf(metricsResponse):[]),...adapted.warnings])});
    setConfig({...config,dataSourceConnected:healthData.dataSourceConnected});
    details.clear();for(const event of [...rows,...regional])details.set(event.id,event);
    markRequest('events',{status:'success',lastUpdated:asOf,requestId:events.meta?.requestId||null,error:null});

@@ -329,20 +329,41 @@ class StandardService:
 
     def _metrics(self, q, principal):
         series = []
-        for resource in self._resources(q, principal):
-            raw = self.provider.metric_for(resource, {**q, "region": resource["region"], "resource": resource["id"]})
-            actual_period = raw.get("period")
-            if actual_period != q["periodSeconds"]:
-                raise Problem(422, "이 데이터 소스가 요청한 집계 주기를 지원하지 않습니다.", "UNSUPPORTED_PERIOD")
+        resources = self._resources(q, principal)
+        history = self.provider.metric_history(resources, q) if resources and hasattr(self.provider, "metric_history") else {}
+        for resource in resources:
+            prior_ids = [identifier for identifier in history.get("byResource", {}).get(resource["id"], [])
+                         if scope_matches({"region": resource["region"], "resource": identifier,
+                                           "accountId": resource.get("accountId")}, principal)]
+            # 현재 인스턴스를 마지막에 병합한다. 교체 시각의 동일 버킷은 새 인스턴스 표본을 택한다.
+            instance_ids = [*prior_ids, resource["id"]]
+            merged = {metric: {} for metric in ("cpu", "memory")}
+            for identifier in instance_ids:
+                raw = self.provider.metric_for({**resource, "id": identifier},
+                                               {**q, "region": resource["region"], "resource": identifier})
+                if raw.get("period") != q["periodSeconds"]:
+                    raise Problem(422, "이 데이터 소스가 요청한 집계 주기를 지원하지 않습니다.", "UNSUPPORTED_PERIOD")
+                for point in raw.get("points", []):
+                    if not q["from"] <= point["at"] < q["to"]:
+                        continue
+                    for metric in ("cpu", "memory"):
+                        if point.get(metric) is not None:
+                            merged[metric][point["at"]] = {"timestamp": iso(point["at"]),
+                                                           "value": point[metric], "instanceId": identifier}
+            times = sorted(set(merged["cpu"]) | set(merged["memory"]))
             for metric in ("cpu", "memory"):
-                points = [{"timestamp": iso(point["at"]), "value": point.get(metric)}
-                          for point in raw.get("points", []) if q["from"] <= point["at"] < q["to"]]
+                points = [merged[metric].get(at) or {"timestamp": iso(at), "value": None, "instanceId": None}
+                          for at in times]
                 # name: 인프라 모니터링 호스트 카드 제목(EC2 Name 태그). 없으면 화면이 ID 를 쓴다.
                 series.append({"resource": resource["id"], "name": resource.get("name"), "region": resource["region"],
-                               "metric": metric, "unit": "%",
+                               "metric": metric, "unit": "%", "instanceIds": instance_ids,
                                "points": points, "observedAt": points[-1]["timestamp"] if points else None,
                                "collectionStatus": "available" if any(point["value"] is not None for point in points) else "missing"})
-        return {"series": series, "thresholds": {"cpu": 80, "memory": 80}, "periodSeconds": q["periodSeconds"], "dataMode": "live"}
+        result = {"series": series, "thresholds": {"cpu": 80, "memory": 80}, "periodSeconds": q["periodSeconds"], "dataMode": "live"}
+        if history.get("incomplete"):
+            result["_partial"] = True
+            result["_warnings"] = ["일부 종료된 인스턴스는 CloudTrail 실행 기록으로 역할을 확인할 수 없어 지표를 연결하지 못했습니다."]
+        return result
 
     def _infra(self, q, principal, events):
         components, dependencies = [], []

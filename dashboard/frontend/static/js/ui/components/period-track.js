@@ -19,11 +19,11 @@ export function xOf(ago){
  return W*(STOP_X[i]+(STOP_X[i+1]-STOP_X[i])*(ago-stops[i])/(stops[i+1]-stops[i]));
 }
 // 지금부터 ago 전까지 탐지 수
-export const cumulative=(ages,ago)=>{let n=0;for(const a of ages)if(a>=0&&a<ago)n++;return n;};
+export const cumulative=(ages,ago)=>{let n=0;for(const a of ages)if(a>0&&a<=ago)n++;return n;};
 
-// times: 세는 대상의 시각(ms) 목록. null 이면 아직 불러오는 중(0으로 그림).
+// times: 세는 대상의 시각(ms) 목록. null 이면 아직 불러오는 중이며 숫자는 미정으로 둔다.
 export function periodTrackMarkup(times,hours,now,{noun='탐지',unit='건'}={}){
- const ages=(times||[]).filter(t=>t!=null).map(t=>now-t).filter(a=>a>=0).sort((a,b)=>a-b);
+ const ages=(times||[]).filter(t=>t!=null).map(t=>now-t).filter(a=>a>0).sort((a,b)=>a-b);
  // 높이 = √(누적/1주일 누적). 1주일 대비 몇 건 안 되는 최근 구간도 곡선이 보이게 하는 제곱근 축(순서·단조성은 그대로).
  const total=Math.max(1,cumulative(ages,168*HOUR)),y=n=>BASE-(BASE-TOP)*Math.sqrt(n/total);
  // 곡선: 구간마다 SAMPLES 개 표본(가까운 과거일수록 촘촘한 시간 간격)
@@ -36,11 +36,11 @@ export function periodTrackMarkup(times,hours,now,{noun='탐지',unit='건'}={})
  const selX=xOf(hours*HOUR),sel=PERIOD_STOPS.findIndex(s=>s.hours===hours);
  const SVG_PX=42;   // .pt-svg 높이(px) — 지점 점을 곡선 위에 올린다
  const stops=PERIOD_STOPS.map((s,i)=>{
-  const x=STOP_X[i]*100,count=s.hours?cumulative(ages,s.hours*HOUR):null,active=i===sel,inside=i<=sel;
+  const x=STOP_X[i]*100,count=s.hours?(times==null?null:cumulative(ages,s.hours*HOUR)):null,active=i===sel,inside=i<=sel;
   const py=(y(count||0)/H*SVG_PX).toFixed(1),style=`left:${x}%;--y:${py}px`;
   const edge=i===0?' first':i===PERIOD_STOPS.length-1?' last':'';
   return s.hours
-   ?`<button class="pt-stop${active?' active':''}${inside?' inside':''}${edge}" style="${style}" data-hours="${s.hours}" aria-pressed="${active}" title="최근 ${esc(s.label)} · ${esc(noun)} ${count}${esc(unit)}"><span class="pt-stem"></span><span class="pt-count">${count}</span><span class="pt-dot"></span><span class="pt-label">${esc(s.label)}</span></button>`
+   ?`<button class="pt-stop${active?' active':''}${inside?' inside':''}${edge}" style="${style}" data-hours="${s.hours}" aria-pressed="${active}" title="최근 ${esc(s.label)} · ${esc(noun)} ${count??'…'}${esc(unit)}"><span class="pt-stem"></span><span class="pt-count">${count??'…'}</span><span class="pt-dot"></span><span class="pt-label">${esc(s.label)}</span></button>`
    :`<div class="pt-stop now${edge}" style="${style}"><span class="pt-count"></span><span class="pt-dot"></span><span class="pt-label">지금</span></div>`;
  }).join('');
  return `<div class="pt" role="group" aria-label="조회 기간: 지금부터 과거로. 곡선은 지금부터 쌓인 ${esc(noun)} 수">

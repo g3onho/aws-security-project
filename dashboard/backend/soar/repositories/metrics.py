@@ -3,12 +3,21 @@ import os
 from datetime import datetime, timezone
 
 from ..integrations.aws.cloudwatch import get_metric_data
+from ..integrations.aws.cloudtrail import replaced_instances
 
 
 class MetricRepository:
     def __init__(self, session, clock):
         self._session = session
         self._clock = clock
+
+    def history_for(self, resources, query):
+        profiles = {item["profileName"] for item in resources if item.get("profileName")}
+        start = datetime.fromtimestamp(query["from"] / 1000, tz=timezone.utc)
+        end = datetime.fromtimestamp(query["to"] / 1000, tz=timezone.utc)
+        by_profile, incomplete = replaced_instances(self._session, start, end, profiles)
+        return {"byResource": {item["id"]: by_profile.get(item.get("profileName"), []) for item in resources},
+                "incomplete": incomplete}
 
     def metric_for(self, resource, query=None):
         query = query or {}

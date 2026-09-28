@@ -16,8 +16,10 @@ class ResourceRepository:
             if (instance.get("State") or {}).get("Name") in {"terminated", "shutting-down"}:
                 continue
             tags = {t.get("Key"): t.get("Value") for t in instance.get("Tags", [])}
+            profile_arn = (instance.get("IamInstanceProfile") or {}).get("Arn") or ""
             items.append({"id": instance["InstanceId"], "name": tags.get("Name") or instance["InstanceId"],
                           "role": tags.get("Role") or "EC2",
+                          "profileName": profile_arn.rsplit("/", 1)[-1] if profile_arn else None,
                           "region": self._region, "accountId": self._session.account_id,
                           "state": (instance.get("State") or {}).get("Name", "unknown"),
                           "type": instance.get("InstanceType")})

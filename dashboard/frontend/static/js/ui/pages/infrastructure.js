@@ -31,12 +31,16 @@ export function hostViews(m){
  const threshold=m?.thresholds||{cpu:80,memory:80},byId=new Map();
  for(const s of m?.series||[]){
   const h=byId.get(s.resource)||{resource:s.resource,name:s.name||s.resource,cpu:[],memory:[]};
-  if(s.metric==='cpu'||s.metric==='memory')h[s.metric]=s.points.map(p=>({at:milliseconds(p.timestamp),value:p.value}));
+  if(s.metric==='cpu'||s.metric==='memory')h[s.metric]=s.points.map(p=>({at:milliseconds(p.timestamp),value:p.value,instanceId:p.value==null?null:(p.instanceId||s.resource)}));
   byId.set(s.resource,h);
  }
  return [...byId.values()].map(h=>{
   const stat=key=>{const v=h[key].map(p=>p.value).filter(x=>x!=null);return {now:v.length?v[v.length-1]:null,max:v.length?Math.max(...v):null,avg:v.length?v.reduce((a,b)=>a+b,0)/v.length:null,samples:v.length};};
-  return {...h,threshold,stats:{cpu:stat('cpu'),memory:stat('memory')},
+  const firstByInstance=new Map();
+  for(const point of [...h.cpu,...h.memory])if(point.instanceId)firstByInstance.set(point.instanceId,Math.min(firstByInstance.get(point.instanceId)??Infinity,point.at));
+  const instanceIds=[...firstByInstance.keys()].sort((a,b)=>firstByInstance.get(a)-firstByInstance.get(b));
+  const switches=instanceIds.slice(1).map(id=>({at:firstByInstance.get(id)}));
+  return {...h,threshold,instanceIds,switches,stats:{cpu:stat('cpu'),memory:stat('memory')},
    breaches:[...breachesOf(h.cpu,'cpu',threshold.cpu),...breachesOf(h.memory,'memory',threshold.memory)].sort((a,b)=>a.from-b.from)};
  });
 }
@@ -80,8 +84,8 @@ export function infrastructure(){
   <div class="context-note">리전에서 조회된 EC2 전체입니다. 카드 수치는 선택 기간(최근 ${esc(label)})의 5분 평균 표본을 다시 평균·최대로 낸 값이며, 기간 버튼을 바꾸면 함께 바뀝니다. 표본은 5분 평균입니다(CPU 는 EC2 기본 모니터링 5분 간격). 메모리는 CloudWatch Agent 가 설치된 호스트만 수집됩니다.</div></section>
  <div class="infrastructure-grid">
   <section class="panel">${header(`상세 · ${esc(h.name)}`,hostPicker(hosts,h))}<div class="metric-large">${canvas('metrics-chart',`CPU ${pct(h.stats.cpu.now)}, 메모리 ${pct(h.stats.memory.now)}, 임계치 ${h.threshold.cpu}%`)}</div>
-   <div class="metric-stats"><div><span>CPU 현재</span><b>${pct(h.stats.cpu.now)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(h.stats.cpu.max)} / ${pct(h.stats.cpu.avg)}</b></div><div><span>메모리 현재</span><b>${pct(h.stats.memory.now)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(h.stats.memory.max)} / ${pct(h.stats.memory.avg)}</b></div></div>
-   <div class="context-note">${esc(h.resource)} — 선택 구간의 마지막 표본 기준입니다.</div></section>
+   <div class="metric-stats"><div><span>CPU 최근 표본</span><b>${pct(h.stats.cpu.now)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(h.stats.cpu.max)} / ${pct(h.stats.cpu.avg)}</b></div><div><span>메모리 최근 표본</span><b>${pct(h.stats.memory.now)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(h.stats.memory.max)} / ${pct(h.stats.memory.avg)}</b></div></div>
+   <div class="context-note">${esc(h.resource)} — x축은 선택 기간 전체를 표시합니다. 최근 수치는 그 기간의 마지막 수집 표본입니다. 빈 구간에는 수집된 지표가 없습니다.${h.instanceIds.length>1?` 이전 인스턴스 ${h.instanceIds.length-1}개의 CloudWatch 기록을 연결했습니다. 세로 점선은 서버 교체 시점입니다.`:''}</div></section>
   <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(h,span)}
    <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>
   <section class="panel full-panel">${header('3계층 서비스',svc?`${(svc.components||[]).length}개 구성요소 · 수집된 상태`:'조회 실패')}${serviceFlow(svc,hosts)}</section>
@@ -98,17 +102,26 @@ export function thinSeries(points,cpu,mem,limit=CHART_POINTS){
  return out;
 }
 export function drawInfrastructureChart(){
- const hosts=hostViews(metricsFor());if(!hosts.length)return;
- const h=selectedHost(hosts),span=state.hours*3600000,all=h.cpu.length>=h.memory.length?h.cpu:h.memory;
+ const metric=metricsFor(),hosts=hostViews(metric);if(!hosts.length)return;
+ const h=selectedHost(hosts),span=state.hours*3600000;
+ const times=[...new Set([...h.cpu,...h.memory].map(p=>p.at))].sort((a,b)=>a-b);
+ const periodMs=(metric.periodSeconds||300)*1000,all=[];
+ for(let i=0;i<times.length;i++){
+  if(i&&times[i]-times[i-1]>periodMs*1.5)all.push({at:times[i-1]+periodMs});
+  all.push({at:times[i]});
+ }
  const memAt=new Map(h.memory.map(p=>[p.at,p.value])),cpuAt=new Map(h.cpu.map(p=>[p.at,p.value])),t=h.threshold;
  const {points,cpu,mem}=thinSeries(all,all.map(p=>cpuAt.get(p.at)??null),all.map(p=>memAt.get(p.at)??null));
- drawChart('metrics-chart','line',{labels:points.map(p=>formatAt(p.at,span)),datasets:[
-  {label:'CPU %',data:cpu,borderColor:'#32d4be',tension:.3,borderWidth:2,spanGaps:true,
+ const xy=values=>points.map((p,i)=>({x:p.at,y:values[i]}));
+ const from=metric.rangeFrom??Date.now()-span,to=metric.rangeTo??from+span;
+ drawChart('metrics-chart','line',{datasets:[
+  {label:'CPU %',data:xy(cpu),borderColor:'#32d4be',tension:.3,borderWidth:2,spanGaps:false,
    pointRadius:cpu.map(v=>v>t.cpu?3.5:0),pointBackgroundColor:cpu.map(v=>v>t.cpu?'#e7a064':'#32d4be')},
-  {label:'메모리 %',data:mem,borderColor:'#a3c7b7',tension:.3,borderWidth:2,spanGaps:true,
+  {label:'메모리 %',data:xy(mem),borderColor:'#a3c7b7',tension:.3,borderWidth:2,spanGaps:false,
    pointRadius:mem.map(v=>v>t.memory?3.5:0),pointBackgroundColor:mem.map(v=>v>t.memory?'#ef777f':'#a3c7b7')},
-  {label:`${t.cpu}% 임계치`,data:points.map(()=>t.cpu),borderColor:'#e7a064',borderDash:[5,5],pointRadius:0,borderWidth:1}]},
-  {plugins:{legend:{display:true,labels:{color:'#c4d7cb',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#8fa295'}},x:{ticks:{color:'#8fa295',maxTicksLimit:8}}}});
+  {label:`${t.cpu}% 임계치`,data:[{x:from,y:t.cpu},{x:to,y:t.cpu}],borderColor:'#e7a064',borderDash:[5,5],pointRadius:0,borderWidth:1},
+  ...h.switches.map((change,i)=>({label:i?'서버 교체 시점':'서버 교체',data:[{x:change.at,y:0},{x:change.at,y:100}],borderColor:'#8fa295',borderDash:[3,5],pointRadius:0,borderWidth:1}))]},
+  {plugins:{legend:{display:true,labels:{color:'#c4d7cb',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#8fa295'}},x:{type:'linear',min:from,max:to,ticks:{color:'#8fa295',maxTicksLimit:8,callback:value=>formatAt(value,span)}}}});
 }
 // 호스트 선택은 화면 안에서만(조회 범위를 바꾸지 않는다). 바뀌었으면 true.
 export function selectHost(id){if(infraHost===id)return false;infraHost=id;return true;}

@@ -76,7 +76,7 @@ paths:
           schema: {type: integer, enum: [60, 300, 3600], default: 300}
       responses:
         '200':
-          description: 명시한 집계 주기의 CPU·메모리 관측 시계열. 결측은 null.
+          description: 명시한 집계 주기의 CPU·메모리 관측 시계열. CloudTrail로 같은 인스턴스 프로필을 확인한 이전 EC2 표본을 연결하며, 조회자 자원 범위를 각각 적용한다. 식별 불가 이력은 meta.partial·warnings에 표시한다.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/MetricsEnvelope'}
@@ -526,6 +526,7 @@ components:
                     required: [resource, metric, unit, points]
                     properties:
                       resource: {type: string}
+                      instanceIds: {type: array, items: {type: string}, description: 같은 서버 역할에 연결된 과거·현재 EC2 인스턴스 ID}
                       metric: {type: string, enum: [cpu, memory]}
                       unit: {type: string, const: '%'}
                       points:
@@ -536,6 +537,7 @@ components:
                           properties:
                             timestamp: {type: string, format: date-time}
                             value: {type: [number, 'null']}
+                            instanceId: {type: [string, 'null'], description: 값이 있으면 해당 표본의 실제 EC2 인스턴스 ID}
     VulnerabilitiesEnvelope:
       allOf:
         - {$ref: '#/components/schemas/Envelope'}

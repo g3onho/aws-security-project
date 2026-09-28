@@ -7,9 +7,9 @@ import {ROOT, until, makeFetchMock, appDOM} from './dom-test-support.mjs';
 test('infrastructure uses standard metrics and component status fields',async t=>{
  const network=makeFetchMock();const iso=new Date().toISOString();
  const earlier=new Date(Date.now()-300000).toISOString(),twoHours=new Date(Date.now()-2*3600000).toISOString();
- network.respond('/api/metrics',{data:{series:[{resource:'i-fixture',name:'docker-host',region:'ap-northeast-2',metric:'cpu',unit:'%',collectionStatus:'available',observedAt:iso,points:[{timestamp:twoHours,value:10},{timestamp:earlier,value:91},{timestamp:iso,value:42}]}],periodSeconds:300},meta:{schemaVersion:'1',asOf:iso}});
+ network.respond('/api/metrics',{data:{series:[{resource:'i-fixture',name:'docker-host',region:'ap-northeast-2',metric:'cpu',unit:'%',collectionStatus:'available',observedAt:iso,instanceIds:['i-before','i-fixture'],points:[{timestamp:twoHours,value:10,instanceId:'i-before'},{timestamp:earlier,value:91,instanceId:'i-fixture'},{timestamp:iso,value:42,instanceId:'i-fixture'}]}],periodSeconds:300},meta:{schemaVersion:'1',asOf:iso}});
  network.respond('/api/infra/status',{data:{components:[{id:'one',name:'EC2',resource:'i-fixture',status:'healthy',source:'EC2',detail:'running',observedAt:iso}],dependencies:[]},meta:{schemaVersion:'1',asOf:iso}});
- const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
+ const {dom,$,click,charts,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content').textContent.includes('Contract test event'));
  click('nav [data-view="infrastructure"]');
@@ -36,6 +36,14 @@ test('infrastructure uses standard metrics and component status fields',async t=
  click('[data-hours="1"]');
  await until(()=>/1시간 평균\s*66\.5%/.test($('.host-card')?.textContent||''),'period change did not update host card');
  assert.match($('.host-card').textContent,/최대\s*91%/);
+ const hourChart=charts.at(-1);
+ assert.equal(hourChart.options.scales.x.max-hourChart.options.scales.x.min,3600000,'상세 x축은 선택한 1시간 전체를 표시한다');
+ click('[data-hours="168"]');
+ await until(()=>charts.at(-1)?.options.scales.x.max-charts.at(-1)?.options.scales.x.min===7*86400000,'1주일 x축이 선택 기간 전체로 바뀌어야 한다');
+ assert(charts.at(-1).data.datasets[0].data.some(point=>point.x===Date.parse(twoHours)),'과거 CloudWatch 표본이 차트에 남아야 한다');
+ assert(charts.at(-1).data.datasets[0].data.some(point=>point.x>Date.parse(twoHours)&&point.x<Date.parse(earlier)&&point.y===null),'수집되지 않은 시간은 선으로 이어 붙이지 않는다');
+ assert($('#content').textContent.includes('이전 인스턴스 1개의 CloudWatch 기록을 연결했습니다'));
+ assert(charts.at(-1).data.datasets.some(dataset=>dataset.label==='서버 교체'&&dataset.data[0].x===Date.parse(earlier)));
  assert.deepEqual(errors,[]);
 });
 

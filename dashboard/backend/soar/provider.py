@@ -113,6 +113,9 @@ class AwsProvider:
     def metric_for(self, resource, query=None):
         return self._metrics.metric_for(resource, query)
 
+    def metric_history(self, resources, query):
+        return self._metrics.history_for(resources, query)
+
     def vulnerabilities(self, query=None, events=None):
         return self._vulnerabilities.list()
 

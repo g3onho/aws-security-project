@@ -121,7 +121,7 @@ Flask 애플리케이션은 앱 구성/라우트, 미들웨어, DTO·오류 계�
 | `GET /health` | 대시보드 프로세스 생존 확인. AWS 데이터 연결·보호 대상 상태 판정으로 사용하지 않음 |
 | `GET /api/events` | 권한 범위 내 탐지 이벤트의 필터·정렬·페이지 조회 |
 | `GET /api/summary` | 필터 범위의 집계. 분모 0인 비율은 `null`; 원본 오류로 모르는 값은 0이 아님 |
-| `GET /api/metrics` | CPU/메모리 시계열. 기간·단위·임계값 출처 명시, 결측은 `null` |
+| `GET /api/metrics` | CloudWatch CPU/메모리 시계열. 기간·단위·임계값 출처와 표본별 EC2 인스턴스 ID를 명시, 결측은 `null`. 현재 서버의 IAM 인스턴스 프로필과 CloudTrail의 종료·실행 기록이 일치하는 이전 인스턴스만 같은 서버 이력으로 연결한다. 이전 ID도 조회자 자원 범위에 포함되어야 하며, 확인할 수 없는 이력은 부분 결과 경고로 표시한다. |
 | `GET /api/vulnerabilities` | Inspector/적재 취약점의 정규화 목록. 원본과 관측 시각 보존 |
 | `GET /api/infra/status` | 저장된 구성요소 상태 증거 조회. 새 점검 명령을 실행하지 않음. 상태는 `healthy/degraded/unhealthy/unknown` |
 | `GET /api/history` | 불변 이력과 현재 작업 상태 조회. 사용자·리소스 범위를 매번 재검증 |
