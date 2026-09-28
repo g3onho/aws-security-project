@@ -174,6 +174,8 @@ Terraform이 명시한 대시보드 접근 방식은 다음 두 경로다.
 
 이는 저장소에 정의된 접근 방식의 명세다. 접근 범위와 웹 전송 암호화의 운영 승인·강화 필요성은 구현 현황 및 결정 문서에 연결한다. 보안상 필요한 TLS나 회사 인증 공급자를 이미 배포한 사실로 단정하지 않는다. 서비스 이미지 소스와 배포 산출물도 Terraform 템플릿 참조만으로 모두 제공됐다고 간주하지 않는다.
 
+SEC-08 시연을 위해 `attacker` 모듈이 여러 리전에 공격자 EC2를 띄운다(태그 `AttackerFor=dvwa`). 관제 화면의 "지리별 웹보안검사 [시작]"이 각 리전 SSM Command 문서(`ATK-WebAttack`)로 DVWA에 웹 공격을 실행하고, 결과 finding은 기존 GuardDuty·WAF 경로를 그대로 탄다. 공격자 IP가 바뀌어도 대시보드는 태그로 인스턴스를 탐색한다(순환참조 회피).
+
 ### 4.3 탐지 · 수집 계층
 
 Config는 선언된 리소스 유형과 관리형 규칙에 따라 설정을 평가한다. GuardDuty는 행위 기반 finding을 제공하고, Inspector는 EC2/ECR 이미지 취약점 결과를 제공한다. IAM Access Analyzer는 외부 접근 가능 정책을 분석한다. Security Hub는 지원 탐지 서비스 finding을 모은다. CloudTrail, VPC Flow Logs, CloudWatch Logs 및 Metrics는 감사·네트워크·서비스·성능 자료로 각각 구분한다.
@@ -207,7 +209,7 @@ AI 허니팟은 본 계층의 설계 대상 후보로만 표시한다. 실제 �
 | SEC-05 | 노출된 자격증명·과도 권한 | GuardDuty·Access Analyzer·CloudTrail·Config | Access Key 자동 비활성화 코드는 권한과 대상 범위 검토가 필요하다. 최소권한 정책 수정은 수동이다. |
 | SEC-06 | MySQL·SSH 무차별 대입을 분리 검증 | MySQL Hydra → CloudWatch Logs/metric alarm; SSH Hydra → GuardDuty, 자동 차단용 SSH 22번 거부 → Flow Logs/metric alarm | 공격 원천·finding을 별도 증거로 기록한다. 두 알람은 최다 출발지 IP를 NACL로 자동 차단한다(DEC-018·019, VPC 내부 주소·보호 자산 제외). 그 밖의 IP 차단은 수동 승인 문서에 따른다. |
 | SEC-07 | 비밀값 노출·자격증명 분리 | 코드 검토·파일시스템 검사·Secrets Manager 이력 | DB·애플리케이션에 값이 적용되는지와 Terraform 소유권·복구를 확인한 뒤 회전 완료를 판정한다. |
-| SEC-08 | DVWA 웹 공격 및 WAF 반응 | 승인된 ZAP/SQLi 검사, WAF CloudWatch Alarm → Security Hub finding | DVWA는 별도 공개 시험 대상이다. WAF 생성·차단은 조건부이며 정책 변경은 수동 검토 경로다. |
+| SEC-08 | DVWA 웹 공격 및 WAF 반응 | 승인된 ZAP/SQLi 검사(대시보드에서 지리별 웹보안검사 실행 포함), WAF CloudWatch Alarm → Security Hub finding | DVWA는 별도 공개 시험 대상이다. WAF 생성·차단은 조건부이며 정책 변경은 수동 검토 경로다. WAF finding은 차단 요청의 최다 출발지 IP를 붙여 통합 관제 지도에 **빨간 공격 흐름선**으로 표시한다(GuardDuty 선과 구분). |
 | SEC-09 | 감사·구성·서비스 로그 | CloudTrail/S3/KMS, Flow Logs, CloudWatch Logs, Config·Security Hub | 원본 로그 보관과 finding 통합을 분리하고 수집 누락·권한 부족을 확인한다. |
 | SEC-10 | CPU·메모리 과부하 및 운영 알림 | EC2 CPU·Agent 메모리 → CloudWatch Alarm → SNS | 기존 목표 threshold는 80%로 기록돼 있다. 기간·환경·수신 증거 확인 없이 알람 완료를 주장하지 않는다. |
 
