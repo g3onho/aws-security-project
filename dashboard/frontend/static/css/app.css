@@ -29,7 +29,13 @@ dialog{border:1px solid #506352;border-radius:8px;background:#202c24;color:var(-
 .attack-ip{font-family:Pretendard,Inter,'Segoe UI',system-fallback,sans-serif;font-size:10px;font-weight:400;letter-spacing:0;fill:#ebc69a;paint-order:stroke;stroke:#142119;stroke-width:3px;stroke-linejoin:round;pointer-events:none}
 .attack-connection:focus .attack-line,.attack-connection:hover .attack-line{stroke:#ffe0ad;stroke-width:2.5;opacity:1}
 .attack-connection:focus .attack-origin{stroke:#fff;stroke-width:2}
+.attack-waf .attack-line{stroke:#e2564d}
+.attack-waf .attack-motion{stroke:#ffb3ad}
+.attack-waf .attack-origin{fill:#e2564d;stroke:#ffb3ad}
+.attack-waf .attack-ip{fill:#f0a49e}
+.attack-waf:focus .attack-line,.attack-waf:hover .attack-line{stroke:#ffb3ad}
 .attack-legend-line{color:#e7a064;font-size:14px;margin-left:6px}
+.attack-legend-waf{color:#e2564d}
 .attack-detail{border:1px solid #455e49;border-radius:4px;padding:13px;background:#1b2b20}
 .threat-actor-box{margin-top:11px;padding-top:11px;border-top:1px dashed #3d5643}
 .threat-actor-head{font-size:12px;color:#e7c99a;font-weight:500;margin-bottom:8px}

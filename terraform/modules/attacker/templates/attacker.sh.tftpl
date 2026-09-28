@@ -1,0 +1,57 @@
+#!/bin/bash
+# 지리별 공격자 노드 부트스트랩 — ${region_label}
+# Docker 설치 후 hydra+nmap 이미지를 빌드해 둔다.
+# 실제 공격은 SSM(ATK-*)이 "docker run attacker ..." 로 실행한다.
+# 로그: /var/log/user-data.log
+set -euxo pipefail
+exec > >(tee -a /var/log/user-data.log) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+
+# 기본 VPC 공인 서브넷이라 egress 는 즉시 가능하지만, apt 미러 일시 실패는 재시도로 넘긴다.
+retry() {
+  for i in $(seq 1 5); do
+    "$@" && return 0
+    echo "실패 ($i/5): $* — 15초 후 재시도" >&2; sleep 15
+  done
+  return 1
+}
+
+retry apt-get update -y
+retry apt-get install -y ca-certificates curl docker.io
+systemctl enable --now docker
+
+mkdir -p /opt/attacker/wordlists
+
+# hydra + nmap 이 든 작은 이미지
+cat >/opt/attacker/Dockerfile <<'EOF'
+FROM debian:stable-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends hydra nmap ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+EOF
+
+# 흔한 약한 비밀번호. DVWA(admin/password)와 SSH(victim/password123) 둘 다 걸리도록 포함.
+cat >/opt/attacker/wordlists/pass.txt <<'EOF'
+password
+123456
+admin
+password123
+qwerty
+letmein
+root
+toor
+ubuntu
+P@ssw0rd
+EOF
+
+cat >/opt/attacker/wordlists/users.txt <<'EOF'
+admin
+ubuntu
+victim
+root
+EOF
+
+retry docker build -t attacker:latest /opt/attacker
+
+echo "attacker node ready (${region_label})" > /opt/attacker/READY

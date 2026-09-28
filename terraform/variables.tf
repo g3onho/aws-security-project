@@ -124,6 +124,22 @@ variable "enable_attacker_instance" {
   default     = false
 }
 
+variable "enable_geo_attackers" {
+  description = <<-EOT
+    지리별 공격 시연 fleet(미국·싱가포르·시드니·뭄바이·도쿄 5개 리전에 공인
+    공격자 EC2 1대씩) 생성 여부. enable_dvwa_instance = true 여야 대상이 생긴다.
+    리전당 t3.micro 상시 과금 → 시연 후 false 로 되돌려 제거.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "attacker_instance_type" {
+  description = "지리별 공격자 노드 인스턴스 타입"
+  type        = string
+  default     = "t3.micro"
+}
+
 ############################################
 # 탐지 서비스 토글 — 기본값은 전부 '켬'
 ############################################

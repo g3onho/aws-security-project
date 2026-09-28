@@ -202,6 +202,13 @@ data "aws_iam_policy_document" "waf_finding" {
     # 계정 자체 제품(default)으로만 가져온다.
     resources = ["arn:${var.partition}:securityhub:${var.region}:${var.account_id}:product/${var.account_id}/default"]
   }
+
+  statement {
+    # 차단된 요청의 공격자 IP 를 읽어 finding 에 출발지로 붙인다(지도 공격 흐름선).
+    sid       = "ReadSampledRequests"
+    actions   = ["wafv2:GetSampledRequests"]
+    resources = [var.waf_web_acl_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "waf_finding" {
