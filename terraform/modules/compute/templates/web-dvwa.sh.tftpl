@@ -62,3 +62,8 @@ echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/99-lab.conf
 systemctl restart ssh || systemctl restart sshd || true
 id victim || useradd -m victim
 echo "victim:password123" | chpasswd
+
+# cloud-image 의 PasswordAuthentication no 를 무력화 (sshd 는 먼저 읽힌 값이 이김)
+rm -f /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
+echo "PasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-lab.conf
+systemctl restart ssh || systemctl restart sshd || true
