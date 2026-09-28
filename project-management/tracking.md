@@ -8,7 +8,7 @@
 | 적용 범위 | 프로젝트 전체 코드·자료와 이 문서 체계 |
 | 책임 역할 | 기능 담당자는 자신의 코드·검증 근거를 갱신하고, 설계 책임자는 ID·상태·문서 간 연결을 검토한다. |
 | 실제 프로젝트 기준 경로 | C:\Users\user\aws-security-project |
-| 확인 시점 | 2026-09-26, Asia/Seoul. 읽기 전용 정적 조사 |
+| 확인 시점 | 2026-09-26 읽기 전용 정적 조사. 2026-09-28 공격·대응 실습(DRILL-01~04, v22·v22.1) 반영 |
 | 관련 문서 | [전체 설계](../README.md), [Dashboard](../dashboard/dashboard-design.md), [Terraform](../terraform/infrastructure-design.md), [허니팟](../honeypot/honeypot-design.md), [보안 시나리오](security-scenarios.md), [공통 용어](glossary.md), [결정 기록](decisions.md) |
 | 갱신을 유발하는 변경 | 요구사항·코드 경로·호출 관계·구성 토글·데이터 계약·검증 증거·편차 상태 변경 |
 
@@ -24,6 +24,8 @@
 - **실환경 검증**: AWS 계정의 배포 자원에서 점검한 절차·환경·결과 증거가 있을 때만 사용한다.
 
 “완료” 구현 상태와 검증 상태는 독립적이다. 코드에 테스트가 있어도 실행 결과가 없으면 검증은 미실행이다. 기존 테스트·시나리오 스크립트·검증 문서가 존재한다는 사실도 통과 기록이 아니다. 이 조사에서는 코드 실행, 테스트, 의존성 설치, 서버 구동, Terraform, AWS API 호출을 수행하지 않았다.
+
+DRILL-01~04는 예외로, 2026-09-28 작업에서 로컬 단위 테스트를 실제 실행했다(백엔드 pytest 66건, 프런트 node --test 77건 통과). 이는 단위·계약 수준 확인이며 통합·실환경 검증은 아니므로 각 행의 검증 상태는 미실행으로 둔다.
 
 대시보드의 dashboard/backend/docs/VERIFICATION.md는 2026-09-23 변경 기준으로 일부 검증 범위를 열거하지만 실제 데이터 수집, 원격 조치, 운영 부하 검증은 포함하지 않는다고 명시한다. 저장소에서 해당 검사별 통과 출력이나 AWS 실환경 결과를 확인하지 못했으므로, 이 표의 검증 상태는 확인 가능한 증거가 없는 항목을 모두 미실행으로 둔다.
 
@@ -53,6 +55,10 @@
 | DASH-06 | 승인·취소·실행·재검증 API와 실제 AWS 작업 | [dashboard-design.md §API·SOAR](../dashboard/dashboard-design.md), [glossary.md](glossary.md) | dashboard/backend/contracts/openapi.yaml과 backend/soar/workflow.py에 API·상태 전이, backend/soar/worker.py에 공급자 작업 호출. settings.py 기본값은 `WRITE_ENABLED=false`이나 Terraform의 `dashboard.sh.tftpl`은 이를 `true`로 덮어 API write-disabled 검사를 통과시킴. AwsProvider.execution_result 및 measure는 `ACTION_PROVIDER_DISABLED`를 반환하므로 실제 AWS 조치·재검증은 연결되지 않음 | 부분 구현 | 미실행 |
 | DASH-07 | 사용자 인증·인가·세션과 운영 정책 | [dashboard-design.md §인증·인가](../dashboard/dashboard-design.md), [decisions.md §OPEN-001](decisions.md) | dashboard/backend/soar/auth.py, workflow.py, store.py에 로그인·역할·범위·권한·CSRF 관련 코드. settings.py 기본 세션 쿠키는 `soar_session`; store.py의 기본 계정 범위는 계정 목록이 빈 값이다. 2026-09-23 DB 교체 기록은 범위를 빈 목록으로 초기화했고 쿠키명 변경으로 재로그인이 필요하다고 적음; 현재 사용자·세션 상태는 별도 확인하지 않음. 운영 인증 공급자·MFA·계정 수명주기 확정 근거 없음 | 부분 구현 | 미실행 |
 | DASH-08 | 화면·API·조치 상태 계약의 결측·실패 표현 | [dashboard-design.md §UI·오류](../dashboard/dashboard-design.md), [glossary.md](glossary.md) | dashboard/backend/contracts/openapi.yaml에 partial, warnings, healthy/degraded/unhealthy/unknown, ActionState enum. frontend/tests와 backend/tests에 disconnected·workflow·provider 테스트 파일 존재; 결과는 이번 조사에서 실행하지 않음 | 완료 | 미실행 |
+| DRILL-01 | DEC-012: 공격·대응 실습 페이지(1차 관측·구조) | [dashboard-design.md §API·UI](../dashboard/dashboard-design.md), [decisions.md §DEC-012](decisions.md) | dashboard/frontend/static/js/ui/pages/drills.js, app.js(refresh의 drills 분기·render 분기), ui/router.js·templates/index.html(메뉴·라우트), store/actions.js·store/api/endpoints.js·ui/context.js. 실행 유형·대상·시나리오 선택과 유형별 정보·실행 가능 여부 표시. '시작'은 비활성이며 실제 실행 요청을 만들지 않는다. 미연결에서도 카탈로그로 렌더 | 부분 구현 | 미실행 |
+| DRILL-02 | DEC-012: 실습 조회 API(조회 전용) | [openapi.yaml](../dashboard/backend/contracts/openapi.yaml), [dashboard-design.md](../dashboard/dashboard-design.md) | dashboard/backend/soar/drills.py(DrillService·정적 카탈로그·DrillRuns), standard_api.py의 GET /api/drills/catalog·/api/drills·/api/drills/{runId}, __init__.py의 drill_service 등록. provider 불필요(미연결에서도 200). 변경·실행 경로 없음 | 완료 | 미실행 |
+| DRILL-03 | DEC-013: 실습 실행 이력 저장 어댑터 | [decisions.md §DEC-013](decisions.md) | dashboard/backend/soar/store.py의 drills 테이블(SQLite), drills.py DrillRuns.list/get. 목표 DynamoDB와의 편차(DEC-003 정합). 실행 경로가 없어 이력은 비어 있음 | 부분 구현 | 미실행 |
+| DRILL-04 | 실제 공격·부하·재검증 실행 | [decisions.md §OPEN-015·016·017](decisions.md) | SSM 부하/ZAP 실행, 실행 공급자, 실행 접수·중단·타임라인·재검증 API를 코드에서 찾지 못함. AwsProvider.execution_result/measure는 ACTION_PROVIDER_DISABLED. dashboard IAM에 ssm:SendCommand 없음 | 미구현 | 미실행 |
 
 ## 4. 탐지·SOAR·기록
 
