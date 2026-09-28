@@ -75,6 +75,9 @@ CONTROL_PLAYBOOKS = {
 MYSQL_ALARM_NAME = os.environ.get("MYSQL_ALARM_NAME", "")
 MYSQL_LOG_GROUP = os.environ.get("MYSQL_LOG_GROUP", "")
 SSH_ALARM_NAME = os.environ.get("SSH_ALARM_NAME", "")
+# A6 — 미끼서버(허니팟) 접속 알람 → 공격 IP NACL 차단 (HONEYPOT). 접속 자체가 신호.
+HONEYPOT_ALARM_NAME = os.environ.get("HONEYPOT_ALARM_NAME", "")
+HONEYPOT_LOG_GROUP = os.environ.get("HONEYPOT_LOG_GROUP", "")
 FLOWLOG_GROUP = os.environ.get("FLOWLOG_GROUP", "")
 # 지표 필터와 같은 패턴(cloudwatch.tf local.ssh_reject_pattern) — 알람이 센 기록만 다시 읽는다.
 FLOWLOG_REJECT_PATTERN = os.environ.get("FLOWLOG_REJECT_PATTERN", "")
@@ -331,11 +334,12 @@ def _remediate_control(detail):
 
 # 알람 종류 → (목록 토큰, 조치 이력에 보일 이름)
 BRUTEFORCE_KINDS = {"mysql": ("SEC-06A", "MySQL 무차별 대입 (SEC-06A)"),
-                    "ssh": ("SEC-06B", "SSH 접속 시도 거부 급증 (SEC-06B · Flow Logs)")}
+                    "ssh": ("SEC-06B", "SSH 접속 시도 거부 급증 (SEC-06B · Flow Logs)"),
+                    "honeypot": ("HONEYPOT", "미끼서버 접속 (A6 허니팟)")}
 
 
 def _bruteforce_kind(event):
-    """무차별 대입 알람이 ALARM 으로 바뀐 이벤트면 'mysql' / 'ssh', 아니면 None."""
+    """알람이 ALARM 으로 바뀐 이벤트면 'mysql' / 'ssh' / 'honeypot', 아니면 None."""
     d = event.get("detail", {})
     if event.get("source") != "aws.cloudwatch" or (d.get("state") or {}).get("value") != "ALARM":
         return None
@@ -344,6 +348,8 @@ def _bruteforce_kind(event):
         return "mysql"
     if SSH_ALARM_NAME and name == SSH_ALARM_NAME:
         return "ssh"
+    if HONEYPOT_ALARM_NAME and name == HONEYPOT_ALARM_NAME:
+        return "honeypot"
     return None
 
 
@@ -390,6 +396,14 @@ def _mysql_source(message):
     return _host_ip(match.group(1)) if match else None
 
 
+def _honeypot_source(message):
+    """미끼서버 접속 로그(JSON 한 줄, {"event":"connect","src_ip":...})의 출발지."""
+    try:
+        return _host_ip(json.loads(message).get("src_ip", ""))
+    except (ValueError, AttributeError):
+        return None
+
+
 def _flowlog_source(message):
     """Flow Logs 기본 형식(v2): version account eni srcaddr dstaddr srcport dstport protocol packets bytes
     start end action log-status. 22번(TCP) REJECT 인 행의 srcaddr."""
@@ -401,8 +415,10 @@ def _flowlog_source(message):
 
 def _failure_sources(kind, start, end):
     """알람 구간 로그 → {출발지 IP: 횟수}. mysql = MySQL 오류 로그, ssh = VPC Flow Logs 22번 거부 기록."""
-    group, pattern, parse = ((MYSQL_LOG_GROUP, '"Access denied for user"', _mysql_source) if kind == "mysql"
-                             else (FLOWLOG_GROUP, FLOWLOG_REJECT_PATTERN, _flowlog_source))
+    sources = {"mysql": (MYSQL_LOG_GROUP, '"Access denied for user"', _mysql_source),
+               "ssh": (FLOWLOG_GROUP, FLOWLOG_REJECT_PATTERN, _flowlog_source),
+               "honeypot": (HONEYPOT_LOG_GROUP, '{ $.event = "connect" }', _honeypot_source)}
+    group, pattern, parse = sources[kind]
     counts, token = {}, None
     for _ in range(LOG_PAGE_LIMIT):
         kwargs = {"logGroupName": group, "startTime": start, "endTime": end, "filterPattern": pattern}
@@ -458,14 +474,16 @@ def _block_bruteforce_source(event, kind):
 
     if token not in CONTROLS:
         return manual(f"자동 차단 대상 목록(AUTO_REMEDIABLE_CONTROLS)에 {token} 없음")
-    source_group = MYSQL_LOG_GROUP if kind == "mysql" else FLOWLOG_GROUP
+    source_group = {"mysql": MYSQL_LOG_GROUP, "ssh": FLOWLOG_GROUP, "honeypot": HONEYPOT_LOG_GROUP}[kind]
     if not (DOC_BLOCK_IP and PRIVATE_NACL_ID and source_group and VPC_CIDR
-            and (kind == "mysql" or FLOWLOG_REJECT_PATTERN)):
+            and (kind != "ssh" or FLOWLOG_REJECT_PATTERN)):
         return manual("차단 설정 누락(문서·NACL·로그 그룹·VPC CIDR)")
     start, end = _alarm_window(d)
     counts = _failure_sources(kind, start, end)
     if not counts:
-        hint = "로그 전송 경로·logs 엔드포인트 확인" if kind == "mysql" else "Flow Logs 로그 그룹 수집 확인"
+        hint = {"mysql": "로그 전송 경로·logs 엔드포인트 확인",
+                "ssh": "Flow Logs 로그 그룹 수집 확인",
+                "honeypot": "미끼서버 로그 전송 확인"}[kind]
         return manual(f"알람 구간 로그에서 출발지 IP 를 찾지 못함({hint})")
     # 막을 수 없는 주소(VPC 밖·보호 자산)와 이미 막힌 주소를 먼저 빼고 남은 최다 출발지를 고른다.
     # 이미 막힌 IP 도 Flow Logs 에는 REJECT 로 계속 남으므로, 빼지 않으면 새 공격 IP 를 가린다.
@@ -482,7 +500,7 @@ def _block_bruteforce_source(event, kind):
             ip, count = candidate, hits
             break
         skipped.append((candidate, hits, why))
-    label = "인증 실패" if kind == "mysql" else "22번 거부"
+    label = {"mysql": "인증 실패", "ssh": "22번 거부", "honeypot": "미끼 접속"}[kind]
     if ip is None:
         top, hits, why = skipped[0]
         detail["resource_id"] = f"{PRIVATE_NACL_ID} ← {top}/32"

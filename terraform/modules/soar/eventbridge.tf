@@ -239,3 +239,50 @@ resource "aws_lambda_permission" "bruteforce_alarm_to_asr" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.bruteforce_alarm_to_asr[0].arn
 }
+
+############################################
+# ⑥ 허니팟 접속 알람(ALARM) → asr_trigger (A6 · HONEYPOT NACL 자동 차단)
+# 미끼서버는 접속 자체가 공격 신호다. 알람이 뜨면 asr_trigger 가 허니팟 로그에서
+# 출발지 IP 를 찾아 Private NACL 1~99 로 막는다. auto_remediable_controls 에 "HONEYPOT"
+# 이 없으면 규칙은 만들되 asr_trigger 가 '수동 대응 필요'로만 기록한다.
+############################################
+
+locals {
+  enable_honeypot_block = var.honeypot_alarm_name != null && var.honeypot_alarm_name != ""
+}
+
+resource "aws_cloudwatch_event_rule" "honeypot_alarm_to_asr" {
+  count = local.enable_honeypot_block ? 1 : 0
+
+  name        = "${var.name_prefix}-honeypot-asr"
+  description = "Honeypot connection alarm (ALARM) to asr_trigger (HONEYPOT NACL block)"
+
+  event_pattern = jsonencode({
+    source        = ["aws.cloudwatch"]
+    "detail-type" = ["CloudWatch Alarm State Change"]
+    detail = {
+      alarmName = [var.honeypot_alarm_name]
+      state     = { value = ["ALARM"] }
+    }
+  })
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "honeypot_alarm_to_asr" {
+  count = local.enable_honeypot_block ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.honeypot_alarm_to_asr[0].name
+  target_id = "asr-trigger"
+  arn       = aws_lambda_function.asr_trigger.arn
+}
+
+resource "aws_lambda_permission" "honeypot_alarm_to_asr" {
+  count = local.enable_honeypot_block ? 1 : 0
+
+  statement_id  = "AllowHoneypotAlarmAsr"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.asr_trigger.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.honeypot_alarm_to_asr[0].arn
+}

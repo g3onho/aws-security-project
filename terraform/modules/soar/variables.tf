@@ -69,3 +69,15 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+# --- A6 허니팟 접속 → 공격 IP NACL 자동 차단 (HONEYPOT) ---
+variable "honeypot_alarm_name" {
+  description = "허니팟 접속 알람 이름. 비어 있으면(허니팟 미배포) 관련 규칙을 만들지 않는다."
+  type        = string
+  default     = null
+}
+variable "honeypot_log_group" {
+  description = "허니팟 접속 로그 그룹. asr_trigger 가 여기서 출발지 IP 를 읽는다."
+  type        = string
+  default     = null
+}

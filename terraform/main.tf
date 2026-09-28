@@ -126,6 +126,10 @@ module "soar" {
   waf_web_acl_arn           = module.compute.waf_web_acl_arn
   waf_block_alarm_threshold = var.waf_block_alarm_threshold
 
+  # A6 허니팟 접속 → asr_trigger NACL 자동 차단(auto_remediable_controls 에 "HONEYPOT" 있을 때)
+  honeypot_alarm_name = one(module.honeypot[*].alarm_name)
+  honeypot_log_group  = one(module.honeypot[*].log_group_name)
+
   tags = local.common_tags
 }
 

@@ -330,3 +330,28 @@ variable "dashboard_ingress_cidr" {
   type        = string
   default     = "0.0.0.0/0"
 }
+
+# --- A6 AI 미끼서버(허니팟) ---
+variable "enable_honeypot" {
+  description = "AI 미끼서버(허니팟) 생성 여부. private-db 서브넷에 미끼 1대."
+  type        = bool
+  default     = false
+}
+
+variable "honeypot_instance_type" {
+  description = "미끼 서버 인스턴스 타입."
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "enable_honeypot_ai" {
+  description = "미끼서버가 Bedrock 으로 가짜 셸 응답·세션 분석·위험도 판정을 생성할지 여부. false 면 로깅·탐지·차단만."
+  type        = bool
+  default     = true
+}
+
+variable "honeypot_ai_model_id" {
+  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID(교차 리전 추론 프로파일 권장). 계정에서 모델 액세스 허용 필요."
+  type        = string
+  default     = "apac.anthropic.claude-haiku-4-5-20251001-v1:0"
+}

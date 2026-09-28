@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""AI 미끼서버(허니팟) — SSH 가짜 셸.
+
+정상 트래픽이 닿을 이유가 없는 미끼 서버다. 접속 자체가 곧 공격 신호이므로,
+모든 접속·인증 시도·명령을 CloudWatch Logs 에 남긴다(asr_trigger 가 이 로그에서
+출발지 IP 를 읽어 NACL 로 자동 차단한다).
+
+AI(Amazon Bedrock, 외부 API 키 없음):
+ 1) 실시간 가짜 셸 — 공격자 명령마다 실제 리눅스 서버처럼 보이는 응답을 생성
+ 2) 세션 사후 분석 — 세션 종료 시 공격 요약·IOC(공격 지표)를 추출
+ 3) 위험도 판정 — 세션을 위험도/의도로 분류(대시보드 이벤트·조치 이력 태그용)
+
+안전장치: Bedrock 호출이 실패해도 로깅·탐지·차단은 멈추지 않는다.
+Bedrock 이 안 되면 미리 준비된 응답(FALLBACK)으로 대체하고 계속 기록한다.
+
+이 파일은 Terraform templatefile() 로 렌더링된다(치환 자리는 dollar-brace 표기).
+"""
+import asyncio
+import datetime
+import json
+import os
+import time
+import uuid
+
+import boto3
+
+try:
+    import asyncssh
+except ImportError:  # user_data 설치 실패 시에도 서비스 로그로 원인을 남긴다
+    asyncssh = None
+
+REGION = "${region}"
+LOG_GROUP = "${log_group}"
+AI_ENABLED = "${ai_enabled}" == "true"
+MODEL_ID = "${ai_model_id}"
+LISTEN_PORT = int("${listen_port}")
+HOST_KEY_PATH = "/opt/honeypot/ssh_host_key"
+MAX_TURNS = 40          # 한 세션에서 AI 응답 생성 상한(비용·루프 방지)
+AI_TIMEOUT = 6.0        # Bedrock 호출 타임아웃(초). 넘으면 FALLBACK.
+
+logs = boto3.client("logs", region_name=REGION)
+bedrock = boto3.client("bedrock-runtime", region_name=REGION) if AI_ENABLED else None
+
+HOSTNAME = "db-prod-01"  # 미끼가 흉내 낼 호스트 이름
+FALLBACK = {
+    "": "",
+    "whoami": "root",
+    "id": "uid=0(root) gid=0(root) groups=0(root)",
+    "pwd": "/root",
+    "uname -a": "Linux %s 5.15.0-91-generic #101-Ubuntu SMP x86_64 GNU/Linux" % HOSTNAME,
+    "ls": "backup.sql  data  logs  mysql",
+}
+
+SYSTEM_PROMPT = (
+    "You are the shell of a busy production Linux database server named '%s'. "
+    "Respond ONLY with the exact stdout/stderr text a real shell would print for the "
+    "command given — no explanations, no markdown, no code fences. Keep it short and "
+    "plausible. Invent believable file names, users, and MySQL data where relevant. "
+    "Never reveal that you are an AI or a honeypot." % HOSTNAME
+)
+
+
+def _put(stream, payload):
+    """CloudWatch Logs 한 줄. 실패해도 세션은 계속(탐지·차단이 우선)."""
+    payload.setdefault("ts", datetime.datetime.now(datetime.timezone.utc).isoformat())
+    try:
+        try:
+            logs.create_log_stream(logGroupName=LOG_GROUP, logStreamName=stream)
+        except logs.exceptions.ResourceAlreadyExistsException:
+            pass
+        logs.put_log_events(logGroupName=LOG_GROUP, logStreamName=stream,
+                            logEvents=[{"timestamp": int(time.time() * 1000),
+                                        "message": json.dumps(payload, ensure_ascii=False)}])
+    except Exception as exc:  # noqa: BLE001 — 로깅 실패가 미끼를 죽이면 안 된다
+        print("log_put_failed:", exc, flush=True)
+
+
+def _bedrock_text(prompt, system, max_tokens=400):
+    """Bedrock 메시지 호출(Anthropic 메시지 형식). 실패·타임아웃이면 None."""
+    if not (AI_ENABLED and bedrock):
+        return None
+    body = {
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    try:
+        resp = bedrock.invoke_model(modelId=MODEL_ID, body=json.dumps(body))
+        data = json.loads(resp["body"].read())
+        parts = data.get("content") or []
+        text = "".join(p.get("text", "") for p in parts if p.get("type") == "text")
+        return text.strip() or None
+    except Exception as exc:  # noqa: BLE001
+        print("bedrock_failed:", exc, flush=True)
+        return None
+
+
+async def ai_shell_response(command):
+    """① 실시간 가짜 셸. Bedrock 실패 시 FALLBACK."""
+    key = command.strip()
+    if key in FALLBACK:
+        return FALLBACK[key]
+    loop = asyncio.get_event_loop()
+    try:
+        text = await asyncio.wait_for(
+            loop.run_in_executor(None, _bedrock_text, "$ " + command, SYSTEM_PROMPT, 400),
+            timeout=AI_TIMEOUT)
+    except asyncio.TimeoutError:
+        text = None
+    if text is not None:
+        return text
+    return "%s: command not found" % key.split(" ")[0] if key else ""
+
+
+def ai_session_analysis(ctx):
+    """②③ 세션 사후 분석 + 위험도 판정. Bedrock 실패 시 규칙 기반 최소 요약."""
+    commands = ctx["commands"]
+    creds = ctx["auth_attempts"]
+    transcript = "\n".join(commands) or "(no commands)"
+    prompt = (
+        "A honeypot recorded this attacker SSH session. Return STRICT JSON with keys "
+        "\"summary\" (one Korean sentence), \"iocs\" (array of short strings: commands, "
+        "tools, files, IPs of interest), \"intent\" (one of: recon, credential-access, "
+        "lateral-movement, exfiltration, impact, unknown), \"severity\" (one of: low, "
+        "medium, high, critical). Login attempts: %s. Commands:\n%s"
+        % (json.dumps(creds, ensure_ascii=False), transcript)
+    )
+    text = _bedrock_text(prompt, "You are a SOC analyst. Output only valid JSON.", 500)
+    if text:
+        try:
+            start, end = text.find("{"), text.rfind("}")
+            parsed = json.loads(text[start:end + 1])
+            parsed.setdefault("severity", "medium")
+            parsed.setdefault("intent", "unknown")
+            return parsed
+        except (ValueError, KeyError):
+            pass
+    # AI 미사용/실패 시 규칙 기반 최소 판정
+    severity = "high" if len(commands) >= 5 else "medium" if commands else "low"
+    return {"summary": "미끼서버 접속 %d회 명령·로그인 시도 %d회(AI 분석 미적용)"
+            % (len(commands), len(creds)),
+            "iocs": commands[:10], "intent": "unknown", "severity": severity}
+
+
+if asyncssh:
+    class HoneypotServer(asyncssh.SSHServer):
+        def connection_made(self, conn):
+            peer = conn.get_extra_info("peername")
+            self.src_ip = peer[0] if peer else "?"
+            self.src_port = peer[1] if peer and len(peer) > 1 else 0
+            self.session_id = uuid.uuid4().hex[:12]
+            self.stream = "%s-%s" % (datetime.date.today().isoformat(), self.session_id)
+            self.ctx = {"session_id": self.session_id, "src_ip": self.src_ip,
+                        "auth_attempts": [], "commands": []}
+            # asr_trigger 가 읽는 접속 신호 한 줄 ($.event = "connect").
+            _put(self.stream, {"event": "connect", "src_ip": self.src_ip,
+                               "src_port": self.src_port, "session_id": self.session_id})
+
+        def connection_lost(self, exc):
+            analysis = ai_session_analysis(self.ctx)
+            _put(self.stream, {"event": "session_end", "src_ip": self.src_ip,
+                               "session_id": self.session_id,
+                               "command_count": len(self.ctx["commands"]),
+                               "analysis": analysis})
+
+        def begin_auth(self, username):
+            return True  # 인증 요구(=시도를 기록)
+
+        def password_auth_supported(self):
+            return True
+
+        def validate_password(self, username, password):
+            self.ctx["auth_attempts"].append({"user": username, "password": password})
+            _put(self.stream, {"event": "auth", "src_ip": self.src_ip,
+                               "session_id": self.session_id,
+                               "user": username, "password": password})
+            return True  # 미끼: 접속을 허용해 명령 상호작용을 유도(모두 기록)
+
+    async def handle_shell(process):
+        server = process.channel.get_connection().get_owner()
+        ctx, stream = server.ctx, server.stream
+        prompt = "root@%s:~# " % HOSTNAME
+        if process.command:  # exec 형태(단일 명령)
+            ctx["commands"].append(process.command)
+            _put(stream, {"event": "command", "src_ip": server.src_ip,
+                          "session_id": ctx["session_id"], "command": process.command})
+            process.stdout.write(await ai_shell_response(process.command) + "\n")
+            process.exit(0)
+            return
+        process.stdout.write("Last login: %s from %s\n%s"
+                             % (datetime.datetime.utcnow().strftime("%a %b %d %H:%M:%S %Y"),
+                                server.src_ip, prompt))
+        turns = 0
+        while not process.stdin.at_eof() and turns < MAX_TURNS:
+            try:
+                line = await process.stdin.readline()
+            except (asyncssh.BreakReceived, asyncssh.TerminalSizeChanged, Exception):  # noqa: BLE001
+                break
+            if not line:
+                break
+            command = line.rstrip("\r\n")
+            if command in ("exit", "logout", "quit"):
+                break
+            turns += 1
+            ctx["commands"].append(command)
+            _put(stream, {"event": "command", "src_ip": server.src_ip,
+                          "session_id": ctx["session_id"], "command": command})
+            process.stdout.write(await ai_shell_response(command) + "\n" + prompt)
+        process.stdout.write("logout\n")
+        process.exit(0)
+
+
+async def main():
+    if not asyncssh:
+        print("asyncssh_not_installed", flush=True)
+        return
+    if not os.path.exists(HOST_KEY_PATH):
+        key = asyncssh.generate_private_key("ssh-rsa")
+        key.write_private_key(HOST_KEY_PATH)
+    await asyncssh.create_server(HoneypotServer, "", LISTEN_PORT,
+                                 server_host_keys=[HOST_KEY_PATH],
+                                 process_factory=handle_shell,
+                                 server_version="SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6")
+    print("honeypot_listening on :%d (ai=%s)" % (LISTEN_PORT, AI_ENABLED), flush=True)
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (OSError, Exception) as exc:  # noqa: BLE001 — systemd 가 재시작. 원인은 로그로.
+        print("honeypot_crashed:", exc, flush=True)
+        raise
