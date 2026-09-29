@@ -34,13 +34,26 @@ mainSteps:
       runCommand:
         - '#!/bin/bash'
         - set -uo pipefail
-        - command -v stress-ng >/dev/null || (sudo apt-get update -y && sudo apt-get install -y stress-ng)
+        - |
+          if ! command -v stress-ng >/dev/null; then
+            # stress-ng 는 universe 컴포넌트에 있다. 최소 클라우드 이미지는 기본으로 꺼져 있어
+            # apt-get install 이 "Unable to locate package"로 조용히 실패하는 경우가 있다.
+            command -v add-apt-repository >/dev/null || (sudo apt-get update -y && sudo apt-get install -y software-properties-common)
+            sudo add-apt-repository -y universe
+            sudo apt-get update -y
+            sudo apt-get install -y stress-ng
+          fi
         - TS=$(date +%Y%m%dT%H%M%SZ)
         - OUT="/tmp/load-$TS.txt"
         - CPUS=$(nproc)
         - 'echo "== load {{ RegionLabel }} cpu={{ CpuTarget }}% mem={{ MemPercent }}% for {{ DurationSeconds }}s (cores=$CPUS) @ $TS ==" | tee "$OUT"'
-        - '# --timeout 으로 지정 시간 뒤 stress-ng 가 스스로 종료한다(무한 부하 방지).'
-        - 'stress-ng --cpu "$CPUS" --cpu-load "{{ CpuTarget }}" --vm 1 --vm-bytes "{{ MemPercent }}%" --timeout "{{ DurationSeconds }}s" --metrics-brief 2>&1 | tee -a "$OUT" || true'
-        - 'echo "load finished" | tee -a "$OUT"'
+        - |
+          if ! command -v stress-ng >/dev/null; then
+            echo "ERROR: stress-ng 설치 실패 — 부하를 걸지 못했다(universe 저장소·NAT egress 확인 필요)" | tee -a "$OUT"
+          else
+            # --timeout 으로 지정 시간 뒤 stress-ng 가 스스로 종료한다(무한 부하 방지).
+            stress-ng --cpu "$CPUS" --cpu-load "{{ CpuTarget }}" --vm 1 --vm-bytes "{{ MemPercent }}%" --timeout "{{ DurationSeconds }}s" --metrics-brief 2>&1 | tee -a "$OUT" || true
+            echo "load finished" | tee -a "$OUT"
+          fi
         - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/load/$TS.txt"'
         - 'echo "uploaded to s3://{{ ScanBucket }}/load/$TS.txt"'

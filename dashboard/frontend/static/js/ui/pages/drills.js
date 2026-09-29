@@ -24,6 +24,13 @@ let catalog=null,runs=null;
 const sel={typeId:null,target:null,scenario:null};
 // 웹보안검사 실행 상태(클라이언트). runId 로 상태를 폴링한다.
 const webRun={runId:null,items:[],skipped:[],busy:false,error:null,timer:null,done:false};
+// 새로고침해도 진행중인 실행을 잃지 않도록 runId 만 저장한다(진행표 자체는 서버에서 다시 받는다).
+// 탭·창이 닫혀도 남아 있어야 하므로 localStorage(세션이 아니라). 브라우저 저장 접근은 항상 try/catch.
+const RUN_ALL_LS_KEY='drills-run-all-id';
+const saveRunAllId=id=>{try{localStorage.setItem(RUN_ALL_LS_KEY,id);}catch{}};
+const clearRunAllId=()=>{try{localStorage.removeItem(RUN_ALL_LS_KEY);}catch{}};
+const loadRunAllId=()=>{try{return localStorage.getItem(RUN_ALL_LS_KEY);}catch{return null;}};
+let resumedRunAll=false;
 
 function supportPill(support,label){
  const c=SUPPORT_COLOR[support]||SUPPORT_COLOR['design-needed'];
@@ -209,9 +216,14 @@ async function pollRunAll(){
   webRun.items=status.items||[];
   webRun.skipped=status.skipped||webRun.skipped;
   webRun.done=webRun.items.length>0&&webRun.items.every(r=>TERMINAL.has(r.status));
- }catch(error){webRun.error=error.message;}
+ }catch(error){
+  webRun.error=error.message;
+  if(String(error.message||'').includes('찾을 수 없')){  // 실행 기록이 없다(만료 등) — 더 재시도해도 소용없다
+   clearRunAllId();webRun.busy=false;webRun.timer=null;rerender();return;
+  }
+ }
  rerender();
- if(webRun.done){webRun.busy=false;webRun.timer=null;rerender();return;}
+ if(webRun.done){clearRunAllId();webRun.busy=false;webRun.timer=null;rerender();return;}
  webRun.timer=setTimeout(pollRunAll,5000);
 }
 async function startRunAll(){
@@ -221,11 +233,19 @@ async function startRunAll(){
  try{
   const result=await api.startRunAll({sshUser:user});
   webRun.runId=result.runId;
+  saveRunAllId(result.runId);
   webRun.skipped=result.skipped||[];
   webRun.items=(result.launched||[]).map(l=>({sec:l.sec,label:null,status:'Pending'}));
   rerender();
   webRun.timer=setTimeout(pollRunAll,3000);
  }catch(error){webRun.busy=false;webRun.error=error.message;rerender();}
+}
+// 새로고침 직후 한 번만: 저장된 runId 가 있으면 새로 시작하지 않고 그 실행 상태를 이어 본다.
+function resumeRunAll(){
+ if(resumedRunAll)return;resumedRunAll=true;
+ const runId=loadRunAllId();if(!runId)return;
+ webRun.runId=runId;webRun.busy=true;webRun.error=null;webRun.done=false;
+ pollRunAll();
 }
 function onClick(e){
  const type=e.target.closest('[data-drill-type]');if(type){pickType(type.dataset.drillType);return;}
@@ -243,6 +263,7 @@ function onChange(e){
 export function renderDrills(){
  const box=$('#drills');
  if(box&&!box._drillsBound){box.addEventListener('click',onClick);box.addEventListener('keydown',onKeydown);box.addEventListener('change',onChange);box._drillsBound=true;}
+ resumeRunAll();
  return loadPanel(box,
   async()=>{const [c,r]=await Promise.all([api.drillsCatalog(),api.drills()]);catalog=c;runs=r;if(!sel.typeId)sel.typeId=c.types[0]?.id||null;return {catalog:c,runs:r};},
   ()=>paint(),'공격·대응 실습');
