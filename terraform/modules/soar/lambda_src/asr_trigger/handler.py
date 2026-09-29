@@ -31,6 +31,11 @@ DynamoDB 조치 이력 테이블에 직접 기록해 보장합니다.
     "SEC-06B" 가 있으면 SSH(22) 거부 알람(ALARM)에서 VPC Flow Logs 의 REJECT 기록을 읽어(방화벽 거부 로그처럼)
     최다 출발지 IP 1개를 Private NACL 1~99 번대 Deny 로 막는다(ASR-BlockIpWithNacl).
     VPC CIDR 밖 주소·보호 자산 주소는 막지 않고 알림만 보낸다. 이미 막힌 IP 면 실행하지 않는다.
+
+차단 IP 목록 (v25, DEC-021)
+  - IP_BLOCKLIST_TABLE 이 있으면 차단을 시작할 때 그 표에 ACTIVE 행(규칙 번호·만료 시각·근거)을 올린다. 만료·해제는
+    block_expiry Lambda 와 대시보드가 ASR-UnblockIpWithNacl 로 처리한다. 차단 SSM 이 실패하면 행은 FAILED 가 된다.
+  - 표에서 allowlisted=true 인 IP(오탐 예외)는 자동 차단하지 않고 '수동 대응 필요'로만 기록한다.
 """
 import os
 import re
@@ -89,6 +94,10 @@ PROJECT_VPC_ID = os.environ.get("PROJECT_VPC_ID", "")
 VPC_CIDR = os.environ.get("VPC_CIDR", "")
 # 이 역할 태그의 인스턴스 주소는 절대 막지 않는다(보호 대상 서비스·시연 DB·대시보드).
 PROTECTED_ROLES = [r for r in os.environ.get("PROTECTED_ROLES", "service-3tier,database,soar-dashboard").split(",") if r]
+# v25(DEC-021) 차단 IP 목록: 차단을 기록하고(만료 시각 포함), 오탐 예외로 등록된 IP 는 자동 차단하지 않는다.
+# 테이블 설정이 없으면 두 기능 모두 건너뛴다(이전 배포와 같은 동작).
+IP_BLOCKLIST_TABLE = os.environ.get("IP_BLOCKLIST_TABLE", "")
+IP_BLOCK_TTL_HOURS = int(os.environ.get("IP_BLOCK_TTL_HOURS", "24"))  # 0 = 영구
 LOG_PAGE_LIMIT = 10  # FilterLogEvents 페이지 상한(Lambda 시간 초과 방지). 알람 구간 로그는 보통 1쪽이다.
 # 사용자 이름은 공격자가 정한다('x'@'10.0.1.25' 같은 값을 넣을 수 있다). 줄 끝의 비밀번호 표시 바로 앞 host 만 믿는다.
 AUTH_FAIL = re.compile(r"Access denied for user '.*'@'([^']+)' \(using password: (?:YES|NO)\)\s*$")
@@ -207,6 +216,8 @@ def _handle_automation_result(event):
         UpdateExpression="SET #s = :s, after_state = :a, updated_at = :now, completed_at = :now",
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={":s": status, ":a": f"SSM {d.get('Status')}", ":now": now})
+    if status != "SUCCESS":
+        _mark_block_failed(found[0], exec_id, d.get("Status"))
     return {"updated": True, "status": status}
 
 
@@ -459,6 +470,64 @@ def _nacl_ingress(nacl_id):
     return [e for e in acl.get("Entries", []) if not e.get("Egress")]
 
 
+def _allowlisted_ips(candidates):
+    """차단 목록 표에서 오탐 예외(allowlisted=true)로 등록된 IP 집합. 표 설정이 없으면 빈 집합.
+    읽기에 실패하면 예외를 그대로 올린다(호출부가 수동 대응으로 돌린다 — 예외 IP 를 실수로 막지 않기 위해)."""
+    if not IP_BLOCKLIST_TABLE:
+        return set()
+    table = dynamodb.Table(IP_BLOCKLIST_TABLE)
+    found = set()
+    for ip in candidates:
+        item = table.get_item(Key={"ip": ip}, ConsistentRead=True).get("Item")
+        if item and item.get("allowlisted") is True:
+            found.add(ip)
+    return found
+
+
+def _record_block(ip, rule, token, count, exec_id, alarm_name):
+    """차단 시작 시 차단 목록 표에 ACTIVE 행을 올린다(upsert). 예외 등록·버전은 유지하고 해제 흔적은 지운다.
+    SSM 실행이 실패하면 _handle_automation_result 가 FAILED 로 바꾼다. 기록 실패는 차단·알림을 막지 않는다."""
+    if not IP_BLOCKLIST_TABLE:
+        return
+    now = int(time.time())
+    names = {"#s": "status", "#src": "source", "#v": "version"}
+    values = {":s": "ACTIVE", ":r": rule, ":n": PRIVATE_NACL_ID, ":src": token, ":at": _now(),
+              ":ev": {"hits": count, "alarm": alarm_name}, ":x": exec_id, ":one": 1}
+    sets = ("#s = :s, rule_number = :r, nacl_id = :n, #src = :src, blocked_at = :at, evidence = :ev, "
+            "ssm_execution_id = :x, updated_at = :at, allowlisted = if_not_exists(allowlisted, :f)")
+    values[":f"] = False
+    if IP_BLOCK_TTL_HOURS > 0:
+        sets += ", expires_at = :exp"
+        values[":exp"] = now + IP_BLOCK_TTL_HOURS * 3600
+    remove = "released_at, released_by, release_reason, release_kind, unblock_execution_id, last_error, release_attempts"
+    if IP_BLOCK_TTL_HOURS <= 0:
+        remove += ", expires_at"
+    try:
+        dynamodb.Table(IP_BLOCKLIST_TABLE).update_item(
+            Key={"ip": ip}, ExpressionAttributeNames=names, ExpressionAttributeValues=values,
+            UpdateExpression=f"SET {sets} ADD #v :one REMOVE {remove}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"ip blocklist write failed: {exc}")
+
+
+def _mark_block_failed(action_row, exec_id, ssm_status):
+    """차단 SSM 실행이 실패로 끝나면 차단 목록 행을 FAILED 로(그 실행이 만든 행일 때만)."""
+    if not IP_BLOCKLIST_TABLE or action_row.get("playbook_id") != DOC_BLOCK_IP or not DOC_BLOCK_IP:
+        return
+    match = re.search(r"← (\d{1,3}(?:\.\d{1,3}){3})/32$", action_row.get("resource_id", ""))
+    if not match:
+        return
+    try:
+        dynamodb.Table(IP_BLOCKLIST_TABLE).update_item(
+            Key={"ip": match.group(1)}, UpdateExpression="SET #s = :f, last_error = :e, updated_at = :now",
+            ConditionExpression="ssm_execution_id = :x AND #s = :a",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":f": "FAILED", ":e": f"차단 SSM {ssm_status}", ":now": _now(),
+                                       ":x": exec_id, ":a": "ACTIVE"})
+    except Exception as exc:  # noqa: BLE001 — 조건 불일치(다른 실행이 갱신)도 여기로 온다
+        print(f"ip blocklist failure mark skipped: {exc}")
+
+
 def _block_bruteforce_source(event, kind):
     d = event.get("detail", {})
     token, title = BRUTEFORCE_KINDS[kind]
@@ -479,7 +548,10 @@ def _block_bruteforce_source(event, kind):
             and (kind != "ssh" or FLOWLOG_REJECT_PATTERN)):
         return manual("차단 설정 누락(문서·NACL·로그 그룹·VPC CIDR)")
     start, end = _alarm_window(d)
-    counts = _failure_sources(kind, start, end)
+    try:
+        counts = _failure_sources(kind, start, end)
+    except Exception as exc:  # noqa: BLE001 — 권한·로그 그룹 문제로 Lambda 가 죽으면 이력·알림이 안 남는다
+        return manual(f"로그 조회 실패({source_group}): {type(exc).__name__}")
     if not counts:
         hint = {"mysql": "로그 전송 경로·logs 엔드포인트 확인",
                 "ssh": "Flow Logs 로그 그룹 수집 확인",
@@ -490,11 +562,16 @@ def _block_bruteforce_source(event, kind):
     entries = _nacl_ingress(PRIVATE_NACL_ID)
     denied_cidrs = {e.get("CidrBlock") for e in entries if e.get("RuleAction") == "deny"}
     network, protected = ipaddress.ip_network(VPC_CIDR, strict=False), _protected_ips()
+    try:
+        allowlisted = _allowlisted_ips([c for c in counts if c not in protected])
+    except Exception as exc:  # noqa: BLE001
+        return manual(f"오탐 예외 목록 확인 실패({type(exc).__name__}) — 예외 IP 를 막지 않도록 자동 차단 보류")
     skipped = []
     ip = count = None
     for candidate, hits in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
         why = (f"{candidate} 는 VPC CIDR({VPC_CIDR}) 밖 주소" if ipaddress.ip_address(candidate) not in network else
                f"{candidate} 는 보호 자산 주소" if candidate in protected else
+               f"{candidate} 는 오탐 예외 등록 IP(자동 차단 제외)" if candidate in allowlisted else
                "blocked" if f"{candidate}/32" in denied_cidrs else None)
         if why is None:
             ip, count = candidate, hits
@@ -530,6 +607,7 @@ def _block_bruteforce_source(event, kind):
                                                "RuleNumber": [str(free)]})
     _safe_record("auto-executed", detail, before=f"{cidr} 허용", after=f"규칙 {free} Deny 추가 중",
                  exec_id=exec_id, playbook=DOC_BLOCK_IP, reason=reason, control=token)
+    _record_block(ip, free, token, count, exec_id, d.get("alarmName", ""))
     _notify(f"[자동조치 실행] {title} 출발지 차단", f"{reason}\nNACL 규칙 {free}\nSSM execution: {exec_id}")
     return {"decision": "auto-executed", "control": token, "ip": ip, "rule": free, "execution": exec_id}
 

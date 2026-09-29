@@ -32,3 +32,5 @@ output "manual_scan_document" {
 }
 
 output "cloudwatch_dashboard_name" { value = aws_cloudwatch_dashboard.main.dashboard_name }
+output "ip_blocklist_table_name" { value = aws_dynamodb_table.ip_blocklist.name }
+output "unblock_document_name" { value = aws_ssm_document.automation["ASR-UnblockIpWithNacl"].name }

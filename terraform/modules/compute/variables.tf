@@ -111,3 +111,25 @@ variable "enable_dashboard_deploy" {
   type    = bool
   default = true
 }
+
+# --- 허니팟 화면·차단 IP 관리 (v25) ---
+variable "ip_blocklist_table" {
+  type    = string
+  default = ""
+}
+variable "honeypot_log_group" {
+  type    = string
+  default = ""
+}
+variable "honeypot_alarm_name" {
+  type    = string
+  default = ""
+}
+variable "private_nacl_id" {
+  type    = string
+  default = ""
+}
+variable "vpc_cidr" {
+  type    = string
+  default = ""
+}

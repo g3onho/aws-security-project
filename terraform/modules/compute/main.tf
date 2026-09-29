@@ -124,7 +124,13 @@ resource "aws_instance" "dashboard" {
     region                    = var.region
     project                   = var.name_prefix
     correlated_findings_table = var.correlated_findings_table
+    automation_role_arn       = local.ssm_automation_role_arn
     remediation_actions_table = var.remediation_actions_table
+    ip_blocklist_table        = var.ip_blocklist_table
+    honeypot_log_group        = var.honeypot_log_group
+    honeypot_alarm_name       = var.honeypot_alarm_name
+    private_nacl_id           = var.private_nacl_id
+    vpc_cidr                  = var.vpc_cidr
     findings_table            = var.findings_table
     vulnerabilities_table     = var.vulnerabilities_table
     event_source              = var.dashboard_event_source

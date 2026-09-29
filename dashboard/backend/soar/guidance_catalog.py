@@ -511,8 +511,11 @@ OTHERS = {
         "iam", "SEC-05"),
 }
 
-# 자동 조치 기록의 규칙 토큰(SEC-06A·SEC-06B) — 조치 이력 제목용.
+# 자동 조치 기록의 규칙 토큰(SEC-06A·SEC-06B·HONEYPOT, 해제 UNBLOCK-*) — 조치 이력 제목용.
 BRUTEFORCE = {
     "SEC-06A": "MySQL 무차별 대입 → 공격 IP NACL 차단",
     "SEC-06B": "SSH 접속 시도 거부 급증(Flow Logs) → 공격 IP NACL 차단",
+    "HONEYPOT": "미끼서버 접속 → 공격 IP NACL 차단",
+    "UNBLOCK-MANUAL": "차단 IP 오탐 해제(NACL Deny 삭제)",
+    "UNBLOCK-EXPIRY": "차단 기간 만료 → NACL Deny 해제",
 }

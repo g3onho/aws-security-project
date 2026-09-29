@@ -45,6 +45,16 @@ def configure(overrides=None):
         "DVWA_TARGET_IP": os.getenv("DVWA_TARGET_IP") or None,
         "DVWA_WEB_URL": os.getenv("DVWA_WEB_URL") or None,  # ALB:8081, 웹 공격(WAF 경유) 대상
         "SCAN_RESULTS_BUCKET": os.getenv("SCAN_RESULTS_BUCKET") or None,
+        # 허니팟 화면·차단 IP 관리(v25). terraform 이 dashboard.env 로 주입. 로그 그룹이 없으면 "허니팟 미배포".
+        "HONEYPOT_LOG_GROUP": os.getenv("HONEYPOT_LOG_GROUP") or None,
+        "HONEYPOT_ALARM_NAME": os.getenv("HONEYPOT_ALARM_NAME") or None,
+        "IP_BLOCKLIST_TABLE": os.getenv("IP_BLOCKLIST_TABLE") or None,
+        "PRIVATE_NACL_ID": os.getenv("PRIVATE_NACL_ID") or None,
+        "DOC_UNBLOCK_IP": os.getenv("DOC_UNBLOCK_IP") or None,
+        "AUTOMATION_ROLE_ARN": os.getenv("AUTOMATION_ROLE_ARN") or None,
+        "IP_BLOCK_TTL_HOURS": int(os.getenv("IP_BLOCK_TTL_HOURS", "24")),
+        # 허니팟 화면에서 차단 해제·기간 변경·예외 등록·비밀번호 원문 보기가 가능한 역할(쉼표). viewer 는 넣을 수 없다.
+        "BLOCKLIST_WRITE_ROLES": os.getenv("BLOCKLIST_WRITE_ROLES", "operator"),
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),
@@ -72,6 +82,11 @@ def configure(overrides=None):
         raise ValueError("EVENT_SOURCE=dynamodb requires FINDINGS_TABLE")
     if config["VULNERABILITY_SOURCE"] == "dynamodb" and not config["VULNERABILITIES_TABLE"]:
         raise ValueError("VULNERABILITY_SOURCE=dynamodb requires VULNERABILITIES_TABLE")
+    raw_roles = config["BLOCKLIST_WRITE_ROLES"]  # 환경변수 문자열, 또는 (앱 설정을 다시 넘긴 경우) 이미 정리된 집합
+    roles = {r.strip() for r in (raw_roles.split(",") if isinstance(raw_roles, str) else raw_roles) if r.strip()}
+    if not roles or not roles <= {"operator", "approver"}:
+        raise ValueError("BLOCKLIST_WRITE_ROLES must list operator and/or approver")
+    config["BLOCKLIST_WRITE_ROLES"] = frozenset(roles)
     config["WRITE_ENABLED"] = boolean(config["WRITE_ENABLED"], "WRITE_ENABLED")
     config["SESSION_COOKIE_SECURE"] = boolean(config["SESSION_COOKIE_SECURE"], "SESSION_COOKIE_SECURE")
     if not 1 <= config["PORT"] <= 65535:

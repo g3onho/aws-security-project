@@ -1,0 +1,77 @@
+schemaVersion: '0.3'
+description: |
+  ASR-BlockIpWithNacl 이 Private NACL 에 넣은 Deny 규칙(번호 1~99)을 지웁니다 (오탐 해제 · 차단 기간 만료, DEC-021).
+  실행 경로 세 가지:
+    - 만료: block_expiry Lambda 가 expires_at 이 지난 차단을 5분마다 찾아 실행.
+    - 오탐 해제: 대시보드 허니팟 화면의 [해제] 버튼(조치 담당자 이상)이 실행.
+    - 수동: 담당자가 SSM 콘솔·CLI 로 실행.
+
+  안전 조건 (IAM 에는 규칙 번호·CIDR 조건 키가 없어서 이 문서가 직접 막습니다):
+    - RuleNumber 1~99 만 허용. 100 이상은 Terraform 소유라 여기서 지우면 다음 apply 와 충돌합니다.
+    - AttackerCidr 는 IPv4 /32 만 허용.
+    - 삭제 전에 그 번호의 규칙이 "인바운드 Deny + 입력한 CIDR" 인지 확인합니다.
+      다르면 실패하고 아무것도 지우지 않습니다(그 번호가 이미 다른 주소 차단으로 재사용됐을 수 있음).
+    - 그 번호에 규칙이 이미 없으면 지울 것이 없으므로 변경 없이 성공합니다(멱등).
+  before/after 규칙을 반환해 Before-After 비교에 사용합니다.
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  NetworkAclId:
+    type: String
+    description: 규칙을 지울 NACL ID (private NACL)
+    allowedPattern: '^acl-[0-9a-f]{8,17}$'
+  AttackerCidr:
+    type: String
+    description: "해제할 출발지 IPv4 /32 (예: 10.0.2.55/32)"
+    allowedPattern: '^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/32$'
+  RuleNumber:
+    type: Integer
+    description: 지울 Deny 규칙 번호 (1~99 만 허용)
+  AutomationAssumeRole:
+    type: String
+mainSteps:
+  - name: removeDenyRule
+    action: 'aws:executeScript'
+    outputs:
+      - Name: before
+        Selector: $.Payload.before
+        Type: String
+      - Name: after
+        Selector: $.Payload.after
+        Type: String
+      - Name: changed
+        Selector: $.Payload.changed
+        Type: String
+    inputs:
+      Runtime: python3.11
+      Handler: handler
+      InputPayload:
+        nacl_id: '{{ NetworkAclId }}'
+        cidr: '{{ AttackerCidr }}'
+        rule_number: '{{ RuleNumber }}'
+      Script: |
+        import boto3, ipaddress, json
+        DENY_MIN, DENY_MAX = 1, 99
+        def _entries(ec2, nacl_id):
+            acl = ec2.describe_network_acls(NetworkAclIds=[nacl_id])["NetworkAcls"][0]
+            return [e for e in acl["Entries"] if not e["Egress"]]
+        def handler(event, context):
+            nacl_id = event["nacl_id"]
+            rule_number = int(event["rule_number"])
+            if not DENY_MIN <= rule_number <= DENY_MAX:
+                raise ValueError(f"RuleNumber {rule_number} 거부: SOAR 는 {DENY_MIN}~{DENY_MAX} 만 사용 (100 이상은 Terraform 소유)")
+            net = ipaddress.ip_network(event["cidr"], strict=True)
+            if net.version != 4 or net.prefixlen != 32 or net.network_address.is_unspecified:
+                raise ValueError(f"AttackerCidr {event['cidr']} 거부: IPv4 /32 단일 주소만 허용")
+            ec2 = boto3.client("ec2")
+            entries = _entries(ec2, nacl_id)
+            before = json.dumps(entries, default=str)
+            found = [e for e in entries if e["RuleNumber"] == rule_number]
+            if not found:
+                return {"before": before, "after": before, "changed": "false"}
+            entry = found[0]
+            if entry.get("RuleAction") != "deny" or entry.get("CidrBlock") != str(net):
+                raise ValueError(
+                    f"규칙 {rule_number} 은 Deny {net} 이 아닙니다({entry.get('RuleAction')} {entry.get('CidrBlock')}). 삭제하지 않습니다")
+            ec2.delete_network_acl_entry(NetworkAclId=nacl_id, RuleNumber=rule_number, Egress=False)
+            after = json.dumps(_entries(ec2, nacl_id), default=str)
+            return {"before": before, "after": after, "changed": "true"}

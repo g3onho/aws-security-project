@@ -6,10 +6,11 @@
  <title>AWS Security Operations · 통합 관제</title>
  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
  <link rel="stylesheet" href="/static/css/tailwind.css">
- <link rel="stylesheet" href="/static/css/app.css?v=local-5">
+ <link rel="stylesheet" href="/static/css/app.css?v=local-6">
  <script defer src="/static/vendor/chart.umd.js"></script>
- <script type="module" src="/static/js/app.js?v=local-6"></script>
- <link rel="stylesheet" href="/static/css/local.css?v=local-5">
+ <script defer src="/static/vendor/d3-force.min.js"></script>
+ <script type="module" src="/static/js/app.js?v=local-7"></script>
+ <link rel="stylesheet" href="/static/css/local.css?v=local-6">
 </head>
 <body>
 <a class="skip-link" href="#main">본문으로 이동</a>
@@ -26,6 +27,7 @@
   <button data-view="infrastructure"><span>▥</span>인프라 모니터링</button>
   <button data-view="responses"><span>↻</span>조치 이력</button>
   <button data-view="drills"><span>⚔</span>공격·대응 실습</button>
+  <button data-view="honeypot"><span>◈</span>허니팟</button>
  </nav>
  <div class="sidebar-bottom"><span class="status-dot"></span><span id="env-label">실데이터 전용</span><div id="env-sub">실제 AWS 연결 없음</div><small>LOCAL BACKEND / v0.1</small></div>
 </aside>

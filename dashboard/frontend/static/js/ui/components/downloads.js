@@ -25,3 +25,21 @@ export function downloadCsv(filename,text) {
   document.body.append(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
+export function downloadFile(filename,text,type='application/json;charset=utf-8') {
+  const url=URL.createObjectURL(new Blob([text],{type}));
+  const link=document.createElement('a');link.href=url;link.download=filename;
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+// 차단 IP 보고서(v25). 서버 GET /api/blocklist?format=csv 와 같은 열·같은 수식 주입 방지 규칙이다.
+export function blocklistCsv(items,iso) {
+  const columns=['IP','상태','차단 경로','NACL 규칙','차단 시각','만료 시각','오탐 예외','해제 시각','해제자','해제 사유','미끼 세션','명령 수','마지막 관측','의도','상위 명령'];
+  const rows=items.map(i=>{
+    const s=i.sessions||{};
+    return [i.ip,i.state,i.source||'',i.naclRule??i.ruleNumber??'',iso(i.blockedAt),i.expiresAt?iso(i.expiresAt):(i.state==='blocked'?'영구':''),i.allowlisted?'예':'',
+      iso(i.releasedAt),i.releasedBy||'',i.releaseReason||'',s.sessionCount??'',s.commandCount??'',iso(s.lastSeenAt),(s.intents||[]).join(' '),(s.topCommands||[]).map(c=>c.key).join(' | ')];
+  });
+  return '\uFEFF'+[columns,...rows].map(row=>row.map(cell).join(',')).join('\r\n');
+}

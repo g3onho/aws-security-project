@@ -7,7 +7,10 @@ from jinja2 import ChoiceLoader, FileSystemLoader
 
 from .auth import current_user, install_auth
 from .contracts import StandardService, envelope
+from .blocklist_service import BlocklistService
 from .drills import DrillService
+from .honeypot_api import bp as honeypot_api
+from .honeypot_service import HoneypotService
 from .guidance import AutoPolicy
 from .provider import AwsProvider, UnconfiguredProvider
 from .errors import install_errors
@@ -49,13 +52,22 @@ def create_app(overrides=None):
                             event_source=settings["EVENT_SOURCE"],
                             vulnerability_source=settings["VULNERABILITY_SOURCE"],
                             auto_policy=AutoPolicy.from_settings(settings),
-                            name_prefix=settings["NAME_PREFIX"])
+                            name_prefix=settings["NAME_PREFIX"],
+                            honeypot_log_group=settings["HONEYPOT_LOG_GROUP"],
+                            honeypot_alarm_name=settings["HONEYPOT_ALARM_NAME"],
+                            blocklist_table=settings["IP_BLOCKLIST_TABLE"],
+                            private_nacl_id=settings["PRIVATE_NACL_ID"],
+                            unblock_document=settings["DOC_UNBLOCK_IP"],
+                            automation_role_arn=settings["AUTOMATION_ROLE_ARN"])
                 if settings["DATA_PROVIDER"] == "aws" else UnconfiguredProvider())
     if provider.connected and not settings.get("TESTING"):
         provider.warm()  # 취약점 목록(Inspector 수천 건)을 기동 직후 미리 받아 둔다
     workflow = Workflow(store, provider, settings["APPROVAL_TTL_SECONDS"])
     worker = Worker(store, provider, settings["WORKER_LEASE_SECONDS"])
+    honeypot_service = HoneypotService(provider, workflow, settings)
     app.extensions.update(store=store, provider=provider, workflow=workflow,
+                          honeypot_service=honeypot_service,
+                          blocklist_service=BlocklistService(provider, workflow, store, honeypot_service, settings),
                           worker=worker,
                           standard_service=StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"]),
                           drill_service=DrillService(store, provider, attack_config=_attack_config(settings)))
@@ -67,6 +79,7 @@ def create_app(overrides=None):
     install_errors(app)
     install_auth(app)
     app.register_blueprint(standard_api)
+    app.register_blueprint(honeypot_api)
 
     @app.get("/")
     def index():

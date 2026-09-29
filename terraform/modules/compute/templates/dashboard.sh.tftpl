@@ -48,6 +48,14 @@ DASHBOARD_PORT=5000
 DASHBOARD_INSTANCE=/opt/dashboard/instance
 CORRELATED_FINDINGS_TABLE=${correlated_findings_table}
 REMEDIATION_ACTIONS_TABLE=${remediation_actions_table}
+# 허니팟 화면·차단 IP 관리(v25). 허니팟 로그 그룹이 비면 화면은 "허니팟 미배포"로 표시한다.
+IP_BLOCKLIST_TABLE=${ip_blocklist_table}
+HONEYPOT_LOG_GROUP=${honeypot_log_group}
+HONEYPOT_ALARM_NAME=${honeypot_alarm_name}
+PRIVATE_NACL_ID=${private_nacl_id}
+VPC_CIDR=${vpc_cidr}
+DOC_UNBLOCK_IP=ASR-UnblockIpWithNacl
+AUTOMATION_ROLE_ARN=${automation_role_arn}
 FINDINGS_TABLE=${findings_table}
 VULNERABILITIES_TABLE=${vulnerabilities_table}
 EVENT_SOURCE=${event_source}

@@ -122,6 +122,7 @@ Terraform은 로그와 finding을 같은 데이터로 취급하지 않는다. Gu
 | 수동 점검 증거 | SSM `SCAN-*` 문서가 nmap/ZAP/Trivy 등 결과를 S3에 저장 | 결과 파일은 로그 스트림이나 SOAR 조치 결과와 별개. S3 접근·보존·삭제 정책을 정의 |
 | 자동조치 상태 | EventBridge → `asr_trigger` → 게이트/SSM/SNS → `remediation_actions` DynamoDB | 판단 이력과 SSM 실행 결과를 구분; 실행 성공만으로 재검증/해결완료가 아님. 기록에 판정 이유(`reason`)·규칙 ID(`control_id`)를 남긴다 |
 | 무차별 대입 자동 차단 | MySQL 인증 실패 알람(SEC-06A)·Flow Logs SSH(22) 거부 알람(SEC-06B, VPC 내부 출발지) → EventBridge → `asr_trigger` → 로그에서 최다 출발지 IP → `ASR-BlockIpWithNacl` | DEC-018·DEC-019. VPC CIDR 밖·보호 자산 주소는 알림만. 1~99번 Deny, 자동 만료 없음. 로그 전송 경로가 없으면 출발지를 못 찾아 수동 알림 |
+| 차단 목록·만료·해제 (v25) | `asr_trigger`가 차단할 때 DynamoDB `ip_blocklist`에 행(규칙 번호·만료 시각·근거) 기록 → `block_expiry` Lambda(EventBridge 5분, `enable_block_expiry`)가 만료된 차단을 `ASR-UnblockIpWithNacl`로 해제. 대시보드 오탐 해제·기간 변경·예외 등록도 같은 표·문서를 쓴다 | DEC-021. 자동 차단 기본 기간 `ip_block_default_ttl_hours`(기본 24, 0 = 영구). 해제 문서는 그 번호가 인바운드 Deny + 그 IP/32 일 때만 삭제(1~99만). 새 IAM: block_expiry 역할(표 Scan/UpdateItem, 해제 문서만 실행, NACL 조회), 대시보드(표 읽기·UpdateItem/PutItem), 자동화 역할 `ec2:DeleteNetworkAclEntry`. 대시보드 user_data(env) 변경 → 대시보드 인스턴스 교체 |
 | Nginx 강화 | `ASR-HardenNginx` SSM Command 문서는 확인되나 자동 Lambda 호출 경로는 연결되지 않음 | 사용자 선택에 따라 수동 조치 기준으로 둠. Terraform이 이를 자동조치했다고 표현하지 않음 |
 | AI 허니팟 | 조사한 네 모듈과 compute 리소스에서 별도 AI 허니팟 배포 모듈·자원은 확인되지 않음 | 프로젝트 목표에 포함하되 기술·데이터 경로·비용·격리·차단 정책은 미결정. 허니팟 설계 문서에서 제안과 사실을 구분 |
 

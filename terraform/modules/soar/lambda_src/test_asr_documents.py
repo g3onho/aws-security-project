@@ -211,6 +211,67 @@ def test_document_public_sharing_is_disabled_once():
     assert updates == [("update", {"SettingId": "/ssm/documents/console/public-sharing-permission", "SettingValue": "Disable"})]
 
 
+# --- ASR-UnblockIpWithNacl (v25 · DEC-021) --------------------------------------------
+
+class FakeNacl:
+    def __init__(self, entries):
+        self.entries, self.calls = entries, Calls()
+
+    def describe_network_acls(self, **kw):
+        return {"NetworkAcls": [{"Entries": list(self.entries)}]}
+
+    def delete_network_acl_entry(self, **kw):
+        self.calls.rec("delete", **kw)
+        self.entries = [e for e in self.entries if not (e["RuleNumber"] == kw["RuleNumber"] and e["Egress"] == kw["Egress"])]
+
+
+DENY3 = {"RuleNumber": 3, "RuleAction": "deny", "Egress": False, "CidrBlock": "10.0.2.55/32"}
+ALLOW100 = {"RuleNumber": 100, "RuleAction": "allow", "Egress": False, "CidrBlock": "10.0.0.0/16"}
+UNBLOCK = {"nacl_id": "acl-0123456789abcdef0", "cidr": "10.0.2.55/32", "rule_number": 3}
+
+
+def test_unblock_deletes_only_the_matching_deny_rule():
+    ec2 = FakeNacl([DENY3, ALLOW100])
+    out = run("ASR-UnblockIpWithNacl", {"ec2": ec2}, UNBLOCK)
+    assert out["changed"] == "true" and ec2.calls == [("delete", {"NetworkAclId": "acl-0123456789abcdef0", "RuleNumber": 3, "Egress": False})]
+    assert '"RuleNumber": 3' in out["before"] and '"RuleNumber": 3' not in out["after"] and '"RuleNumber": 100' in out["after"]
+
+
+def test_unblock_is_idempotent_when_rule_is_already_gone():
+    ec2 = FakeNacl([ALLOW100])
+    out = run("ASR-UnblockIpWithNacl", {"ec2": ec2}, UNBLOCK)
+    assert out["changed"] == "false" and not ec2.calls
+
+
+def test_unblock_refuses_when_rule_number_now_belongs_to_another_address():
+    ec2 = FakeNacl([{**DENY3, "CidrBlock": "10.0.9.9/32"}, ALLOW100])
+    try:
+        run("ASR-UnblockIpWithNacl", {"ec2": ec2}, UNBLOCK)
+    except ValueError as error:
+        assert "삭제하지 않습니다" in str(error)
+    else:
+        raise AssertionError("must refuse")
+    assert not ec2.calls
+
+
+def test_unblock_refuses_allow_rules_and_terraform_owned_numbers():
+    ec2 = FakeNacl([{"RuleNumber": 5, "RuleAction": "allow", "Egress": False, "CidrBlock": "10.0.2.55/32"}, ALLOW100])
+    for payload in ({**UNBLOCK, "rule_number": 5}, {**UNBLOCK, "rule_number": 100}, {**UNBLOCK, "rule_number": 0},
+                    {**UNBLOCK, "cidr": "10.0.2.0/24"}, {**UNBLOCK, "cidr": "0.0.0.0/32"}):
+        try:
+            run("ASR-UnblockIpWithNacl", {"ec2": ec2}, payload)
+        except ValueError:
+            continue
+        raise AssertionError(f"must refuse {payload}")
+    assert not ec2.calls
+
+
+def test_unblock_never_touches_outbound_rules():
+    ec2 = FakeNacl([{"RuleNumber": 3, "RuleAction": "deny", "Egress": True, "CidrBlock": "10.0.2.55/32"}, ALLOW100])
+    out = run("ASR-UnblockIpWithNacl", {"ec2": ec2}, UNBLOCK)
+    assert out["changed"] == "false" and not ec2.calls
+
+
 if __name__ == "__main__":
     count = 0
     for name, fn in list(globals().items()):

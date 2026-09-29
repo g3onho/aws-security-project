@@ -27,6 +27,8 @@ os.environ["MYSQL_ALARM_NAME"] = "soar-sec-dev-mysql-bruteforce"
 os.environ["MYSQL_LOG_GROUP"] = "/soar-sec/dev/db/mysql"
 os.environ["SSH_ALARM_NAME"] = "soar-sec-dev-ssh-reject"
 os.environ["FLOWLOG_GROUP"] = "/soar-sec/dev/vpc/flowlogs"
+os.environ["HONEYPOT_ALARM_NAME"] = "soar-sec-dev-honeypot"
+os.environ["HONEYPOT_LOG_GROUP"] = "/honeypot/soar-sec-dev"
 FLOW_PATTERN = ('[version, account, eni, srcaddr=10.0.*, dstaddr, srcport, dstport="22", protocol="6", '
                 'packets, bytes, start, end, action="REJECT", status]')
 os.environ["FLOWLOG_REJECT_PATTERN"] = FLOW_PATTERN
@@ -371,6 +373,166 @@ def test_repeated_decisions_for_different_ips_are_separate_rows():
         handler.ENABLE_AUTO = saved
     rows = sorted(r["resource_id"] for r in f.table.rows.values())
     assert rows == ["acl-0123456789abcdef0 ← 10.0.2.55/32", "acl-0123456789abcdef0 ← 10.0.2.77/32"]
+
+
+# --- A6 허니팟 (DEC-020) -------------------------------------------------------------
+
+def hp(src, event="connect"):
+    return json.dumps({"event": event, "src_ip": src, "src_port": 50000, "session_id": "abc"})
+
+
+def test_honeypot_alarm_blocks_connecting_source_when_listed():
+    f = Fakes(log_messages=[hp("10.0.2.55")] * 3 + [hp("10.0.2.77")])
+    saved = handler.CONTROLS
+    handler.CONTROLS = saved | {"HONEYPOT"}
+    try:
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    finally:
+        handler.CONTROLS = saved
+    assert out["decision"] == "auto-executed" and out["control"] == "HONEYPOT" and out["ip"] == "10.0.2.55"
+    call = f.log_calls[0]
+    assert call["logGroupName"] == "/honeypot/soar-sec-dev" and call["filterPattern"] == '{ $.event = "connect" }'
+    assert f.started[0]["Parameters"]["AttackerCidr"] == ["10.0.2.55/32"]
+    row = only_row(f.table)
+    assert row["control_id"] == "HONEYPOT" and "미끼 접속 3회" in row["reason"]
+
+
+def test_honeypot_without_list_token_goes_manual():
+    f = Fakes(log_messages=[hp("10.0.2.55")] * 3)
+    out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert out["decision"] == "manual-notified" and "HONEYPOT" in out["reason"] and not f.started
+
+
+def test_log_read_failure_is_recorded_instead_of_crashing():
+    f = Fakes(log_messages=[hp("10.0.2.55")])
+
+    def denied_call(**kw):
+        raise PermissionError("AccessDeniedException")
+    handler.logs.filter_log_events = denied_call
+    saved = handler.CONTROLS
+    handler.CONTROLS = saved | {"HONEYPOT"}
+    try:
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    finally:
+        handler.CONTROLS = saved
+    assert out["decision"] == "manual-notified" and "로그 조회 실패" in out["reason"] and not f.started
+    assert only_row(f.table)["status"] and f.sent
+
+
+# --- 차단 IP 목록 (v25 · DEC-021) -----------------------------------------------------
+
+class FakeBlocklist:
+    """차단 목록 표 대역: get_item 은 items 에서, update_item 은 호출만 기록한다(식 문법은 별도로 실제 엔진에서 확인)."""
+    def __init__(self, items=None, fail_get=False):
+        self.items, self.updates, self.fail_get = items or {}, [], fail_get
+
+    def get_item(self, Key, ConsistentRead=False):
+        if self.fail_get:
+            raise RuntimeError("AccessDeniedException")
+        return {"Item": self.items[Key["ip"]]} if Key["ip"] in self.items else {}
+
+    def update_item(self, **kw):
+        self.updates.append(kw)
+
+
+class Blocklisted:
+    """asr_trigger 가 차단 목록 표를 쓰도록 켜고(테이블·기본 기간), 끝나면 되돌린다."""
+    def __init__(self, fakes, blocklist, ttl_hours=24):
+        self.f, self.b, self.ttl = fakes, blocklist, ttl_hours
+
+    def __enter__(self):
+        self.saved = (handler.IP_BLOCKLIST_TABLE, handler.IP_BLOCK_TTL_HOURS, handler.dynamodb, handler.CONTROLS)
+        fakes, blocklist = self.f, self.b
+        handler.IP_BLOCKLIST_TABLE, handler.IP_BLOCK_TTL_HOURS = "bl", self.ttl
+        handler.CONTROLS = handler.CONTROLS | {"HONEYPOT"}
+        handler.dynamodb = type("D", (), {"Table": lambda _s, name: blocklist if name == "bl" else fakes.table})()
+        return self
+
+    def __exit__(self, *exc):
+        handler.IP_BLOCKLIST_TABLE, handler.IP_BLOCK_TTL_HOURS, handler.dynamodb, handler.CONTROLS = self.saved
+
+
+def test_blocklist_row_is_written_with_expiry_when_an_ip_is_blocked():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 4), FakeBlocklist()
+    with Blocklisted(f, bl, ttl_hours=1):
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert out["decision"] == "auto-executed" and len(bl.updates) == 1
+    call = bl.updates[0]
+    values = call["ExpressionAttributeValues"]
+    assert call["Key"] == {"ip": "10.0.2.55"} and values[":s"] == "ACTIVE" and values[":r"] == 1
+    assert values[":src"] == "HONEYPOT" and values[":ev"]["hits"] == 4 and values[":x"] == "exec-1"
+    assert 3500 <= values[":exp"] - int(__import__("time").time()) <= 3600     # 1시간 뒤 만료
+    assert "REMOVE" in call["UpdateExpression"] and "released_at" in call["UpdateExpression"]
+
+
+def test_zero_ttl_means_no_expiry_and_clears_an_old_one():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")]), FakeBlocklist()
+    with Blocklisted(f, bl, ttl_hours=0):
+        handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    call = bl.updates[0]
+    assert ":exp" not in call["ExpressionAttributeValues"] and "expires_at" in call["UpdateExpression"].split("REMOVE")[1]
+
+
+def test_allowlisted_ip_is_not_blocked_and_goes_manual():
+    f = Fakes(log_messages=[hp("10.0.2.55")] * 9)
+    bl = FakeBlocklist({"10.0.2.55": {"ip": "10.0.2.55", "allowlisted": True, "status": "RELEASED"}})
+    with Blocklisted(f, bl):
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert out["decision"] == "manual-notified" and "오탐 예외" in out["reason"] and not f.started and not bl.updates
+
+
+def test_allowlisted_top_source_does_not_hide_the_next_attacker():
+    f = Fakes(log_messages=[hp("10.0.2.55")] * 9 + [hp("10.0.2.77")] * 2)
+    bl = FakeBlocklist({"10.0.2.55": {"ip": "10.0.2.55", "allowlisted": True}})
+    with Blocklisted(f, bl):
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert out["decision"] == "auto-executed" and out["ip"] == "10.0.2.77"
+    assert bl.updates[0]["Key"] == {"ip": "10.0.2.77"}
+
+
+def test_unreadable_allowlist_holds_auto_block_for_manual_review():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 3), FakeBlocklist(fail_get=True)
+    with Blocklisted(f, bl):
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert out["decision"] == "manual-notified" and "예외 목록 확인 실패" in out["reason"] and not f.started
+
+
+def test_blocklist_write_failure_does_not_stop_the_block():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 3), FakeBlocklist()
+
+    def boom(**kw):
+        raise RuntimeError("throttled")
+    bl.update_item = boom
+    with Blocklisted(f, bl):
+        out = handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert out["decision"] == "auto-executed" and len(f.started) == 1
+
+
+def test_without_blocklist_table_behaviour_is_unchanged():
+    f = Fakes(log_messages=denied("10.0.2.55", 5))
+    assert handler.IP_BLOCKLIST_TABLE == ""
+    assert handler.handler(alarm_event(), None)["decision"] == "auto-executed"
+
+
+def test_failed_block_execution_marks_the_blocklist_row_failed():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 3), FakeBlocklist()
+    with Blocklisted(f, bl):
+        handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+        bl.updates.clear()
+        handler.handler({"source": "aws.ssm", "detail": {"Status": "Failed", "ExecutionId": "exec-1"}}, None)
+    call = bl.updates[0]
+    assert call["Key"] == {"ip": "10.0.2.55"} and call["ExpressionAttributeValues"][":f"] == "FAILED"
+    assert call["ConditionExpression"] == "ssm_execution_id = :x AND #s = :a"
+    assert call["ExpressionAttributeValues"][":x"] == "exec-1"
+
+
+def test_successful_block_execution_leaves_the_row_active():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 3), FakeBlocklist()
+    with Blocklisted(f, bl):
+        handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+        bl.updates.clear()
+        handler.handler({"source": "aws.ssm", "detail": {"Status": "Success", "ExecutionId": "exec-1"}}, None)
+    assert not bl.updates
 
 
 if __name__ == "__main__":

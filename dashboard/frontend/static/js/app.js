@@ -16,6 +16,7 @@ import {table,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/even
 import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=ui-1';
 import {renderAudit} from './ui/pages/history.js?v=ui-1';
 import {renderDrills} from './ui/pages/drills.js?v=ui-1';
+import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=ui-1';
 import {renderVulnerabilities,selectVulnTarget,stepVulnPage,setVulnSize,setVulnFixable,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=ui-1';
 function render({loadPanels=false}={}){
  const pending=[];
@@ -23,9 +24,10 @@ function render({loadPanels=false}={}){
  const rows=selectEvents();const [title,en]=titles[state.view];$('#page-title').innerHTML=`${title} <span>${en}</span>`;document.title=`AWS Security Operations · ${title}`;
  $$('nav [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===state.view);b.setAttribute('aria-current',b.dataset.view===state.view?'page':'false');});
  $('#map-section').hidden=state.view!=='overview';
+ if(state.view!=='honeypot')ui.operationBusy=false;   // 허니팟 변경 양식을 열어 둔 채 다른 화면으로 가도 자동 새로고침이 막히지 않게
  // 취약점은 현재 상태라 기간을 쓰지 않는다 — 기간 막대를 숨긴다(v20.5).
  $('.timeline').hidden=state.view==='vulnerabilities'||state.view==='drills';
- $('.filters').hidden=state.view==='drills';
+ $('.filters').hidden=state.view==='drills'||state.view==='honeypot';
  const end=rangeEnd();
  renderTrack(end);
  $$('[data-hours]').forEach(b=>{b.classList.toggle('active',+b.dataset.hours===state.hours);b.setAttribute('aria-pressed',String(+b.dataset.hours===state.hours));});
@@ -44,6 +46,10 @@ function render({loadPanels=false}={}){
  }else if(state.view==='drills'){
   renderContent(`<div id="drills" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
   if(loadPanels)pending.push(renderDrills());
+ }else if(state.view==='honeypot'){
+  // 허니팟(v25): 기간은 기간 버튼을 따르고, 데이터는 허니팟 API 로만 읽는다(공용 events·summary 로드를 기다리지 않는다).
+  renderContent(`<div id="honeypot" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
+  if(loadPanels)pending.push(renderHoneypot().then(()=>renderTrack()));
  }else {
   const visible=visibleRows();
   const intro=state.view==='responses'?'실행 결과와 재검증 결과를 구분하여 확인합니다.':'탐지 근거에서 대응과 재검증까지 추적합니다.';
@@ -60,12 +66,15 @@ function render({loadPanels=false}={}){
  syncUrl();
  return Promise.all(pending);
 }
+// 계정 역할 표시: operator=조치 담당(실행), approver=승인 담당, viewer=조회 전용. 권한은 서버가 강제한다.
+const roleLabel=()=>({operator:'조치 담당',approver:'승인 담당'}[config().role]||'조회 전용');
 function rangeEnd(){return summary.queryTo||Date.now();}
 // 기간 트랙(v20.5): 지금 → 15분·1시간·1일·1주일 누적 곡선. 지점 = 기간 버튼. 화면마다 세는 대상이 다르다.
 //  통합 관제·보안 이벤트 = 탐지 / 인프라 = 임계 초과 구간(끝 시각 기준 → 기간과 겹치는 구간, 화면 표와 같은 수) / 조치 이력 = 이력(마지막 발생 시각)
 const historyAt=row=>Date.parse(row.lastSeenAt||row.createdAt);   // 서버 조치 이력 기간 기준과 같다
 function trackSource(){
  if(state.view==='infrastructure')return {noun:'임계 초과',unit:'구간',times:selectors.metricWeek()?hostViews(selectors.metricWeek()).flatMap(h=>h.breaches.map(b=>b.to)):null};
+ if(state.view==='honeypot')return {noun:'미끼 세션',unit:'개',times:honeypotTimes()};
  if(state.view==='responses'){const week=selectors.historyWeek();return {noun:'조치 이력',unit:'건',times:week?week.map(historyAt):null};}
  return {noun:'탐지',unit:'건',times:(selectors.week()||selectEvents()).map(e=>e.at)};
 }
@@ -118,16 +127,16 @@ async function refresh(options={}){
  try{
   // 공격·대응 실습(1차)은 실데이터 공급자가 필요 없는 카탈로그다. 공용 데이터 로드(events·summary)가
   // 미연결(503)로 실패해도 화면이 막히지 않도록 세션 확인 후 바로 렌더한다.
-  if(state.view==='drills'){
+  if(state.view==='drills'||state.view==='honeypot'){
    await api.init();
    if(serial!==ui.refreshSerial||scope!==panelScope())return;
    await render({loadPanels:true});
    if(serial!==ui.refreshSerial)return;
    box.hidden=true;content.removeAttribute('data-stale');
-   $('#session-user').textContent=config().user.name+' · '+(config().role==='operator'?'조치 담당':'조회 전용');
+   $('#session-user').textContent=config().user.name+' · '+roleLabel();
    applyModeLabels();
-   $('#worker-state').textContent='공격·대응 실습 · 관측·구조(1차)';
-   $('#updated').textContent='카탈로그 조회';
+   $('#worker-state').textContent=state.view==='honeypot'?'허니팟 · 조회와 차단 IP 관리':'공격·대응 실습 · 관측·구조(1차)';
+   $('#updated').textContent=state.view==='honeypot'?`갱신 ${format(Date.now(),true)} KST`:'카탈로그 조회';
    return;
   }
   const [loaded]=await Promise.all([api.load(),isMapReady()?Promise.resolve():loadMap()]);
@@ -137,7 +146,7 @@ async function refresh(options={}){
   if(serial!==ui.refreshSerial)return;
   box.hidden=true;content.removeAttribute('data-stale');
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
-  $('#session-user').textContent=config().user.name+' · '+(config().role==='operator'?'조치 담당':'조회 전용');
+  $('#session-user').textContent=config().user.name+' · '+roleLabel();
   applyModeLabels();
   // v23: '조치 실행 비활성 · 조회 전용' 고정 문구는 뺐다(대시보드는 조회 전용이고 자동 조치는 SOAR 가 한다). 경고만 보인다.
   $('#worker-state').textContent=summary.warnings?.length?'⚠ '+summary.warnings.join(' · '):'';
@@ -213,7 +222,7 @@ document.addEventListener('keydown',e=>{
  if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.isComposing||$('#event-dialog').open||e.target.closest('input,select,textarea,[contenteditable="true"]'))return;
  if(e.key==='r'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();refresh();}
  if(e.key==='/'){e.preventDefault();$('#search').focus();}
- const index='123456'.indexOf(e.key);
+ const index='1234567'.indexOf(e.key);
  if(e.key.length===1&&index>=0){const button=$$('nav [data-view]')[index];if(button){e.preventDefault();navigateView(button.dataset.view);}}
 });
 setAuto(false);

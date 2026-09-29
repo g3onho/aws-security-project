@@ -29,8 +29,8 @@ variable "enable_ai" {
 }
 variable "ai_model_id" {
   type        = string
-  default     = "apac.anthropic.claude-haiku-4-5-20251001-v1:0"
-  description = "Bedrock 모델 ID(교차 리전 추론 프로파일 권장). 계정에서 모델 액세스가 허용돼 있어야 한다."
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+  description = "Bedrock 모델 ID. 서울(ap-northeast-2)에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 프로파일 없음). 계정에서 모델 액세스가 허용돼 있어야 한다."
 }
 variable "listen_port" {
   type    = number

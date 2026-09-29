@@ -19,6 +19,7 @@ locals {
 
   correlated_findings_table = "${local.name_prefix}-correlated-findings"
   remediation_actions_table = "${local.name_prefix}-remediation-actions"
+  ip_blocklist_table        = "${local.name_prefix}-ip-blocklist"
   scan_results_bucket       = "${local.name_prefix}-scan-results-${local.account_id}"
 
   # 탐지·취약점 적재(v21). soar 가 만들고(finding_sync), compute 대시보드가 읽는다.
@@ -97,6 +98,11 @@ module "soar" {
   findings_table            = local.findings_table
   vulnerabilities_table     = local.vulnerabilities_table
   scan_results_bucket       = local.scan_results_bucket
+
+  # IP 차단 목록·기간·만료 (v25)
+  ip_blocklist_table         = local.ip_blocklist_table
+  ip_block_default_ttl_hours = var.ip_block_default_ttl_hours
+  enable_block_expiry        = var.enable_block_expiry
 
   enable_auto_remediation  = var.enable_auto_remediation
   auto_remediable_patterns = var.auto_remediable_patterns
@@ -182,6 +188,13 @@ module "compute" {
   findings_table            = local.findings_table
   vulnerabilities_table     = local.vulnerabilities_table
   scan_results_bucket       = local.scan_results_bucket
+
+  # 허니팟 화면·차단 IP 관리(v25). 허니팟이 없으면 빈 값 → 화면은 "허니팟 미배포".
+  ip_blocklist_table  = local.ip_blocklist_table
+  honeypot_log_group  = coalesce(one(module.honeypot[*].log_group_name), "")
+  honeypot_alarm_name = coalesce(one(module.honeypot[*].alarm_name), "")
+  private_nacl_id     = module.network.private_nacl_id
+  vpc_cidr            = var.vpc_cidr
 
   ssm_automation_role_name = local.ssm_automation_role_name
   sns_topic_arn            = local.sns_topic_arn

@@ -222,6 +222,8 @@ variable "auto_remediable_controls" {
     규칙 ID 는 부분 일치하지 않는다(EC2.2 가 EC2.21 을 잡지 않음). 재부팅이 없고 Terraform 이 관리하지 않는
     계정·리전 설정만 넣는다. "SEC-06A" 는 MySQL 무차별 대입 알람 → 공격 IP NACL 자동 차단,
     "SEC-06B" 는 VPC 내부 출발지의 SSH(22) 거부 급증(Flow Logs) → 같은 NACL 자동 차단이다(DEC-019).
+    "HONEYPOT" 은 미끼서버 접속 알람 → 같은 NACL 자동 차단이다(DEC-020, enable_honeypot = true 일 때만 의미).
+    기본값에는 넣지 않았다. 켤 때는 tfvars 에 목록 전체를 쓴다(["HONEYPOT"] 만 쓰면 나머지 9개가 꺼진다).
     항목을 빼면 그 finding 은 기존 패턴 화이트리스트 규칙대로 판정된다(대부분 수동 알림).
   EOT
   type        = list(string)
@@ -351,7 +353,25 @@ variable "enable_honeypot_ai" {
 }
 
 variable "honeypot_ai_model_id" {
-  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID(교차 리전 추론 프로파일 권장). 계정에서 모델 액세스 허용 필요."
+  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
   type        = string
-  default     = "apac.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
+# --- IP 차단 기간·만료 (v25, DEC-021) ---
+variable "ip_block_default_ttl_hours" {
+  description = "자동 차단(NACL 1~99 Deny)의 기본 차단 기간(시간). 0 이면 영구. 대시보드 허니팟 화면에서 행마다 바꿀 수 있다. 시연이면 1 권장."
+  type        = number
+  default     = 24
+
+  validation {
+    condition     = var.ip_block_default_ttl_hours >= 0 && var.ip_block_default_ttl_hours <= 720
+    error_message = "ip_block_default_ttl_hours 는 0(영구) ~ 720 이어야 합니다."
+  }
+}
+
+variable "enable_block_expiry" {
+  description = "만료된 IP 차단을 자동 해제(block_expiry Lambda, 5분 주기). 끄면 만료 시각이 지나도 차단이 유지되고 대시보드에서만 해제할 수 있다."
+  type        = bool
+  default     = true
 }

@@ -28,6 +28,8 @@ data "aws_iam_policy_document" "ssm_automation" {
       "ec2:RevokeSecurityGroupIngress",
       "ec2:DescribeNetworkAcls",
       "ec2:CreateNetworkAclEntry",
+      # ASR-UnblockIpWithNacl(오탐 해제·만료). 번호 1~99·/32·Deny 일치 확인은 문서가 한다(IAM 조건 키 없음).
+      "ec2:DeleteNetworkAclEntry",
     ]
     resources = ["*"]
   }
@@ -143,6 +145,7 @@ locals {
     "ASR-RevokeSecurityGroupIngress"    = "${path.module}/documents/ASR-RevokeSecurityGroupIngress.yaml"
     "ASR-DisableExposedAccessKey"       = "${path.module}/documents/ASR-DisableExposedAccessKey.yaml"
     "ASR-BlockIpWithNacl"               = "${path.module}/documents/ASR-BlockIpWithNacl.yaml"
+    "ASR-UnblockIpWithNacl"             = "${path.module}/documents/ASR-UnblockIpWithNacl.yaml"
     "ASR-RotateDbSecret"                = "${path.module}/documents/ASR-RotateDbSecret.yaml"
     "ASR-RemoveDefaultSgRules"          = "${path.module}/documents/ASR-RemoveDefaultSgRules.yaml"
     "ASR-EnableEbsDefaultEncryption"    = "${path.module}/documents/ASR-EnableEbsDefaultEncryption.yaml"

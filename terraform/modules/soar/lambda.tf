@@ -110,7 +110,8 @@ data "aws_iam_policy_document" "asr_trigger" {
     resources = [aws_dynamodb_table.actions.arn, "${aws_dynamodb_table.actions.arn}/index/*"]
   }
 
-  # SEC-06A·06B — 알람 구간의 MySQL 인증 실패 로그 / VPC Flow Logs 22번 거부 기록에서 출발지 IP 를 읽는다.
+  # SEC-06A·06B·HONEYPOT — 알람 구간의 MySQL 인증 실패 로그 / VPC Flow Logs 22번 거부 기록 /
+  # 미끼서버 접속 로그에서 출발지 IP 를 읽는다. (허니팟 로그 그룹이 빠지면 HONEYPOT 차단이 AccessDenied 로 실패)
   statement {
     sid     = "ReadBruteforceLogs"
     actions = ["logs:FilterLogEvents"]
@@ -119,6 +120,10 @@ data "aws_iam_policy_document" "asr_trigger" {
       var.log_group_flowlogs == "" ? [] : [
         "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:${var.log_group_flowlogs}",
         "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:${var.log_group_flowlogs}:*",
+      ],
+      var.honeypot_log_group == null || var.honeypot_log_group == "" ? [] : [
+        "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:${var.honeypot_log_group}",
+        "arn:${var.partition}:logs:${var.region}:${var.account_id}:log-group:${var.honeypot_log_group}:*",
       ],
     )
   }
@@ -129,6 +134,13 @@ data "aws_iam_policy_document" "asr_trigger" {
     sid       = "InspectBlockTargets"
     actions   = ["ec2:DescribeInstances", "ec2:DescribeNetworkAcls", "ec2:DescribeNetworkInterfaces"]
     resources = ["*"]
+  }
+
+  # v25: 차단 IP 목록 — 오탐 예외 확인(GetItem), 차단 기록·차단 실패 표시(UpdateItem)
+  statement {
+    sid       = "IpBlocklist"
+    actions   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+    resources = [aws_dynamodb_table.ip_blocklist.arn]
   }
 
   statement {
@@ -193,6 +205,8 @@ resource "aws_lambda_function" "asr_trigger" {
       DOC_EBS_ENCRYPTION        = aws_ssm_document.automation["ASR-EnableEbsDefaultEncryption"].name
       DOC_SNAPSHOT_BPA          = aws_ssm_document.automation["ASR-BlockEbsSnapshotPublicAccess"].name
       DOC_S3_ACCOUNT_BPA        = aws_ssm_document.automation["ASR-BlockS3AccountPublicAccess"].name
+      IP_BLOCKLIST_TABLE        = aws_dynamodb_table.ip_blocklist.name
+      IP_BLOCK_TTL_HOURS        = tostring(var.ip_block_default_ttl_hours)
       DOC_PASSWORD_POLICY       = aws_ssm_document.automation["ASR-SetIamPasswordPolicy"].name
       DOC_SSM_AUTOMATION_LOG    = aws_ssm_document.automation["ASR-EnableSsmAutomationLogging"].name
       DOC_SSM_PUBLIC_SHARING    = aws_ssm_document.automation["ASR-BlockSsmDocumentPublicSharing"].name
@@ -284,4 +298,145 @@ resource "aws_lambda_function" "waf_finding" {
   }
 
   tags = var.tags
+}
+
+# --- block_expiry (v25, DEC-021) --------------------------------------------
+# 만료된 IP 차단(NACL 1~99 Deny)을 5분마다 해제하고, 대시보드 오탐 해제(RELEASING)를 마무리한다.
+# enable_block_expiry = false 면 만들지 않는다(만료 시각이 지나도 차단 유지, 대시보드에서만 해제).
+data "archive_file" "block_expiry" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda_src/block_expiry"
+  output_path = "${path.module}/build/block_expiry.zip"
+}
+
+resource "aws_iam_role" "block_expiry" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  name               = "${var.name_prefix}-block-expiry-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "block_expiry_basic" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  role       = aws_iam_role.block_expiry[0].name
+  policy_arn = "arn:${var.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+data "aws_iam_policy_document" "block_expiry" {
+  statement {
+    sid       = "Blocklist"
+    actions   = ["dynamodb:Scan", "dynamodb:UpdateItem"]
+    resources = [aws_dynamodb_table.ip_blocklist.arn]
+  }
+
+  statement {
+    sid       = "RecordActions"
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.actions.arn]
+  }
+
+  statement {
+    # 해제 문서 하나만 실행한다(ASR-* 전체가 아니다).
+    sid     = "StartUnblockPlaybook"
+    actions = ["ssm:StartAutomationExecution"]
+    # 세 리소스 타입을 두는 이유는 asr_trigger 정책 주석 참고.
+    resources = [
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-definition/ASR-UnblockIpWithNacl:*",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ASR-UnblockIpWithNacl",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:automation-execution/*",
+    ]
+  }
+
+  statement {
+    sid       = "TrackExecution"
+    actions   = ["ssm:GetAutomationExecution"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "PassAutomationRole"
+    actions   = ["iam:PassRole"]
+    resources = [aws_iam_role.ssm_automation.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ssm.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "InspectNacl"
+    actions   = ["ec2:DescribeNetworkAcls"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "Notify"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.alerts.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "block_expiry" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  name   = "${var.name_prefix}-block-expiry-policy"
+  role   = aws_iam_role.block_expiry[0].id
+  policy = data.aws_iam_policy_document.block_expiry.json
+}
+
+resource "aws_lambda_function" "block_expiry" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  function_name = "${var.name_prefix}-block-expiry"
+  role          = aws_iam_role.block_expiry[0].arn
+  runtime       = "python3.12"
+  handler       = "handler.handler"
+  timeout       = 60
+  memory_size   = 128
+
+  filename         = data.archive_file.block_expiry.output_path
+  source_code_hash = data.archive_file.block_expiry.output_base64sha256
+
+  environment {
+    variables = {
+      IP_BLOCKLIST_TABLE        = aws_dynamodb_table.ip_blocklist.name
+      REMEDIATION_ACTIONS_TABLE = aws_dynamodb_table.actions.name
+      DOC_UNBLOCK_IP            = aws_ssm_document.automation["ASR-UnblockIpWithNacl"].name
+      AUTOMATION_ROLE_ARN       = aws_iam_role.ssm_automation.arn
+      SNS_TOPIC_ARN             = aws_sns_topic.alerts.arn
+      ACTION_TTL_DAYS           = tostring(var.action_history_ttl_days)
+    }
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_event_rule" "block_expiry" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  name                = "${var.name_prefix}-block-expiry"
+  description         = "Every 5 minutes: release expired IP blocks and finish pending releases"
+  schedule_expression = "rate(5 minutes)"
+  tags                = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "block_expiry" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.block_expiry[0].name
+  target_id = "block-expiry"
+  arn       = aws_lambda_function.block_expiry[0].arn
+}
+
+resource "aws_lambda_permission" "block_expiry" {
+  count = var.enable_block_expiry ? 1 : 0
+
+  statement_id  = "AllowBlockExpirySchedule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.block_expiry[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.block_expiry[0].arn
 }

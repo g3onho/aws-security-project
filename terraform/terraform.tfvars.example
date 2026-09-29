@@ -49,6 +49,21 @@ alert_email             = ""     # 예: "team2-secops@example.com"
 # 바뀌어 대시보드 인스턴스가 새로 뜬다(로그인 계정 SQLite 초기화). 시연 직전에는 바꾸지 않는다.
 
 ############################################
+# A6 AI 미끼서버(허니팟) — private-db 서브넷에 미끼 1대 (enable_nat_gateway = true 필요)
+############################################
+# enable_honeypot    = true
+# enable_honeypot_ai = true   # Bedrock 가짜 셸·세션 분석. 모델 액세스 허용 필요
+# honeypot_ai_model_id = "global.anthropic.claude-haiku-4-5-20251001-v1:0"  # 서울은 global 만(apac 없음)
+#
+# 미끼 접속 → NACL 자동 차단까지 켜기. 목록 전체를 그대로 써야 한다.
+# ["HONEYPOT"] 만 쓰면 기존 자동 조치 9개가 전부 꺼진다. (대시보드 인스턴스 재생성 — 위 주의 참고)
+# auto_remediable_controls = ["EC2.2", "EC2.7", "EC2.182", "S3.1", "IAM.7", "SSM.6", "SSM.7", "SEC-06A", "SEC-06B", "HONEYPOT"]
+#
+# 자동 차단(NACL 1~99 Deny)의 기본 차단 기간과 자동 해제(v25). 대시보드 허니팟 화면에서 행마다 바꿀 수 있다.
+# ip_block_default_ttl_hours = 1     # 0 이면 영구. 시연이면 1 권장(기본 24)
+# enable_block_expiry        = true  # 만료된 차단을 5분마다 자동 해제
+
+############################################
 # DB 비밀번호 — 비우면 Secrets Manager 에 랜덤 생성.
 # 값을 넣으면 tfstate 에 남으니 실습용으로만.
 ############################################

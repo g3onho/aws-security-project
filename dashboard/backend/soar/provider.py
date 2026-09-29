@@ -8,7 +8,9 @@ AwsProvider 는 조립만 한다(설계 2.3):
 from .errors import Problem
 from .integrations.aws.cache import SharedCache
 from .integrations.aws.cloudwatch import Alarms
+from .integrations.aws.blocklist import BlocklistStore
 from .integrations.aws.dynamodb import DynamoTable
+from .integrations.aws.honeypot import HoneypotSources
 from .integrations.aws.inspector import InspectorFindings
 from .integrations.aws.securityhub import SecurityHubFindings
 from .integrations.aws.session import AwsSession
@@ -31,6 +33,8 @@ __all__ = ["AwsProvider", "UnconfiguredProvider", "classify", "remote_ip"]
 class UnconfiguredProvider:
     connected = False
     regions = ()
+    honeypot = None    # 허니팟 원천·차단 목록은 AWS 연결이 있어야 생긴다
+    blocklist = None
 
     @property
     def as_of(self):
@@ -78,7 +82,9 @@ class AwsProvider:
 
     def __init__(self, region, session_factory=None, actions_table=None, correlated_table=None,
                  findings_table=None, vulnerabilities_table=None, event_source="securityhub",
-                 vulnerability_source="inspector", auto_policy=None, name_prefix=None):
+                 vulnerability_source="inspector", auto_policy=None, name_prefix=None, honeypot_log_group=None,
+                 honeypot_alarm_name=None, blocklist_table=None, private_nacl_id=None, unblock_document=None,
+                 automation_role_arn=None):
         self.region = region
         self.regions = (region,)
         self._aws = AwsSession(region, session_factory)
@@ -108,6 +114,12 @@ class AwsProvider:
         self._alarms = (AlarmRepository(Alarms(self._aws, name_prefix), region, self.account_id, auto_policy)
                         if name_prefix else None)
         self._executions = AutomationExecutions(self._aws)
+        # 허니팟 세션 로그·미끼·알람(읽기 전용)과 차단 IP 목록(표·NACL·해제 SSM). 설정이 없으면 None → 화면에 미배포/미설정 표시.
+        self.honeypot = (HoneypotSources(self._aws, honeypot_log_group, honeypot_alarm_name)
+                         if honeypot_log_group else None)
+        self.blocklist = (BlocklistStore(self._aws, blocklist_table, private_nacl_id, unblock_document,
+                                         automation_role_arn, actions_table=actions_table)
+                          if blocklist_table and private_nacl_id and unblock_document and automation_role_arn else None)
 
     @property
     def as_of(self):

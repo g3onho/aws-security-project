@@ -49,6 +49,35 @@ export function sliceMetrics(metric,from,to){
   return {...s,points,observedAt:points.length?points[points.length-1].timestamp:null,
    collectionStatus:points.some(p=>p.value!=null)?'available':'missing'};})};
 }
+// 허니팟 API 는 기간(from·to)만 쓴다. 그 밖의 필터(리전·위험도 등)는 허니팟과 무관하다.
+function windowQuery(){
+ const to=Date.now(),q=new URLSearchParams({from:new Date(to-filters.hours*3600000).toISOString(),to:new Date(to).toISOString()});
+ return q;
+}
+async function honeypotRead(name,path,{window=true,extra={}}={}){
+ const q=window?windowQuery():new URLSearchParams();
+ for(const [key,value] of Object.entries(extra))q.set(key,value);
+ markRequest(name,{status:'loading'});
+ try{
+  const response=envelope(await request(path+(q.size?'?'+q:'')));
+  markRequest(name,{status:'success',lastUpdated:Date.now(),requestId:response.meta?.requestId||null,error:null});
+  return {data:response.data,warnings:warningsOf(response),partial:response.meta?.partial===true};
+ }catch(error){markRequest(name,{status:'error',error:error.message});throw error;}
+}
+// Idempotency-Key: 보안 컨텍스트가 아닌 HTTP(ALB)에서는 crypto.randomUUID 가 없으므로 getRandomValues 로 만든다.
+export function newIdempotencyKey(){
+ const bytes=new Uint8Array(16);
+ if(globalThis.crypto?.getRandomValues)globalThis.crypto.getRandomValues(bytes);else bytes.forEach((_,i)=>{bytes[i]=Math.floor(Math.random()*256);});
+ return 'hp-'+[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function blocklistWrite(name,path,method,body){
+ markRequest(name,{status:'loading'});
+ try{
+  const response=envelope(await request(path,{method,headers:{'Idempotency-Key':newIdempotencyKey()},body:JSON.stringify(body)}));
+  markRequest(name,{status:'success',lastUpdated:Date.now(),error:null});
+  return response.data;
+ }catch(error){markRequest(name,{status:'error',error:error.message});throw error;}
+}
 export const actions={
  async init(){
   if(!session.initializing)session.initializing=(async()=>{
@@ -195,6 +224,22 @@ export const actions={
   const result=envelope(await request(endpoints.drillRunAllStatus(runId))).data;
   return result;
  },
+ // --- 허니팟 화면·차단 IP 관리(v25) -------------------------------------------------------------
+ // 기간은 화면의 기간 버튼(filters.hours)을 따른다. 응답의 경고·partial 을 그대로 화면에 넘긴다(0건으로 위장하지 않는다).
+ async honeypotStatus(){return honeypotRead('honeypotStatus',endpoints.honeypotStatus,{window:false});},
+ async honeypotSessions({cursor=null,ip='',intent=''}={}){
+  const extra={limit:'50'};if(cursor)extra.cursor=cursor;if(ip)extra.ip=ip;if(intent)extra.intent=intent;
+  return honeypotRead('honeypotSessions',endpoints.honeypotSessions,{extra});
+ },
+ async honeypotSession(id,{reveal=false}={}){
+  return honeypotRead('honeypotSession',endpoints.honeypotSession(id),{extra:reveal?{revealPasswords:'true'}:{}});
+ },
+ async honeypotStats(){return honeypotRead('honeypotStats',endpoints.honeypotStats);},
+ async honeypotTimeline(ip){return honeypotRead('honeypotTimeline',endpoints.honeypotTimeline,{extra:{ip}});},
+ async blocklist(){return honeypotRead('blocklist',endpoints.blocklist);},
+ // 변경 요청은 자동 재시도하지 않는다(client.js). 같은 화면 조작 한 번 = Idempotency-Key 하나.
+ async blocklistRelease(ip,body){return blocklistWrite('blocklistRelease',endpoints.blocklistRelease(ip),'POST',body);},
+ async blocklistPatch(ip,body){return blocklistWrite('blocklistPatch',endpoints.blocklistPatch(ip),'PATCH',body);},
  async logout(){session.controller?.abort();session.generation++;await request(endpoints.logout,{method:'POST',body:'{}'});reset();location.assign('/login');},
  // CSV 내보내기용 이벤트 전체(현재 기간·리전·위험도·상태 필터). 파일 만들기·내려받기는 화면(downloads.js) 몫이다.
  async exportEvents(){const {items}=await pages(endpoints.events,query());return {items};},

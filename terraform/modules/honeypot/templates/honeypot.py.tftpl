@@ -23,6 +23,7 @@ import time
 import uuid
 
 import boto3
+from botocore.config import Config
 
 try:
     import asyncssh
@@ -36,10 +37,13 @@ MODEL_ID = "${ai_model_id}"
 LISTEN_PORT = int("${listen_port}")
 HOST_KEY_PATH = "/opt/honeypot/ssh_host_key"
 MAX_TURNS = 40          # 한 세션에서 AI 응답 생성 상한(비용·루프 방지)
+RESPONSE_LIMIT = 2000   # 세션 재생용으로 로그에 남기는 미끼 응답 길이 상한(글자)
 AI_TIMEOUT = 6.0        # Bedrock 호출 타임아웃(초). 넘으면 FALLBACK.
 
 logs = boto3.client("logs", region_name=REGION)
-bedrock = boto3.client("bedrock-runtime", region_name=REGION) if AI_ENABLED else None
+# 기본값(읽기 60초·재시도 여러 번)이면 Bedrock 이 느릴 때 세션이 오래 붙잡힌다. 짧게 끊고 FALLBACK 으로 간다.
+_BEDROCK_CFG = Config(connect_timeout=3, read_timeout=10, retries={"max_attempts": 1, "mode": "standard"})
+bedrock = boto3.client("bedrock-runtime", region_name=REGION, config=_BEDROCK_CFG) if AI_ENABLED else None
 
 HOSTNAME = "db-prod-01"  # 미끼가 흉내 낼 호스트 이름
 FALLBACK = {
@@ -117,6 +121,9 @@ def ai_session_analysis(ctx):
     """②③ 세션 사후 분석 + 위험도 판정. Bedrock 실패 시 규칙 기반 최소 요약."""
     commands = ctx["commands"]
     creds = ctx["auth_attempts"]
+    if not commands:
+        # Hydra 같은 로그인 시도만 있는 세션은 AI 로 볼 내용이 없다(호출 비용·지연만 생김).
+        return _rule_analysis(commands, creds)
     transcript = "\n".join(commands) or "(no commands)"
     prompt = (
         "A honeypot recorded this attacker SSH session. Return STRICT JSON with keys "
@@ -136,11 +143,16 @@ def ai_session_analysis(ctx):
             return parsed
         except (ValueError, KeyError):
             pass
-    # AI 미사용/실패 시 규칙 기반 최소 판정
+    return _rule_analysis(commands, creds)
+
+
+def _rule_analysis(commands, creds):
+    """AI 미사용/실패/명령 없음 시 규칙 기반 최소 판정."""
     severity = "high" if len(commands) >= 5 else "medium" if commands else "low"
-    return {"summary": "미끼서버 접속 %d회 명령·로그인 시도 %d회(AI 분석 미적용)"
+    intent = "unknown" if commands else ("credential-access" if creds else "recon")
+    return {"summary": "미끼서버 접속 · 명령 %d회 · 로그인 시도 %d회(AI 분석 미적용)"
             % (len(commands), len(creds)),
-            "iocs": commands[:10], "intent": "unknown", "severity": severity}
+            "iocs": commands[:10], "intent": intent, "severity": severity}
 
 
 if asyncssh:
@@ -158,6 +170,11 @@ if asyncssh:
                                "src_port": self.src_port, "session_id": self.session_id})
 
         def connection_lost(self, exc):
+            # 세션 분석(Bedrock)은 수 초 걸린다. 이벤트 루프에서 바로 부르면 그동안 다른 세션이 모두 멈추므로
+            # 스레드로 넘긴다(boto3 클라이언트는 스레드 간 공유해도 안전).
+            asyncio.get_event_loop().run_in_executor(None, self._finish_session)
+
+        def _finish_session(self):
             analysis = ai_session_analysis(self.ctx)
             _put(self.stream, {"event": "session_end", "src_ip": self.src_ip,
                                "session_id": self.session_id,
@@ -185,7 +202,10 @@ if asyncssh:
             ctx["commands"].append(process.command)
             _put(stream, {"event": "command", "src_ip": server.src_ip,
                           "session_id": ctx["session_id"], "command": process.command})
-            process.stdout.write(await ai_shell_response(process.command) + "\n")
+            reply = await ai_shell_response(process.command)
+            _put(stream, {"event": "response", "src_ip": server.src_ip,
+                          "session_id": ctx["session_id"], "response": reply[:RESPONSE_LIMIT]})
+            process.stdout.write(reply + "\n")
             process.exit(0)
             return
         process.stdout.write("Last login: %s from %s\n%s"
@@ -206,7 +226,11 @@ if asyncssh:
             ctx["commands"].append(command)
             _put(stream, {"event": "command", "src_ip": server.src_ip,
                           "session_id": ctx["session_id"], "command": command})
-            process.stdout.write(await ai_shell_response(command) + "\n" + prompt)
+            reply = await ai_shell_response(command)
+            # 대시보드 세션 재생용: 미끼가 보낸 응답도 남긴다(길이 상한 — 로그 폭주·비용 방지).
+            _put(stream, {"event": "response", "src_ip": server.src_ip,
+                          "session_id": ctx["session_id"], "response": reply[:RESPONSE_LIMIT]})
+            process.stdout.write(reply + "\n" + prompt)
         process.stdout.write("logout\n")
         process.exit(0)
 

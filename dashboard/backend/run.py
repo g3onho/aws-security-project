@@ -19,6 +19,8 @@ def main():
     operations.add_argument("--set-password", metavar="NAME")
     operations.add_argument("--worker", action="store_true")
     parser.add_argument("--role", choices=["operator", "approver", "viewer"], default="viewer")
+    parser.add_argument("--full-scope", action="store_true",
+                        help="With --add-user: allow all accounts, regions and resources (default: sees nothing)")
     parser.add_argument("--once", action="store_true", help="Process at most one job (requires --worker)")
     parser.add_argument("--no-worker", action="store_true", help="Run HTTP only; use a separate --worker process")
     args = parser.parse_args()
@@ -49,7 +51,8 @@ def main():
                 handle.write(f"{role}: {name} / {password}\n")
         print(f"Initial login details: {path}")
     elif args.add_user:
-        create_user(store, args.add_user, getpass.getpass("Password (8-256 characters): "), args.role)
+        scope = {"accounts": None, "regions": None, "resources": None} if args.full_scope else None
+        create_user(store, args.add_user, getpass.getpass("Password (8-256 characters): "), args.role, scope=scope)
         print("Account created.")
     elif args.set_password:
         set_password(store, args.set_password, getpass.getpass("New password (8-256 characters): "))

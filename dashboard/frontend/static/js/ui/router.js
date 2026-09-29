@@ -1,7 +1,7 @@
 // 주소창 ↔ 필터·열린 이벤트 동기화.
 import {regions,statuses,sources} from './constants.js?v=ui-1';
 import {state,setFilters,ui} from './context.js?v=ui-1';
-export const titles={overview:['통합 관제','Overview'],events:['보안 이벤트','Security events'],vulnerabilities:['취약점 점검','Vulnerabilities'],infrastructure:['인프라 모니터링','Infrastructure'],responses:['조치 이력','Remediation history'],drills:['공격·대응 실습','Attack & Response Drills']};
+export const titles={overview:['통합 관제','Overview'],events:['보안 이벤트','Security events'],vulnerabilities:['취약점 점검','Vulnerabilities'],infrastructure:['인프라 모니터링','Infrastructure'],responses:['조치 이력','Remediation history'],drills:['공격·대응 실습','Attack & Response Drills'],honeypot:['허니팟','Honeypot']};
 // ── 주소창 상태 동기화 ────────────────────────────────────
 // 새로고침하면 필터가 초기화되던 문제. 화면·필터·열어둔 이벤트를 주소에 담아
 // 복구와 링크 공유가 되게 한다. 뒤로가기는 **화면 전환과 상세 열기만** 쌓는다 —

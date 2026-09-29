@@ -50,6 +50,8 @@ locals {
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.findings_table}/index/*",
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.vulnerabilities_table}",
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.vulnerabilities_table}/index/*",
+    # 차단 IP 목록(v25, modules/soar storage.tf). 읽기는 여기서, 쓰기는 dashboard_execute 의 RecordBlocklist.
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.ip_blocklist_table}",
   ]
 }
 
@@ -226,6 +228,8 @@ data "aws_iam_policy_document" "dashboard_read" {
       "cloudwatch:GetMetricData",
       "cloudwatch:GetMetricStatistics",
       "cloudwatch:DescribeAlarms",
+      # 허니팟 타임라인(v25): 탐지 알람이 ALARM 으로 바뀐 시각
+      "cloudwatch:DescribeAlarmHistory",
       "logs:FilterLogEvents",
       "logs:StartQuery",
       "logs:GetQueryResults",
@@ -329,6 +333,16 @@ data "aws_iam_policy_document" "dashboard_execute" {
     sid       = "RecordActionHistory"
     actions   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
     resources = ["arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}"]
+  }
+
+  # 오탐 해제·차단 기간 변경(v25): 차단 IP 목록 행만 조건부로 갱신한다. 삭제·전체 쓰기는 주지 않는다.
+  dynamic "statement" {
+    for_each = var.ip_blocklist_table != "" ? [1] : []
+    content {
+      sid       = "RecordBlocklist"
+      actions   = ["dynamodb:UpdateItem", "dynamodb:PutItem"]
+      resources = ["arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.ip_blocklist_table}"]
+    }
   }
 
   # user_data 가 SNS_TOPIC_ARN 을 넘겨주는데 권한이 없어 발행이 실패하던 것을 보완합니다.

@@ -158,3 +158,22 @@ resource "aws_s3_bucket_versioning" "scan" {
     status = "Enabled"
   }
 }
+
+############################################
+# 차단 IP 목록 (v25) — asr_trigger 가 NACL Deny 를 넣을 때 기록하고, block_expiry Lambda 가 만료·해제를 마무리하며,
+# 대시보드(허니팟 화면)가 조회·오탐 해제·기간 변경에 쓴다.
+# 실제 차단 여부의 기준은 NACL 1~99 Deny 이고, 이 표는 만료·예외·해제 사유를 붙이는 메타데이터다.
+# expires_at(epoch 초, 없으면 영구)은 우리가 읽는 값이라 테이블 TTL 을 켜지 않는다(켜면 행이 사라져 이력이 없어진다).
+############################################
+resource "aws_dynamodb_table" "ip_blocklist" {
+  name         = var.ip_blocklist_table
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "ip"
+
+  attribute {
+    name = "ip"
+    type = "S"
+  }
+
+  tags = merge(var.tags, { Purpose = "ip-blocklist" })
+}

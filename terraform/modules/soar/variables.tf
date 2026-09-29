@@ -81,3 +81,16 @@ variable "honeypot_log_group" {
   type        = string
   default     = null
 }
+
+# --- IP 차단 목록·만료 (v25, DEC-021) ---
+variable "ip_blocklist_table" { type = string }
+variable "ip_block_default_ttl_hours" {
+  description = "자동 차단(NACL Deny)의 기본 차단 기간(시간). 0 이면 영구(수동 해제 전까지)."
+  type        = number
+  default     = 24
+}
+variable "enable_block_expiry" {
+  description = "만료된 차단을 5분마다 자동 해제하는 block_expiry Lambda 사용 여부."
+  type        = bool
+  default     = true
+}

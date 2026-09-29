@@ -19,4 +19,15 @@
 - DynamoDB 적재 조회와 AWS 직접 조회의 설명·조치 필드 동등성 (`tests/test_stored_sources.py`)
 - 화면: 탐지 상세·조치 이력·인프라·취약점·통합 관제 (`frontend/tests/detail-*.test.mjs`, `history.test.mjs`)
 
+
+2026-09-29 v25 변경(허니팟 화면·차단 IP 관리) 추가 검사:
+
+- 세션 로그 해석: 형식 위반·위조 세션 ID 건너뛰기, 문자열 길이·허용 값 제한, 비밀번호 비집계, 그래프 상한 (`tests/test_honeypot.py`)
+- 동작 상태 판정(ok·waiting·partial·unknown·not_deployed), 읽지 못한 원천은 unknown, 범위 제한 계정 차단 (`tests/test_honeypot.py`)
+- 차단 목록: 표와 NACL 대조(불일치 4종·기록 없음·적용 중), NACL 읽기 실패 경고, CSV 수식 주입 방지 (`tests/test_honeypot.py`)
+- 해제·기간·예외: 권한(operator만)·`WRITE_ENABLED`·CSRF·`Idempotency-Key`·`expectedVersion`, 재시도·응답 유실 재시도, SSM 시작 실패 되돌림, 동시 변경, 잘못된 IP·본문 (`tests/test_honeypot.py`)
+- openapi.yaml 과 실제 라우트 8개의 일치 (`tests/test_honeypot.py`)
+- 화면: 정상 흐름(차트 6·그래프·재생·해제·기간·예외·보고서), 악성 입력 이스케이프, 읽기 전용 계정, 부분 실패, 미배포 (`frontend/tests/honeypot*.test.mjs`)
+- Lambda·SSM 문서: `test_block_expiry.py`, `test_auto_remediation.py`(차단 기록·오탐 예외), `test_asr_documents.py`(ASR-UnblockIpWithNacl)
+
 실제 데이터 수집·원격 조치·운영 부하 검증은 포함하지 않습니다.

@@ -221,3 +221,17 @@ CloudWatch Logs, DynamoDB 업무 테이블, S3 증거 bucket은 역할이 다르
 | 구현·검증 진행 변화 | 설계 본문이 아닌 tracking에 상태·실제 코드 경로·시각·증거를 연결 |
 
 개발 완료 전 요구사항 ID, 이 설계의 경계와 데이터 계약, 보안 시나리오, 실패 처리, 테스트/실환경 구분, 복구·삭제 절차, 결정 상태와 문서 링크를 함께 점검한다. 검증을 실행하지 않았다면 통과로 기록하지 않는다. 승인된 변경은 커밋 버전과 결정·tracking 기록에 연결하고, 커밋 제목은 `vN` 또는 사소한 수정의 `vN.M`만 사용한다.
+
+## 대시보드 화면과 차단 IP 관리 (v25, DEC-021)
+
+허니팟 화면은 대시보드의 별도 메뉴이며 관제·검토 시스템이다(허니팟은 관측 대상). 화면 구성과 표시 원칙은 [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md) "허니팟 화면", API는 `dashboard/backend/contracts/openapi.yaml`이 기준이다.
+
+| 항목 | 내용 |
+|---|---|
+| 미끼 응답 기록 | 세션 재생을 위해 미끼가 보낸 응답도 `response` 이벤트로 남긴다(2,000자 상한, 명령은 실행되지 않으며 응답은 모델이 만든 가짜 출력) |
+| 차단 목록 | 차단 성공 시 `asr_trigger`가 DynamoDB `ip_blocklist`에 행을 올린다(규칙 번호·만료 시각·근거). 만료 시각 = 차단 시각 + `ip_block_default_ttl_hours`(0 = 영구) |
+| 자동 해제 | `block_expiry` Lambda가 5분마다 만료된 차단을 `ASR-UnblockIpWithNacl`로 해제한다(`enable_block_expiry`). 문서는 그 번호가 "인바운드 Deny + 그 IP/32"일 때만 지우고, 다르면 지우지 않고 실패한다 |
+| 오탐 예외 | `allowlisted=true`인 IP는 자동 차단하지 않고 '수동 대응 필요'로만 기록한다. 예외 목록을 읽지 못하면 자동 차단을 보류하고 수동 대응으로 돌린다 |
+| 해제 마무리 | 해제 접수(RELEASING)의 마무리(RELEASED·EXPIRED)는 `block_expiry`와 대시보드 조회가 같은 규칙으로 한다. 실행 ID 없이 5분 넘게 멈춘 해제는 차단 상태로 되돌린다 |
+
+AI 분석(요약·의도·위험도)은 화면에 "참고용"으로만 보이며 차단·해제·예외 판단에 쓰지 않는다. 실제 차단 상태의 기준은 NACL이다.
