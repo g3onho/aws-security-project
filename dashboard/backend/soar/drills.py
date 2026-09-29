@@ -295,15 +295,17 @@ class DrillService:
                 "targetIp": run.get("targetIp"), "skipped": run.get("skipped", []), "items": rows}
 
     def report(self, run_id):
-        """SEC-08(공격) 로그의 다운로드 링크(.txt·.json). '보안 시나리오' 페이지 [보고서 추출]이 부른다."""
+        """SEC-08(공격) 로그를 리전별로 읽어와 하나로 합친 JSON. '보안 시나리오' 페이지
+        [보고서 추출]이 부른다 — 프런트가 이 응답을 그대로 파일 하나로 내려받게 한다."""
         run = self.runs.get(run_id)
         if run is None:
             raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
         atk_cmds = [c for c in run.get("commands", []) if c.get("sec") == "SEC-08"]
         if not atk_cmds:
-            return {"runId": run_id, "items": []}
-        items = self.provider.report_urls_for(atk_cmds)
-        return {"runId": run_id, "items": items}
+            return {"runId": run_id, "regions": {}}
+        bucket = self.attack_config.get("scanBucket", "")
+        regions = self.provider.merged_report(atk_cmds, bucket)
+        return {"runId": run_id, "regions": regions}
 
     def environment(self):
         status = self.provider.status()

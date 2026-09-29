@@ -242,9 +242,9 @@ variable "alert_email" {
 ############################################
 
 variable "instance_type" {
-  description = "웹·대시보드 EC2 인스턴스 타입"
+  description = "웹·대시보드 EC2 인스턴스 타입. 2026-09-29 t3.micro(1GB)→t3.small(2GB, 대시보드 여유)."
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
 }
 
 variable "docker_host_instance_type" {

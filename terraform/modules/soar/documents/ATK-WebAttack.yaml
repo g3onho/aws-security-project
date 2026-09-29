@@ -30,6 +30,14 @@ parameters:
       WAF 를 타야 빨간 흐름선이 뜨므로 DVWA IP 직접(:80 filtered)이 아닌 ALB 를 대상으로 한다.
       스크립트가 이 URL 로 자동 로그인해 PHPSESSID 를 얻는다(수동 입력 불필요). 비우면 웹 공격 생략.
     default: ''
+  RunToken:
+    type: String
+    description: |
+      S3 파일명(스크립트가 만드는 $TS 대신 이걸 쓴다). 백엔드가 SendCommand 전에 미리 만들어
+      넘긴다 — 그래야 결과를 기다리지 않고도 다운로드 키를 바로 알 수 있다(2026-09-29 추가).
+      SSM 표준출력은 24,000자에서 잘려서, 스크립트가 찍는 "uploaded to s3://..." 마지막 줄을
+      못 읽는 경우가 있었다(ZAP+sqlmap 출력이 길 때) — 그 파싱 의존을 없앤다.
+    allowedPattern: '^[a-f0-9]{32}$'
 mainSteps:
   - action: 'aws:runShellScript'
     name: geoWebAttack
@@ -109,7 +117,8 @@ mainSteps:
               json.dump(result, fh, ensure_ascii=False, indent=2)
           PYEOF
         - 'rm -rf "$D" "$JAR"'
-        - '# 결과 업로드 (지역별 프리픽스) — 원본 .txt 와 구조화 .json 둘 다.'
-        - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.txt"'
-        - 'aws s3 cp "$OUTJSON" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.json"'
-        - 'echo "uploaded to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.{txt,json}"'
+        - '# 결과 업로드 (지역별 프리픽스). 파일명은 RunToken — 백엔드가 이미 알고 있는 값이라'
+        - '# 출력 파싱 없이 바로 다운로드 링크를 만들 수 있다. $TS 는 파일 내용(로그) 쪽에만 남는다.'
+        - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.txt"'
+        - 'aws s3 cp "$OUTJSON" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.json"'
+        - 'echo "uploaded to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.{txt,json} (generated at $TS)"'

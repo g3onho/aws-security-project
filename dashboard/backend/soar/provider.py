@@ -5,7 +5,8 @@ AwsProvider 는 조립만 한다(설계 2.3):
   - AWS 원본 → 대시보드 도메인 자료 변환 → repositories
 표준 API 서비스(contracts.StandardService)가 부르는 메서드 이름과 반환 모양은 바꾸지 않는다.
 """
-import re
+import json
+import uuid
 
 from .errors import Problem
 from .integrations.aws.cache import SharedCache
@@ -71,7 +72,7 @@ class UnconfiguredProvider:
     def attack_command_status(self, commands):
         self.require_ready()
 
-    def report_urls_for(self, commands, expires_in=3600):
+    def merged_report(self, commands, bucket):
         self.require_ready()
 
     def discover_service_host(self, region):
@@ -241,13 +242,18 @@ class AwsProvider:
         return found
 
     def run_web_attack(self, attackers, parameters):
-        """attackers: [{regionCode, instanceId, regionLabel, documentName}]. 실행한 command 목록을 돌려준다."""
+        """attackers: [{regionCode, instanceId, regionLabel, documentName}]. 실행한 command 목록을 돌려준다.
+        runToken: SendCommand 전에 미리 만든 UUID — 스크립트가 S3 파일명으로 쓴다. SSM 표준출력은
+        24,000자에서 잘리므로("uploaded to s3://..." 마지막 줄이 사라질 수 있음), 결과가 어디 올라갈지
+        실행 전부터 우리가 정해두면 report_urls_for 가 출력을 안 읽어도 다운로드 키를 만들 수 있다."""
         self.require_ready()
         launched = []
         for a in attackers:
             ssm = self._aws.regional_client("ssm", a["regionCode"])
+            run_token = uuid.uuid4().hex
             params = {k: [str(v)] for k, v in parameters.items() if v is not None and v != ""}
             params["RegionLabel"] = [a["regionLabel"]]
+            params["RunToken"] = [run_token]
             try:
                 # nmap 전체 포트(-p-) + ZAP 이미지 최초 pull + sqlmap 까지 순차 실행하면
                 # 600초로는 빠듯하다(ZAP 이미지 pull만 수분 걸릴 수 있음) → 1200초로 여유.
@@ -259,7 +265,8 @@ class AwsProvider:
                               "대시보드 롤의 ssm:SendCommand 권한과 리전별 ATK 문서를 확인하세요.",
                               "GEO_ATTACK_SEND_FAILED")
             launched.append({"regionLabel": a["regionLabel"], "regionCode": a["regionCode"],
-                             "instanceId": a["instanceId"], "commandId": resp["Command"]["CommandId"]})
+                             "instanceId": a["instanceId"], "commandId": resp["Command"]["CommandId"],
+                             "runToken": run_token})
         return launched
 
     def attack_command_status(self, commands):
@@ -280,34 +287,32 @@ class AwsProvider:
                 out.append({"regionLabel": c["regionLabel"], "status": status, "detail": code})
         return out
 
-    # --- 공격 로그 보고서(SEC-08 .txt·.json) 다운로드 링크 -------------------------------
-    # ATK-WebAttack 스크립트가 마지막 줄에 "uploaded to s3://<bucket>/<key>"를 두 번(.txt·.json)
-    # 찍는다. 그 출력에서 S3 키를 그대로 읽어와 presigned URL 을 만든다 — 별도로 실행 시각을
-    # 대시보드에 기록해 둘 필요 없이, 실제 올라간 파일을 정답으로 삼는다.
-    _S3_UPLOAD_RE = re.compile(r"uploaded to (s3://[^\s]+\.(?:txt|json))")
+    # --- 공격 로그 보고서(SEC-08) — 리전별 .json 을 직접 읽어와 하나로 합친다 ------------------
+    # run_web_attack 이 SendCommand 전에 만든 runToken 으로 S3 키가 이미 정해져 있다
+    # (atk/<region>/<runToken>.json) — 출력 파싱 불필요. SSM 표준출력은 24,000자에서 잘려서
+    # ZAP+sqlmap 처럼 긴 출력이면 마지막 "uploaded to..." 줄이 애초에 안 왔었다(2026-09-29 버그).
 
-    def report_urls_for(self, commands, expires_in=3600):
-        """commands: attack_command_status 와 같은 입력(SEC-08 커맨드만 의미 있음).
-        -> [{regionLabel, status, txtUrl, jsonUrl}]. 아직 안 끝났으면 두 url 다 None."""
+    def merged_report(self, commands, bucket):
+        """commands: run_web_attack 이 돌려준 것(runToken 포함, SEC-08 만).
+        -> {regionLabel: {ready, ...JSON 파일 내용...} | {ready:False, reason}}."""
         self.require_ready()
-        rows = self.attack_command_status(commands)
-        out = []
-        for row in rows:
-            urls = {"txt": None, "json": None}
-            for m in self._S3_UPLOAD_RE.finditer(row.get("output") or ""):
-                uri = m.group(1)
-                bucket, key = uri[len("s3://"):].split("/", 1)
-                region = next((c["regionCode"] for c in commands if c["regionLabel"] == row["regionLabel"]), self.region)
-                s3 = self._aws.regional_client("s3", region)
-                kind = "json" if key.endswith(".json") else "txt"
-                try:
-                    urls[kind] = s3.generate_presigned_url(
-                        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires_in)
-                except Exception:
-                    pass  # presign 은 로컬 서명이라 실패하면 자격증명 문제 — url 없이 상태만 보여준다
-            out.append({"regionLabel": row["regionLabel"], "status": row["status"],
-                        "txtUrl": urls["txt"], "jsonUrl": urls["json"]})
-        return out
+        regions = {}
+        for c in commands:
+            label, token, region = c["regionLabel"], c.get("runToken"), c["regionCode"]
+            if not token:
+                regions[label] = {"ready": False, "reason": "runToken 없음(재실행 필요 — 이전 버전 실행분)"}
+                continue
+            s3 = self._aws.regional_client("s3", region)
+            key = f"atk/{label}/{token}.json"
+            try:
+                obj = s3.get_object(Bucket=bucket, Key=key)
+                data = json.loads(obj["Body"].read())
+                regions[label] = {"ready": True, **data}
+            except s3.exceptions.NoSuchKey:
+                regions[label] = {"ready": False, "reason": "아직 업로드 안 됨(실행 중이거나 실패)"}
+            except Exception as error:
+                regions[label] = {"ready": False, "reason": _error_code(error)}
+        return regions
 
     # --- 서울 서비스 호스트 대상 스캔·부하 실행(전부 실행의 SEC-02/07/10) ------------
     # 웹 공격(geo)과 달리 이들은 서비스 3-tier 호스트(docker-host)에서 로컬로 돈다.

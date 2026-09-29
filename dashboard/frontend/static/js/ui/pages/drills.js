@@ -22,7 +22,13 @@ const RUNNING=new Set(['Pending','InProgress','Delayed','Cancelling']);
 let catalog=null,runs=null;
 const run={runId:null,items:[],skipped:[],busy:false,error:null,timer:null,done:false};
 // SEC-08 공격 로그(.txt·.json) 다운로드 링크. runId 당 한 번 요청, [다시 확인]으로 재요청(아직 안 끝난 리전 채우기).
-const report={runId:null,items:[],loading:false,error:null,fetched:false};
+const report={runId:null,regions:null,loading:false,error:null};
+function downloadJson(filename,obj){
+ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 
 function supportPill(support,label){
  const c=SUPPORT_COLOR[support]||SUPPORT_COLOR['design-needed'];
@@ -89,19 +95,19 @@ function runPanel(){
 }
 
 function reportSection(){
- if(!report.fetched)return '';
- const rows=report.items.map(item=>{
-  const state=RUN_STATUS_KO[item.status]||esc(item.status||'—');
-  const links=[item.txtUrl?`<a href="${esc(item.txtUrl)}" target="_blank" rel="noopener">원본(.txt)</a>`:null,
-               item.jsonUrl?`<a href="${esc(item.jsonUrl)}" target="_blank" rel="noopener">분석용(.json)</a>`:null]
-   .filter(Boolean).join(' · ')||'<span class="muted">아직 없음 — 이 리전이 끝나면 [보고서 추출]을 다시 누르세요</span>';
-  return `<tr><td>${esc(item.regionLabel||'—')}</td><td>${state}</td><td>${links}</td></tr>`;
- }).join('');
+ if(!report.regions)return '';
+ const entries=Object.entries(report.regions);
+ const rows=entries.map(([label,r])=>
+  `<tr><td>${esc(label)}</td><td>${r.ready?'포함됨':esc(r.reason||'제외')}</td></tr>`).join('');
+ const readyCount=entries.filter(([,r])=>r.ready).length;
  return `<section class="panel full-panel">${header('공격 로그 보고서','SEC-08 REPORT')}
-  <p class="muted">.json 은 분석 프롬프트가 포함돼 있어 그대로 분석 도구에 넣으면 됩니다. 다운로드 링크는 1시간 후 만료됩니다.</p>
-  <div class="table-scroll"><table><caption class="sr-only">공격 로그 보고서</caption>
-  <thead><tr><th>출발 지역</th><th>상태</th><th>다운로드</th></tr></thead>
-  <tbody>${rows||'<tr><td colspan="3" class="muted">SEC-08 실행 결과가 없습니다.</td></tr>'}</tbody></table></div></section>`;
+  <p class="muted">[보고서 추출]을 누르면 리전을 나누지 않고 파일 하나(atk-report-*.json)로 바로 다운로드됩니다.
+   분석 프롬프트가 포함돼 있어 그대로 분석 도구에 넣으면 됩니다. 아직 안 끝난 리전은 이번 파일에서 빠지니,
+   끝난 뒤 다시 누르면 그때 포함됩니다.</p>
+  <p class="muted">이번 다운로드에 포함: ${readyCount}/${entries.length}개 리전</p>
+  <div class="table-scroll"><table><caption class="sr-only">공격 로그 보고서 포함 여부</caption>
+  <thead><tr><th>출발 지역</th><th>이번 파일 포함 여부</th></tr></thead>
+  <tbody>${rows||'<tr><td colspan="2" class="muted">SEC-08 실행 결과가 없습니다.</td></tr>'}</tbody></table></div></section>`;
 }
 
 function progressSection(){
@@ -160,7 +166,7 @@ async function poll(){
 async function start(){
  if(run.busy)return;
  run.busy=true;run.error=null;run.done=false;run.items=[];run.skipped=[];run.runId=null;
- report.runId=null;report.items=[];report.fetched=false;report.error=null;   // 새 실행이면 이전 보고서 링크는 버린다
+ report.runId=null;report.regions=null;report.error=null;   // 새 실행이면 이전 보고서는 버린다
  rerender();
  try{
   const result=await api.startRunAll({});
@@ -176,7 +182,13 @@ async function extractReport(){
  report.loading=true;report.error=null;rerender();
  try{
   const result=await api.runAllReport(run.runId);
-  report.runId=run.runId;report.items=result.items||[];report.fetched=true;
+  report.runId=run.runId;report.regions=result.regions||{};
+  const readyCount=Object.values(report.regions).filter(r=>r.ready).length;
+  if(readyCount>0){
+   downloadJson(`atk-report-${run.runId}.json`,{runId:run.runId,generatedAt:new Date().toISOString(),...result});
+  }else{
+   report.error='아직 완료된 리전이 없습니다 — 공격이 끝난 뒤 다시 눌러주세요.';
+  }
  }catch(error){report.error=error.message;}
  report.loading=false;rerender();
 }

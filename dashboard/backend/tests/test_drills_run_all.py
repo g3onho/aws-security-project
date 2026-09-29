@@ -22,7 +22,18 @@ class FakeProvider:
 
     def run_web_attack(self, targets, parameters):
         return [{"regionLabel": t["regionLabel"], "regionCode": t["regionCode"],
-                 "instanceId": t["instanceId"], "commandId": "c-geo"} for t in targets]
+                 "instanceId": t["instanceId"], "commandId": "c-geo",
+                 "runToken": f"tok-{t['regionLabel']}"} for t in targets]
+
+    def merged_report(self, commands, bucket):
+        # tokyo 는 "이미 올라간 것"처럼, 나머지는 아직 없는 것처럼 흉내낸다.
+        out = {}
+        for c in commands:
+            if c["regionLabel"] == "tokyo":
+                out[c["regionLabel"]] = {"ready": True, "analysisPrompt": "p", "steps": [{"step": "nmap", "output": "ok"}]}
+            else:
+                out[c["regionLabel"]] = {"ready": False, "reason": "아직 업로드 안 됨"}
+        return out
 
     def discover_host_by_role(self, region, role, region_label="seoul"):
         found = {"service-3tier": {"instanceId": "i-docker"},
@@ -185,3 +196,23 @@ def test_all_status_keeps_fresh_run_running():
         run = svc.start_all({}, actor="tester")
         rows = svc.all_status(run["runId"])["items"]
         assert all(row["status"] == "InProgress" for row in rows), rows
+
+
+# --- 보고서(merged_report) — 출력 파싱이 아니라 runToken 으로 S3 키를 바로 안다 -------------
+
+def test_report_merges_regions_by_run_token():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        run = svc.start_all({}, actor="tester")
+        report = svc.report(run["runId"])
+        assert report["regions"]["tokyo"]["ready"] is True
+        assert report["regions"]["tokyo"]["steps"][0]["step"] == "nmap"
+
+
+def test_report_empty_when_no_sec08():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        svc.attack_config["regions"] = []  # geo 미설정 → SEC-08 없음
+        run = svc.start_all({}, actor="tester")
+        report = svc.report(run["runId"])
+        assert report["regions"] == {}
