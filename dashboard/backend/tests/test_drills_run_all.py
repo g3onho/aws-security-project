@@ -1,11 +1,14 @@
 """전부 실행(start_all) 오케스트레이션 자가 점검.
 
 가짜 provider 로 SEC-02/07(docker-host) + SEC-08(geo) + SEC-10(서울 EC2 전부, 대시보드 제외)
-팬아웃과 SEC 라벨 표기를 검증한다. 실제 AWS·SSM 은 호출하지 않는다.
+팬아웃과 SEC 라벨 표기, 그리고 중복 실행 방지(_active_run_all)를 검증한다.
+실제 AWS·SSM 은 호출하지 않는다.
 """
 import tempfile, os
+import pytest
 from soar.drills import DrillService, _step_label
-from soar.store import Store
+from soar.errors import Problem
+from soar.store import Store, now_ms
 
 
 class FakeProvider:
@@ -42,14 +45,15 @@ class FakeProvider:
         return out
 
     def attack_command_status(self, commands):
-        return [{"regionLabel": c["regionLabel"], "status": "Success", "output": "ok"} for c in commands]
+        status = getattr(self, "status_override", "Success")
+        return [{"regionLabel": c["regionLabel"], "status": status, "output": "ok"} for c in commands]
 
 
-def _service(store):
+def _service(store, provider=None):
     cfg = {"documentName": "proj-ATK-WebAttack", "targetIp": "1.2.3.4",
            "webUrl": "http://alb:8081", "scanBucket": "bkt",
            "regions": ["ap-northeast-1"], "homeRegion": "ap-northeast-2"}
-    return DrillService(store, FakeProvider(), attack_config=cfg)
+    return DrillService(store, provider or FakeProvider(), attack_config=cfg)
 
 
 def test_start_all_fans_out_all_secs():
@@ -115,3 +119,42 @@ def test_honeypot_probe_skipped_without_decoy():
 
 def test_honeypot_label():
     assert _step_label({"sec": "HONEYPOT", "regionLabel": "seoul"}) == "HONEYPOT · 내부 침투"
+
+
+# --- 중복 실행 방지(2026-09-29 뭄바이·도쿄 SSM 에이전트 다운 사고 재발 방지) ---------------
+
+def test_start_all_rejects_while_previous_run_still_in_progress():
+    with tempfile.TemporaryDirectory() as d:
+        provider = FakeProvider()
+        svc = _service(Store(os.path.join(d, "t.sqlite3")), provider=provider)
+        provider.status_override = "InProgress"
+        svc.start_all({}, actor="tester")  # 1회차: 아직 안 끝난 채로 남는다
+        with pytest.raises(Problem) as exc:
+            svc.start_all({}, actor="tester")  # 2회차: 막혀야 한다
+        assert exc.value.status == 409
+        assert exc.value.code == "RUN_ALREADY_ACTIVE"
+
+
+def test_start_all_allows_new_run_once_previous_one_terminates():
+    with tempfile.TemporaryDirectory() as d:
+        provider = FakeProvider()
+        svc = _service(Store(os.path.join(d, "t.sqlite3")), provider=provider)
+        provider.status_override = "InProgress"
+        svc.start_all({}, actor="tester")
+        provider.status_override = "Success"  # 이제 다 끝났다고 가정
+        result = svc.start_all({}, actor="tester")  # 막히지 않아야 한다
+        assert result["launched"]
+
+
+def test_start_all_allows_new_run_when_previous_one_is_stale():
+    with tempfile.TemporaryDirectory() as d:
+        provider = FakeProvider()
+        svc = _service(Store(os.path.join(d, "t.sqlite3")), provider=provider)
+        # DrillRuns.save 는 insert-only 라 start_all 을 두 번 부르는 대신 방치된 이전 실행을 직접 심는다.
+        svc.runs.save({"runId": "stale-run", "type": "run-all", "actor": "tester",
+                       "startedAt": now_ms() - 41 * 60 * 1000,  # 40분 방치 기준을 넘김
+                       "secs": ["SEC-10"], "skipped": [],
+                       "commands": [{"sec": "SEC-10", "regionLabel": "db", "instanceId": "i-x"}]})
+        provider.status_override = "InProgress"  # 살아있었다면 여전히 안 끝난 것처럼 보일 상태
+        result = svc.start_all({}, actor="tester")  # 방치된 것으로 보고 막지 않아야 한다
+        assert result["launched"]

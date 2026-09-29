@@ -11,6 +11,12 @@ from .errors import Problem
 
 SUPPORT_STATES = {"runnable", "prep-needed", "observe-only", "design-needed"}
 
+# 전부 실행 중복 방지. 같은 어택커/호스트에 [전부 실행]이 겹치면 자원 고갈로 SSM 에이전트까지
+# 응답 불능(ConnectionLost)이 될 수 있다(2026-09-29 뭄바이·도쿄 사고 참고) — 서버에서 막는다.
+# 20분(SEC-08 SendCommand 타임아웃)을 넘겨도 안 끝난 실행은 방치된 것으로 보고 새 실행을 막지 않는다.
+RUN_ALL_TERMINAL = {"Success", "Cancelled", "TimedOut", "Failed"}
+RUN_ALL_STALE_MS = 40 * 60 * 1000
+
 # 실행 유형(도구 단위). CPU·메모리 상승 자체는 침해가 아니라 부하 시험으로 표기한다.
 DRILL_TYPES = [
     {"id": "web-scan", "name": "웹 보안 검사", "tool": "ZAP",
@@ -120,6 +126,24 @@ class DrillService:
         cfg = self.attack_config
         return bool(cfg.get("documentName") and cfg.get("targetIp") and cfg.get("regions"))
 
+    def _active_run_all(self):
+        """가장 최근 run-all 이 아직 안 끝났으면 그 run 을 돌려준다. 없거나 끝났거나
+        너무 오래돼 방치된 것으로 보이면 None(새 실행 허용)."""
+        from .store import now_ms
+        runs = self.runs.list()  # created_at 내림차순
+        latest = next((r for r in runs if r.get("type") == "run-all"), None)
+        if latest is None:
+            return None
+        if now_ms() - latest.get("startedAt", 0) > RUN_ALL_STALE_MS:
+            return None  # 방치된 실행 — 막지 않는다(2026-09-29 뭄바이·도쿄처럼 에이전트가 영영 안 돌아올 수 있음)
+        commands = latest.get("commands", [])
+        if not commands:
+            return None
+        rows = self.provider.attack_command_status(commands) or []
+        if all(row.get("status") in RUN_ALL_TERMINAL for row in rows):
+            return None
+        return latest
+
     def start_web_scan(self, params, actor):
         cfg = self.attack_config
         if not self.attack_ready():
@@ -164,6 +188,11 @@ class DrillService:
         - SEC-07: 코드/설정 비밀값 점검(SCAN-Secrets)
         - SEC-10: 서울 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증
         - HONEYPOT: 서울 VPC 안 공격자 EC2 → 미끼서버 SSH 접속(ATK-HoneypotProbe) → 탐지·자동 차단"""
+        active = self._active_run_all()
+        if active:
+            raise Problem(409, f"이미 실행 중인 작업이 있습니다(실행 ID: {active['runId']}). "
+                          "끝난 뒤 다시 시도하세요.", "RUN_ALREADY_ACTIVE")
+
         cfg = self.attack_config
         p = params or {}
         launched, skipped = [], []
