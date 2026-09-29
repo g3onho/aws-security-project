@@ -7,9 +7,9 @@ parameters:
   DurationSeconds:
     type: String
     description: |
-      부하 지속(초). CPU/메모리 알람은 5분 평균 × 2회이므로 전이를 보려면
-      최소 600초 이상이어야 한다. 기본 900초(15분).
-    default: '900'
+      부하 지속(초). CPU/메모리 알람은 1분 평균 × 2회(2026-09-29 축소)이므로 전이를 보려면
+      최소 120초 이상이어야 한다. 기본 300초(5분).
+    default: '300'
     allowedPattern: '^[0-9]{2,5}$'
   CpuTarget:
     type: String

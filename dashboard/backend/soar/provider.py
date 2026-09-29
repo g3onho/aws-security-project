@@ -5,6 +5,8 @@ AwsProvider 는 조립만 한다(설계 2.3):
   - AWS 원본 → 대시보드 도메인 자료 변환 → repositories
 표준 API 서비스(contracts.StandardService)가 부르는 메서드 이름과 반환 모양은 바꾸지 않는다.
 """
+import re
+
 from .errors import Problem
 from .integrations.aws.cache import SharedCache
 from .integrations.aws.cloudwatch import Alarms
@@ -28,6 +30,17 @@ from .repositories.vulnerabilities import VulnerabilityRepository
 from .store import now_ms
 
 __all__ = ["AwsProvider", "UnconfiguredProvider", "classify", "remote_ip"]
+
+# 명령 등록 직후엔 아직 invocation 이 없다(정상 대기). 그 외 예외는 실패로 드러낸다.
+PENDING_ERROR_CODES = {"InvocationDoesNotExist", "InvalidPluginName"}
+
+
+def _error_code(error):
+    """botocore ClientError 의 Error.Code, 없으면 예외 클래스명."""
+    response = getattr(error, "response", None)
+    if isinstance(response, dict):
+        return response.get("Error", {}).get("Code") or type(error).__name__
+    return type(error).__name__
 
 
 class UnconfiguredProvider:
@@ -56,6 +69,9 @@ class UnconfiguredProvider:
         self.require_ready()
 
     def attack_command_status(self, commands):
+        self.require_ready()
+
+    def report_urls_for(self, commands, expires_in=3600):
         self.require_ready()
 
     def discover_service_host(self, region):
@@ -238,9 +254,7 @@ class AwsProvider:
                 resp = ssm.send_command(DocumentName=a["documentName"], InstanceIds=[a["instanceId"]],
                                         Parameters=params, TimeoutSeconds=1200)
             except Exception as error:  # AccessDenied(IAM 미부여)·InvalidDocument(문서 미등록) 등을 명확히 전달
-                name = type(error).__name__
-                code = getattr(getattr(error, "response", None), "get", lambda *_: {})("Error", {}).get("Code", name) \
-                    if hasattr(error, "response") else name
+                code = _error_code(error)
                 raise Problem(502, f"{a['regionLabel']} 공격 실행 실패: {code}. "
                               "대시보드 롤의 ssm:SendCommand 권한과 리전별 ATK 문서를 확인하세요.",
                               "GEO_ATTACK_SEND_FAILED")
@@ -258,9 +272,41 @@ class AwsProvider:
                 inv = ssm.get_command_invocation(CommandId=c["commandId"], InstanceId=c["instanceId"])
                 out.append({"regionLabel": c["regionLabel"], "status": inv["Status"],
                             "output": (inv.get("StandardOutputContent") or "")[-4000:]})
-            except Exception as error:  # 등록 직후엔 InvocationDoesNotExist 가능
-                out.append({"regionLabel": c["regionLabel"], "status": "Pending",
-                            "detail": type(error).__name__})
+            except Exception as error:
+                # 등록 직후의 InvocationDoesNotExist 만 대기로 본다. AccessDenied·InvalidInstanceId·
+                # 리전 미활성화 등을 Pending 으로 삼키면 화면이 영영 "실행 중"에 묶인다.
+                code = _error_code(error)
+                status = "Pending" if code in PENDING_ERROR_CODES else "Failed"
+                out.append({"regionLabel": c["regionLabel"], "status": status, "detail": code})
+        return out
+
+    # --- 공격 로그 보고서(SEC-08 .txt·.json) 다운로드 링크 -------------------------------
+    # ATK-WebAttack 스크립트가 마지막 줄에 "uploaded to s3://<bucket>/<key>"를 두 번(.txt·.json)
+    # 찍는다. 그 출력에서 S3 키를 그대로 읽어와 presigned URL 을 만든다 — 별도로 실행 시각을
+    # 대시보드에 기록해 둘 필요 없이, 실제 올라간 파일을 정답으로 삼는다.
+    _S3_UPLOAD_RE = re.compile(r"uploaded to (s3://[^\s]+\.(?:txt|json))")
+
+    def report_urls_for(self, commands, expires_in=3600):
+        """commands: attack_command_status 와 같은 입력(SEC-08 커맨드만 의미 있음).
+        -> [{regionLabel, status, txtUrl, jsonUrl}]. 아직 안 끝났으면 두 url 다 None."""
+        self.require_ready()
+        rows = self.attack_command_status(commands)
+        out = []
+        for row in rows:
+            urls = {"txt": None, "json": None}
+            for m in self._S3_UPLOAD_RE.finditer(row.get("output") or ""):
+                uri = m.group(1)
+                bucket, key = uri[len("s3://"):].split("/", 1)
+                region = next((c["regionCode"] for c in commands if c["regionLabel"] == row["regionLabel"]), self.region)
+                s3 = self._aws.regional_client("s3", region)
+                kind = "json" if key.endswith(".json") else "txt"
+                try:
+                    urls[kind] = s3.generate_presigned_url(
+                        "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expires_in)
+                except Exception:
+                    pass  # presign 은 로컬 서명이라 실패하면 자격증명 문제 — url 없이 상태만 보여준다
+            out.append({"regionLabel": row["regionLabel"], "status": row["status"],
+                        "txtUrl": urls["txt"], "jsonUrl": urls["json"]})
         return out
 
     # --- 서울 서비스 호스트 대상 스캔·부하 실행(전부 실행의 SEC-02/07/10) ------------

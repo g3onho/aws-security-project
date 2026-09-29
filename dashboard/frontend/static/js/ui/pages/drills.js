@@ -21,6 +21,8 @@ const RUNNING=new Set(['Pending','InProgress','Delayed','Cancelling']);
 
 let catalog=null,runs=null;
 const run={runId:null,items:[],skipped:[],busy:false,error:null,timer:null,done:false};
+// SEC-08 공격 로그(.txt·.json) 다운로드 링크. runId 당 한 번 요청, [다시 확인]으로 재요청(아직 안 끝난 리전 채우기).
+const report={runId:null,items:[],loading:false,error:null,fetched:false};
 
 function supportPill(support,label){
  const c=SUPPORT_COLOR[support]||SUPPORT_COLOR['design-needed'];
@@ -72,11 +74,34 @@ function runPanel(){
  const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#32d4be"></span>실행 가능 · ${esc(geoLine)}</div>`
   :`<div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · 데이터 소스 미연결</div>`;
  const attr=ready&&!run.busy?'data-run-all-start':'disabled';
+ // 이번 실행에 SEC-08 이 하나라도 잡혔으면 보고서 버튼을 켠다(완료 전이라도 눌러서 확인 가능 — 끝난 리전만 링크가 뜬다).
+ const hasAtk=run.items.some(item=>item.sec==='SEC-08');
+ const reportAttr=run.runId&&hasAtk&&!report.loading?'data-report-extract':'disabled';
  return `<div class="drill-config"><h3>전부 실행</h3>
   <p class="muted">시나리오를 고르지 않고 준비된 모든 시나리오를 한 번에 실행합니다: SEC-02(서비스 포트·헤더), SEC-04(Trivy 이미지 CVE), SEC-07(비밀값 스캔), SEC-08/06B(DVWA·SSH 지리 공격: nmap·hydra·ZAP·sqlmap), SEC-10(서울 EC2 부하·대시보드 제외), HONEYPOT(내부 침투: 서울 공격자 EC2 → 미끼서버 SSH, 자동 차단 시연). 대상이 없는 항목은 건너뛰고 사유를 남깁니다.</p>
   ${elig}
-  <div class="drill-actions"><button type="button" class="primary-button" ${attr}>${run.busy?'실행 중…':'전부 실행'}</button></div>
-  ${run.error?`<p class="panel-error" role="alert">${esc(run.error)}</p>`:''}</div>`;
+  <div class="drill-actions">
+   <button type="button" class="primary-button" ${attr}>${run.busy?'실행 중…':'전부 실행'}</button>
+   <button type="button" class="cancel-button" ${reportAttr} title="SEC-08 공격 로그(.txt·.json)를 S3에서 내려받을 링크를 만듭니다">${report.loading?'추출 중…':'보고서 추출'}</button>
+  </div>
+  ${run.error?`<p class="panel-error" role="alert">${esc(run.error)}</p>`:''}
+  ${report.error?`<p class="panel-error" role="alert">${esc(report.error)}</p>`:''}</div>`;
+}
+
+function reportSection(){
+ if(!report.fetched)return '';
+ const rows=report.items.map(item=>{
+  const state=RUN_STATUS_KO[item.status]||esc(item.status||'—');
+  const links=[item.txtUrl?`<a href="${esc(item.txtUrl)}" target="_blank" rel="noopener">원본(.txt)</a>`:null,
+               item.jsonUrl?`<a href="${esc(item.jsonUrl)}" target="_blank" rel="noopener">분석용(.json)</a>`:null]
+   .filter(Boolean).join(' · ')||'<span class="muted">아직 없음 — 이 리전이 끝나면 [보고서 추출]을 다시 누르세요</span>';
+  return `<tr><td>${esc(item.regionLabel||'—')}</td><td>${state}</td><td>${links}</td></tr>`;
+ }).join('');
+ return `<section class="panel full-panel">${header('공격 로그 보고서','SEC-08 REPORT')}
+  <p class="muted">.json 은 분석 프롬프트가 포함돼 있어 그대로 분석 도구에 넣으면 됩니다. 다운로드 링크는 1시간 후 만료됩니다.</p>
+  <div class="table-scroll"><table><caption class="sr-only">공격 로그 보고서</caption>
+  <thead><tr><th>출발 지역</th><th>상태</th><th>다운로드</th></tr></thead>
+  <tbody>${rows||'<tr><td colspan="3" class="muted">SEC-08 실행 결과가 없습니다.</td></tr>'}</tbody></table></div></section>`;
 }
 
 function progressSection(){
@@ -111,7 +136,7 @@ function runsSection(){
 
 function paint(){
  return `<section class="panel full-panel drill-workspace">${header('보안 시나리오','SCENARIOS')}
-  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${progressSection()}${runsSection()}`;
+  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${progressSection()}${reportSection()}${runsSection()}`;
 }
 function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();}
 
@@ -134,7 +159,9 @@ async function poll(){
 }
 async function start(){
  if(run.busy)return;
- run.busy=true;run.error=null;run.done=false;run.items=[];run.skipped=[];run.runId=null;rerender();
+ run.busy=true;run.error=null;run.done=false;run.items=[];run.skipped=[];run.runId=null;
+ report.runId=null;report.items=[];report.fetched=false;report.error=null;   // 새 실행이면 이전 보고서 링크는 버린다
+ rerender();
  try{
   const result=await api.startRunAll({});
   run.runId=result.runId;saveRunAllId(result.runId);
@@ -144,8 +171,18 @@ async function start(){
   run.timer=setTimeout(poll,3000);
  }catch(error){run.busy=false;run.error=error.message;rerender();}
 }
+async function extractReport(){
+ if(!run.runId||report.loading)return;
+ report.loading=true;report.error=null;rerender();
+ try{
+  const result=await api.runAllReport(run.runId);
+  report.runId=run.runId;report.items=result.items||[];report.fetched=true;
+ }catch(error){report.error=error.message;}
+ report.loading=false;rerender();
+}
 function onClick(e){
  if(e.target.closest('[data-run-all-start]')){start();return;}
+ if(e.target.closest('[data-report-extract]')){extractReport();return;}
  const toggle=e.target.closest('[data-flow-toggle]');
  if(toggle){const id=toggle.dataset.flowToggle;if(openMaps.has(id))openMaps.delete(id);else openMaps.add(id);rerender();const again=[...document.querySelectorAll('[data-flow-toggle]')].find(b=>b.dataset.flowToggle===id);if(again)again.focus();}
 }

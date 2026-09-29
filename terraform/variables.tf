@@ -135,9 +135,9 @@ variable "enable_geo_attackers" {
 }
 
 variable "attacker_instance_type" {
-  description = "지리별 공격자 노드 인스턴스 타입"
+  description = "지리별 공격자 노드 인스턴스 타입. ATK-WebAttack이 nmap·hydra×2·ZAP·sqlmap 5개를 전부 동시 실행하므로 t3.micro(1GB)는 부족하다(2026-09-29 자원고갈로 SSM 에이전트 다운 사고). t3.medium(4GB)으로 5-way 동시 실행 여유를 둔다."
   type        = string
-  default     = "t3.micro"
+  default     = "t3.medium"
 }
 
 ############################################

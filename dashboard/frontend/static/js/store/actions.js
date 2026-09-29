@@ -242,6 +242,11 @@ export const actions={
   const result=envelope(await request(endpoints.drillRunAllStatus(runId))).data;
   return result;
  },
+ // SEC-08 공격 로그(.txt·.json) 다운로드 링크. 완료 안 된 항목은 url 이 null.
+ async runAllReport(runId){
+  const result=envelope(await request(endpoints.drillRunAllReport(runId))).data;
+  return result;
+ },
  // --- 허니팟 화면·차단 IP 관리(v25) -------------------------------------------------------------
  // 기간은 화면의 기간 버튼(filters.hours)을 따른다. 응답의 경고·partial 을 그대로 화면에 넘긴다(0건으로 위장하지 않는다).
  async honeypotStatus(){return honeypotRead('honeypotStatus',endpoints.honeypotStatus,{window:false});},

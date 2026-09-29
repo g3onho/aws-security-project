@@ -124,6 +124,11 @@ def drills_run_all_status(run_id):
     return jsonify(envelope(drills().all_status(run_id), g.request_id))
 
 
+@bp.get("/api/drills/run-all/<string:run_id>/report")
+def drills_run_all_report(run_id):
+    return jsonify(envelope(drills().report(run_id), g.request_id))
+
+
 @bp.get("/api/drills/<string:run_id>")
 def drills_detail(run_id):
     return jsonify(envelope(drills().run_detail(run_id), g.request_id))

@@ -26,10 +26,13 @@ resource "aws_cloudwatch_metric_alarm" "cpu" {
 
   alarm_name          = "${var.name_prefix}-${each.key}-cpu-high"
   comparison_operator = "GreaterThanThreshold"
+  # period=60·evaluation_periods=2 → 2분 연속 초과 시 전이. SEC-10 부하 시험(LOAD-Stress
+  # DurationSeconds=300, 2026-09-29 5분으로 축소)이 실제로 ALARM까지 보여주려면 예전
+  # 300초×2(=10분) 조건보다 짧아야 한다.
   evaluation_periods  = 2
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
-  period              = 300
+  period              = 60
   statistic           = "Average"
   threshold           = var.cpu_alarm_threshold
   alarm_description   = "CPU > ${var.cpu_alarm_threshold}% on ${each.key}"
@@ -54,7 +57,7 @@ resource "aws_cloudwatch_metric_alarm" "memory" {
   evaluation_periods  = 2
   metric_name         = "MemoryUsedPercent"
   namespace           = "${var.name_prefix}/host"
-  period              = 300
+  period              = 60
   statistic           = "Average"
   threshold           = var.memory_alarm_threshold
   alarm_description   = "Memory > ${var.memory_alarm_threshold}% on ${each.key}"

@@ -12,7 +12,7 @@ export const $=s=>document.querySelector(s);
 export const $$=s=>[...document.querySelectorAll(s)];
 export const activity=createRequestActivity($('#network-activity'));
 // Track UI requests without changing either backend adapter or synchronous cache reads.
-export const REQUEST_ACTIONS=['init','load','detail','change','job','eventHistory','vulnerabilities','history','logout','exportEvents','drillsCatalog','drills','startWebScan','webScanStatus','startRunAll','runAllStatus','honeypotStatus','honeypotSessions','honeypotSession','honeypotStats','honeypotTimeline','blocklist','blocklistRelease','blocklistPatch','assistantStatus','assistantChat'];
+export const REQUEST_ACTIONS=['init','load','detail','change','job','eventHistory','vulnerabilities','history','logout','exportEvents','drillsCatalog','drills','startWebScan','webScanStatus','startRunAll','runAllStatus','runAllReport','honeypotStatus','honeypotSessions','honeypotSession','honeypotStats','honeypotTimeline','blocklist','blocklistRelease','blocklistPatch','assistantStatus','assistantChat'];
 export const api=Object.fromEntries(REQUEST_ACTIONS.map(name=>[name,(...args)=>activity.run(()=>storeApi[name](...args))]));
 api.get=id=>storeApi.get(id);
 export const notifications=createNotificationPopover({button:$('#notifications'),panel:$('#notification-panel')});

@@ -176,7 +176,9 @@ class DrillService:
         run = self.runs.get(run_id)
         if run is None:
             raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
-        regions = self.provider.attack_command_status(run.get("commands", []))
+        from .store import now_ms
+        regions = _mark_stale(self.provider.attack_command_status(run.get("commands", [])) or [],
+                              run.get("startedAt"), now_ms())
         return {"runId": run_id, "targetIp": run.get("targetIp"),
                 "startedAt": run.get("startedAt"), "regions": regions}
 
@@ -287,8 +289,21 @@ class DrillService:
         for cmd, row in zip(cmds, rows):
             row["sec"] = cmd.get("sec")
             row["label"] = _step_label(cmd)
+        from .store import now_ms
+        _mark_stale(rows, run.get("startedAt"), now_ms())
         return {"runId": run_id, "startedAt": run.get("startedAt"),
                 "targetIp": run.get("targetIp"), "skipped": run.get("skipped", []), "items": rows}
+
+    def report(self, run_id):
+        """SEC-08(공격) 로그의 다운로드 링크(.txt·.json). '보안 시나리오' 페이지 [보고서 추출]이 부른다."""
+        run = self.runs.get(run_id)
+        if run is None:
+            raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
+        atk_cmds = [c for c in run.get("commands", []) if c.get("sec") == "SEC-08"]
+        if not atk_cmds:
+            return {"runId": run_id, "items": []}
+        items = self.provider.report_urls_for(atk_cmds)
+        return {"runId": run_id, "items": items}
 
     def environment(self):
         status = self.provider.status()
@@ -322,6 +337,21 @@ class DrillService:
         if run is None:
             raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
         return run
+
+
+def _mark_stale(rows, started_at, now):
+    """에이전트가 죽으면 SSM invocation 이 InProgress 에서 영영 안 바뀐다(2026-09-29 뭄바이·도쿄).
+    SendCommand 의 TimeoutSeconds 는 에이전트에 배달되기 전까지만 적용되므로, 일단 실행에 들어간
+    뒤 에이전트가 끊기면 AWS 가 상태를 끝내주지 않는다. _active_run_all 과 같은 기준
+    (RUN_ALL_STALE_MS)으로 화면 표기만 끊는다 — 실제 명령을 취소하지는 않는다."""
+    if not started_at or now - started_at <= RUN_ALL_STALE_MS:
+        return rows
+    for row in rows:
+        if row.get("status") not in RUN_ALL_TERMINAL:
+            row["staleFrom"] = row.get("status")
+            row["status"] = "TimedOut"
+            row["detail"] = "40분 초과 · SSM 에이전트 무응답(표기상 종료)"
+    return rows
 
 
 def _label(support):

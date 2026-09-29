@@ -8,6 +8,7 @@ export const endpoints=Object.freeze({
  drillWebScanStatus:runId=>`/api/drills/web-scan/${encodeURIComponent(runId)}/status`,
  drillRunAllStart:'/api/drills/run-all/start',
  drillRunAllStatus:runId=>`/api/drills/run-all/${encodeURIComponent(runId)}/status`,
+ drillRunAllReport:runId=>`/api/drills/run-all/${encodeURIComponent(runId)}/report`,
  // 허니팟 화면·차단 IP 관리(v25)
  honeypotStatus:'/api/honeypot/status',honeypotSessions:'/api/honeypot/sessions',honeypotStats:'/api/honeypot/stats',
  honeypotTimeline:'/api/honeypot/timeline',

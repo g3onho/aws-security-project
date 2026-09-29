@@ -158,3 +158,30 @@ def test_start_all_allows_new_run_when_previous_one_is_stale():
         provider.status_override = "InProgress"  # 살아있었다면 여전히 안 끝난 것처럼 보일 상태
         result = svc.start_all({}, actor="tester")  # 방치된 것으로 보고 막지 않아야 한다
         assert result["launched"]
+
+
+def test_all_status_marks_stale_run_as_timed_out():
+    """에이전트가 죽어 InProgress 에 묶인 실행은 40분 뒤 시간초과로 표기한다."""
+    with tempfile.TemporaryDirectory() as d:
+        provider = FakeProvider()
+        svc = _service(Store(os.path.join(d, "t.sqlite3")), provider=provider)
+        svc.runs.save({"runId": "stale-run", "type": "run-all", "actor": "tester",
+                       "startedAt": now_ms() - 41 * 60 * 1000,
+                       "secs": ["SEC-08"], "skipped": [],
+                       "commands": [{"sec": "SEC-08", "regionLabel": "tokyo", "instanceId": "i-x"}]})
+        provider.status_override = "InProgress"
+        row = svc.all_status("stale-run")["items"][0]
+        assert row["label"] == "SEC-08 · 도쿄"
+        assert row["status"] == "TimedOut", row
+        assert row["staleFrom"] == "InProgress"
+
+
+def test_all_status_keeps_fresh_run_running():
+    """아직 40분이 안 됐으면 건드리지 않는다(정상 실행을 시간초과로 위장하지 않는다)."""
+    with tempfile.TemporaryDirectory() as d:
+        provider = FakeProvider()
+        svc = _service(Store(os.path.join(d, "t.sqlite3")), provider=provider)
+        provider.status_override = "InProgress"
+        run = svc.start_all({}, actor="tester")
+        rows = svc.all_status(run["runId"])["items"]
+        assert all(row["status"] == "InProgress" for row in rows), rows
