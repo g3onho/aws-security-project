@@ -64,3 +64,10 @@ dialog{border:1px solid #506352;border-radius:8px;background:#202c24;color:var(-
 @media(max-width:380px){.comparison{grid-template-columns:1fr}.region-title{font-size:21px}.region-total strong{font-size:31px}.panel-heading{padding-right:12px;padding-left:12px}.donut-body{gap:18px}.dialog-header,.dialog-body{padding:16px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
+/* v28 화면 우측 상단 [로그 저장]·[AI 요약 보고서] + AI 요약 보고서 대화상자 */
+.page-exports{display:flex;align-items:center;gap:8px}.page-exports[hidden]{display:none}.subtle-button.accent{color:var(--mint);border-color:#2f6e63}.subtle-button.accent:hover:not(:disabled){background:#1f3a35}.subtle-button:disabled{opacity:.5;cursor:not-allowed}
+#report-dialog{width:min(920px,calc(100% - 30px))}.report-body{display:grid;gap:10px}.report-meta{font-size:12px;color:var(--muted);line-height:1.7}.report-warn{border:1px solid #6b5a2a;background:#2b2715;color:#e8d98a;border-radius:4px;padding:8px 12px;font-size:12px}.report-warn ul{margin:4px 0 0;padding-left:18px}
+.report-md h3{font-size:15px;margin:16px 0 6px;color:var(--mint)}.report-md p{margin:4px 0}.report-md ul,.report-md ol{margin:4px 0 8px;padding-left:20px}.report-md li{margin:2px 0}.report-md table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0}.report-md th,.report-md td{border:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}.report-md th{background:var(--header);font-weight:600}
+@media(max-width:900px){.page-heading{flex-wrap:wrap}.refresh-group{flex-wrap:wrap;justify-content:flex-end}}
+@media(max-width:600px){.page-exports{flex:1 1 100%}.page-exports .subtle-button{flex:1;min-height:40px;padding:6px 8px}#page-ai-report,#page-log-save{font-size:11px}#report-dialog .dialog-actions button{min-height:40px;flex:1 1 auto}}
+.report-md ul,.report-warn ul{list-style:disc}.report-md ol{list-style:decimal}

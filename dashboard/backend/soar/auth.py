@@ -84,8 +84,8 @@ def install_auth(app):
         g.actor, g.role = user["name"], user["role"]
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             csrf_required()
-            # 도우미 대화는 POST 지만 읽기 전용 도구만 쓴다 → viewer 도 허용(CSRF 는 위에서 검사한다).
-            if request.path not in {"/api/auth/logout", "/api/assistant/chat"} and user["role"] == "viewer":
+            # 도우미 대화·요약 보고서는 POST 지만 읽기만 한다 → viewer 도 허용(CSRF 는 위에서 검사한다).
+            if request.path not in {"/api/auth/logout", "/api/assistant/chat", "/api/assistant/report"} and user["role"] == "viewer":
                 raise Problem(403, "조회 전용 계정입니다.", "FORBIDDEN")
 
 

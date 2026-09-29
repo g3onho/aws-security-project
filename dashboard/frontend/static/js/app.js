@@ -18,6 +18,7 @@ import {renderAudit} from './ui/pages/history.js?v=ui-1';
 import {renderDrills} from './ui/pages/drills.js?v=ui-11';
 import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=ui-1';
 import {initAssistant} from './ui/components/assistant.js?v=ui-1';
+import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=ui-1';
 import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=ui-6';
 function render({loadPanels=false}={}){
  const pending=[];
@@ -26,6 +27,7 @@ function render({loadPanels=false}={}){
  document.body.classList.toggle('view-events',state.view==='events');
  $$('nav [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===state.view);b.setAttribute('aria-current',b.dataset.view===state.view?'page':'false');});
  $('#map-section').hidden=state.view!=='overview';
+ syncPageExports();
  if(state.view!=='honeypot')ui.operationBusy=false;   // 허니팟 변경 양식을 열어 둔 채 다른 화면으로 가도 자동 새로고침이 막히지 않게
  // 취약점은 현재 상태라 기간을 쓰지 않는다 — 기간 막대를 숨긴다(v20.5).
  $('.timeline').hidden=state.view==='vulnerabilities'||state.view==='drills';
@@ -101,7 +103,7 @@ function setAuto(on){
  button.setAttribute('aria-pressed',String(on));
  button.classList.toggle('active',on);
  // 타이머는 Store 가 하나만 관리한다(탭이 숨으면 멈춤). 화면은 상세 창·작업 중·불러오는 중일 때 건너뛰라고만 알린다.
- storeApi.setAutoRefresh(on,{refresh:()=>refresh(),canRun:()=>!$('#event-dialog').open&&!ui.operationBusy&&!$('#content').hasAttribute('aria-busy')});
+ storeApi.setAutoRefresh(on,{refresh:()=>refresh(),canRun:()=>!$('#event-dialog').open&&!$('#report-dialog').open&&!ui.operationBusy&&!$('#content').hasAttribute('aria-busy')});
 }
 function navigateView(view){
  if(!titles[view]||state.view===view)return;
@@ -109,10 +111,12 @@ function navigateView(view){
  notifications.close();clearSelection();
  if(ui.activeId)closeDialog(true);
  setFilters({view,resource:'',page:1});
+ syncPageExports();   // 데이터가 오기 전에도 이 화면에 맞는 버튼만 보이게
  window.scrollTo({top:0,behavior:'auto'});
  refresh({push:true});
 }
 function syncControls(){
+ syncPageExports();
  $('#region').value=state.region;
  ['severity','status','source','search'].forEach(key=>{const el=$('#'+key);if(el)el.value=state[key];});
  updateSelectedCountry(state.region);
@@ -222,7 +226,7 @@ document.addEventListener('change',e=>{
  if(e.target.id==='vuln-size'){setVulnSize(e.target,+e.target.value);return;}
 });
 document.addEventListener('keydown',e=>{
- if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.isComposing||$('#event-dialog').open||e.target.closest('input,select,textarea,[contenteditable="true"]'))return;
+ if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.isComposing||$('#event-dialog').open||$('#report-dialog').open||e.target.closest('input,select,textarea,[contenteditable="true"]'))return;
  if(e.key==='r'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();refresh();}
  if(e.key==='/'){e.preventDefault();$('#search').focus();}
  const index='1234567'.indexOf(e.key);
@@ -238,3 +242,5 @@ refresh().then(()=>{if(bootEvent&&ui.activeId===bootEvent)eventDialog(bootEvent)
 hooks.render=options=>render(options);hooks.refresh=options=>refresh(options);
 // 대시보드 도우미(v27): 조회 전용 채팅. 처음 열 때만 상태를 조회한다(자동 호출·비용 없음).
 initAssistant();
+// 화면 우측 상단 [로그 저장]·[AI 요약 보고서](v28). 상태 조회만 하고 모델은 버튼을 눌렀을 때만 부른다.
+initPageExports();

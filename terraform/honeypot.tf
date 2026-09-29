@@ -28,6 +28,7 @@ module "honeypot" {
   listen_port   = 22
 
   log_retention_days = var.log_retention_days
+  alarm_period       = var.honeypot_alarm_period
   # 알람 SNS 는 연결하지 않는다: 자동 차단은 soar EventBridge→asr_trigger 로 가고,
   # 알림은 asr_trigger 가 자체 SNS 로 보낸다. (soar↔honeypot 순환 의존 방지)
 }

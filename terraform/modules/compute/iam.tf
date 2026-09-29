@@ -417,33 +417,33 @@ resource "aws_iam_instance_profile" "web_dvwa" {
 }
 
 resource "aws_iam_role" "attacker" {
-  count              = var.enable_attacker_instance ? 1 : 0
+  count              = local.attacker_iam_enabled ? 1 : 0
   name               = "${var.name_prefix}-attacker-role"
   assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
   tags               = var.tags
 }
 
 resource "aws_iam_role_policy_attachment" "attacker_ssm" {
-  count      = var.enable_attacker_instance ? 1 : 0
+  count      = local.attacker_iam_enabled ? 1 : 0
   role       = aws_iam_role.attacker[0].name
   policy_arn = local.ssm_core_policy
 }
 
 # 메모리 지표(CloudWatch Agent PutMetricData) — SEC-10 메모리 알람이 이 호스트도 본다.
 resource "aws_iam_role_policy_attachment" "attacker_cw" {
-  count      = var.enable_attacker_instance ? 1 : 0
+  count      = local.attacker_iam_enabled ? 1 : 0
   role       = aws_iam_role.attacker[0].name
   policy_arn = local.cw_agent_policy
 }
 
 resource "aws_iam_role_policy_attachment" "attacker_scan" {
-  count      = var.enable_attacker_instance ? 1 : 0
+  count      = local.attacker_iam_enabled ? 1 : 0
   role       = aws_iam_role.attacker[0].name
   policy_arn = aws_iam_policy.scan_upload.arn
 }
 
 resource "aws_iam_instance_profile" "attacker" {
-  count = var.enable_attacker_instance ? 1 : 0
+  count = local.attacker_iam_enabled ? 1 : 0
   name  = "${var.name_prefix}-attacker-profile"
   role  = aws_iam_role.attacker[0].name
   tags  = var.tags

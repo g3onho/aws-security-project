@@ -240,7 +240,8 @@ resource "aws_vpc_security_group_egress_rule" "db_manual_all" {
 
 # --- 내부 공격용 EC2 (옵션) ----------------------------------------------
 resource "aws_security_group" "attacker" {
-  count = var.enable_attacker_instance ? 1 : 0
+  # 단일 공격자 또는 허니팟 시연 fleet 이 있으면 만든다(주소 [0] 유지).
+  count = var.enable_attacker_instance || var.honeypot_demo_attacker_count > 0 ? 1 : 0
 
   name        = "${var.name_prefix}-attacker-sg"
   description = "Internal attack simulation host, egress only"
@@ -250,7 +251,7 @@ resource "aws_security_group" "attacker" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "attacker_all" {
-  count = var.enable_attacker_instance ? 1 : 0
+  count = var.enable_attacker_instance || var.honeypot_demo_attacker_count > 0 ? 1 : 0
 
   security_group_id = aws_security_group.attacker[0].id
   ip_protocol       = "-1"

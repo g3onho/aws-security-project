@@ -13,7 +13,7 @@ output "sg_db_auto_id" { value = aws_security_group.db_auto.id }
 output "sg_db_manual_id" { value = aws_security_group.db_manual.id }
 
 output "sg_attacker_id" {
-  value = var.enable_attacker_instance ? aws_security_group.attacker[0].id : ""
+  value = var.enable_attacker_instance || var.honeypot_demo_attacker_count > 0 ? aws_security_group.attacker[0].id : ""
 }
 
 output "private_nacl_id" { value = aws_network_acl.private.id }

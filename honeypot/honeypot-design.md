@@ -252,7 +252,7 @@ AI 분석(요약·의도·위험도)은 화면에 "참고용"으로만 보이며
 
 대시보드 오른쪽 아래 `AI` 버튼으로 여는 조회 전용 챗봇. 허니팟뿐 아니라 이벤트·취약점·조치 이력·인프라를 묻는다.
 
-- 서버: `assistant_service.py`(도구 실행·상한·프롬프트), `assistant_api.py`(`GET /api/assistant/status`, `POST /api/assistant/chat`), `integrations/aws/bedrock.py`(Converse 호출).
+- 서버: `assistant_service.py`(도구 실행·상한·프롬프트), `assistant_api.py`(`GET /api/assistant/status`, `POST /api/assistant/chat`, `POST /api/assistant/report` — 화면별 AI 요약 보고서, `report_service.py`), `integrations/aws/bedrock.py`(Converse 호출).
 - 안전: 읽기 도구 11개뿐(변경 도구 없음) · 사용자 본인 권한으로 기존 서비스 호출 · 도구 결과는 "신뢰할 수 없는 데이터" 봉투 · 비밀 필드 제거 · 화면은 esc() 텍스트 렌더링.
 - 상한: 질문당 도구 호출 4회·출력 700토큰 / 사용자당 10분 20회 / 하루 토큰 예산 `ASSISTANT_DAILY_TOKEN_BUDGET`.
 - 켜기: terraform `enable_dashboard_assistant`(기본 true) → dashboard.env `ASSISTANT_ENABLED=true`, 대시보드 IAM `bedrock:InvokeModel`. 꺼져 있거나 권한이 없으면 화면이 "사용할 수 없음"과 이유를 보여 준다.

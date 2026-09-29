@@ -14,7 +14,7 @@ export const endpoints=Object.freeze({
  honeypotTimeline:'/api/honeypot/timeline',
  honeypotSession:id=>`/api/honeypot/sessions/${encodeURIComponent(id)}`,
  // 대시보드 도우미(v27, 조회 전용)
- assistantStatus:'/api/assistant/status',assistantChat:'/api/assistant/chat',
+ assistantStatus:'/api/assistant/status',assistantChat:'/api/assistant/chat',assistantReport:'/api/assistant/report',
  blocklist:'/api/blocklist',
  blocklistRelease:ip=>`/api/blocklist/${encodeURIComponent(ip)}/release`,
  blocklistPatch:ip=>`/api/blocklist/${encodeURIComponent(ip)}`,

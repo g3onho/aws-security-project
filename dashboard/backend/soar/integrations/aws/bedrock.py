@@ -20,11 +20,14 @@ class BedrockChat:
                                                  config=Config(connect_timeout=5, read_timeout=45, retries={"max_attempts": 2}))
         return self._client
 
-    def converse(self, system, messages, tool_config, max_tokens):
+    def converse(self, system, messages, tool_config, max_tokens, temperature=0.2):
+        """tool_config 가 None 이면 toolConfig 인자를 아예 빼고 부른다(요약 보고서처럼 도구 없는 호출)."""
+        args = dict(modelId=self.model_id, system=[{"text": system}], messages=messages,
+                    inferenceConfig={"maxTokens": max_tokens, "temperature": temperature})
+        if tool_config is not None:
+            args["toolConfig"] = tool_config
         try:
-            return self._bedrock().converse(
-                modelId=self.model_id, system=[{"text": system}], messages=messages, toolConfig=tool_config,
-                inferenceConfig={"maxTokens": max_tokens, "temperature": 0.2})
+            return self._bedrock().converse(**args)
         except Exception as error:  # noqa: BLE001
             code = getattr(error, "response", {}).get("Error", {}).get("Code", type(error).__name__) \
                 if hasattr(error, "response") else type(error).__name__

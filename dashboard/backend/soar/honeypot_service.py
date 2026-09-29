@@ -90,6 +90,11 @@ class HoneypotService:
             warnings.append(f"형식이 맞지 않는 로그 {skipped}행은 건너뛰었습니다.")
         return hp.sessions(events), warnings, bool(truncated or skipped)
 
+    def window_data(self, start, end, actor):
+        """요약 보고서용: 권한 확인 후 기간 안 세션 전체(세션 {id: 세션}, 경고, partial). 읽기 전용."""
+        self._guard(actor)
+        return self.load(start, end)
+
     # --- ① 동작 상태 ---------------------------------------------------------------------
     def status(self, raw_query, actor):
         principal = self._guard(actor, need_deployed=False)

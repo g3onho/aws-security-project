@@ -57,10 +57,12 @@ def configure(overrides=None):
         "BLOCKLIST_WRITE_ROLES": os.getenv("BLOCKLIST_WRITE_ROLES", "operator"),
         # 대시보드 도우미(챗봇, v27): 조회 전용. 켜져 있어도 AWS 연결·IAM(bedrock:InvokeModel)이 없으면 "사용 불가"로 표시한다.
         "ASSISTANT_ENABLED": os.getenv("ASSISTANT_ENABLED", "false"),
-        "ASSISTANT_MODEL_ID": os.getenv("ASSISTANT_MODEL_ID", "apac.amazon.nova-lite-v1:0"),
+        "ASSISTANT_MODEL_ID": os.getenv("ASSISTANT_MODEL_ID", "apac.amazon.nova-pro-v1:0"),
         "ASSISTANT_REGION": os.getenv("ASSISTANT_REGION") or None,
         "ASSISTANT_DAILY_TOKEN_BUDGET": int(os.getenv("ASSISTANT_DAILY_TOKEN_BUDGET", "500000")),
         "ASSISTANT_RATE_PER_10MIN": int(os.getenv("ASSISTANT_RATE_PER_10MIN", "20")),
+        "ASSISTANT_REPORT_RATE_PER_10MIN": int(os.getenv("ASSISTANT_REPORT_RATE_PER_10MIN", "6")),
+        "ASSISTANT_REPORT_CACHE_SECONDS": int(os.getenv("ASSISTANT_REPORT_CACHE_SECONDS", "300")),
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),
@@ -96,6 +98,8 @@ def configure(overrides=None):
     config["ASSISTANT_ENABLED"] = boolean(config["ASSISTANT_ENABLED"], "ASSISTANT_ENABLED")
     if config["ASSISTANT_DAILY_TOKEN_BUDGET"] < 0 or config["ASSISTANT_RATE_PER_10MIN"] < 1:
         raise ValueError("ASSISTANT_DAILY_TOKEN_BUDGET must be >= 0 and ASSISTANT_RATE_PER_10MIN >= 1")
+    if config["ASSISTANT_REPORT_RATE_PER_10MIN"] < 1 or config["ASSISTANT_REPORT_CACHE_SECONDS"] < 0:
+        raise ValueError("ASSISTANT_REPORT_RATE_PER_10MIN must be >= 1 and ASSISTANT_REPORT_CACHE_SECONDS >= 0")
     config["WRITE_ENABLED"] = boolean(config["WRITE_ENABLED"], "WRITE_ENABLED")
     config["SESSION_COOKIE_SECURE"] = boolean(config["SESSION_COOKIE_SECURE"], "SESSION_COOKIE_SECURE")
     if not 1 <= config["PORT"] <= 65535:

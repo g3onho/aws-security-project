@@ -36,7 +36,7 @@
  <div class="sidebar-bottom"><span class="status-dot"></span><span id="env-label">실데이터 전용</span><div id="env-sub">실제 AWS 연결 없음</div><small>LOCAL BACKEND / v0.1</small></div>
 </aside>
 <main id="main" tabindex="-1">
- <section class="page-heading flex items-center justify-between gap-3"><div><div class="eyebrow">SECURITY OPERATIONS CENTER</div><h1 id="page-title">통합 관제 <span>Overview</span></h1></div><div class="refresh-group"><span id="updated">갱신 대기</span><button id="refresh" class="subtle-button">↻ 새로고침</button></div></section>
+ <section class="page-heading flex items-center justify-between gap-3"><div><div class="eyebrow">SECURITY OPERATIONS CENTER</div><h1 id="page-title">통합 관제 <span>Overview</span></h1></div><div class="refresh-group"><span id="updated">갱신 대기</span><div id="page-exports" class="page-exports" role="group" aria-label="이 화면 내보내기" hidden><button id="page-log-save" class="subtle-button" type="button" title="현재 화면의 로그를 CSV로 저장합니다(AI 미사용)"><span aria-hidden="true">↓</span> 로그 저장</button><button id="page-ai-report" class="subtle-button accent" type="button" title="현재 화면을 AI 가 요약합니다"><span aria-hidden="true">✦</span> AI 요약 보고서</button></div><button id="refresh" class="subtle-button">↻ 새로고침</button></div></section>
  <div id="load-state" class="load-state" role="status" hidden></div>
  <section class="filters flex items-center gap-2" aria-label="데이터 필터">
   <label class="sr-only" for="region">리전</label><select id="region"></select>
@@ -66,5 +66,6 @@
  <footer class="main-footer"><span><span class="status-dot"></span> DATA SOURCE <span class="footer-divider">/</span> 수집된 실제 데이터만 표시합니다.</span><span id="footer-asof">기준 데이터 —</span></footer>
 </main>
 <dialog id="event-dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+<dialog id="report-dialog" aria-labelledby="report-title"><div id="report-content"></div></dialog>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 </body></html>

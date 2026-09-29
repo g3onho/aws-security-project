@@ -20,6 +20,17 @@ output "monitored_instances" {
   )
 }
 
+output "honeypot_demo_attackers" {
+  description = "허니팟 AI 시연용 공격자 fleet [{ case, instance_id, private_ip }]"
+  value = [
+    for i, inst in aws_instance.honeypot_demo_attacker : {
+      case        = i + 1
+      instance_id = inst.id
+      private_ip  = inst.private_ip
+    }
+  ]
+}
+
 output "alb_dns_name" {
   value = var.enable_alb ? aws_lb.main[0].dns_name : ""
 }

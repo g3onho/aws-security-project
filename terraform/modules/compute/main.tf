@@ -10,6 +10,9 @@
 ############################################
 
 locals {
+  # 내부 공격자용 IAM(역할·프로필)은 단일 공격자 또는 허니팟 시연 fleet 중 하나라도 있으면 만든다.
+  attacker_iam_enabled = var.enable_attacker_instance || var.honeypot_demo_attacker_count > 0
+
   common_metadata = {
     http_endpoint               = "enabled"
     http_tokens                 = "required" # IMDSv2 강제
@@ -232,5 +235,43 @@ resource "aws_instance" "attacker" {
     Name = "${var.name_prefix}-attacker"
     Role = "attack-simulation"
     Note = "Team-owned isolated VPC only"
+  })
+}
+
+# --- 허니팟 AI 시연용 공격자 fleet (옵션) --------------------------------
+# 사례 1~4 를 서로 다른 출발지 IP 로 재현한다(IP 가 달라야 각각 자동 차단된다). 시연 후 개수를 0 으로 되돌려 제거.
+# Role = attack-simulation 은 보호 대상이 아니다(asr_trigger 가 차단할 수 있어야 한다).
+resource "aws_instance" "honeypot_demo_attacker" {
+  count = var.honeypot_demo_attacker_count
+
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "t3.micro"
+  subnet_id              = var.private_app_subnet_id
+  vpc_security_group_ids = [var.sg_attacker_id]
+  iam_instance_profile   = aws_iam_instance_profile.attacker[0].name
+
+  metadata_options {
+    http_endpoint               = local.common_metadata.http_endpoint
+    http_tokens                 = local.common_metadata.http_tokens
+    http_put_response_hop_limit = 1
+  }
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+    encrypted   = true
+  }
+
+  # sshpass 만 준비한다. 공격 명령은 SSM 문서 ATK-HoneypotAiDemo 가 보낸다.
+  user_data = templatefile("${path.module}/templates/honeypot-demo-attacker.sh.tftpl", {})
+
+  user_data_replace_on_change = true
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-hp-demo-${count.index + 1}"
+    Role     = "attack-simulation"
+    DemoCase = tostring(count.index + 1)
+    Scenario = "HONEYPOT"
+    Note     = "Team-owned isolated VPC only"
   })
 }

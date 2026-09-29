@@ -98,6 +98,8 @@ PROTECTED_ROLES = [r for r in os.environ.get("PROTECTED_ROLES", "service-3tier,d
 # 테이블 설정이 없으면 두 기능 모두 건너뛴다(이전 배포와 같은 동작).
 IP_BLOCKLIST_TABLE = os.environ.get("IP_BLOCKLIST_TABLE", "")
 IP_BLOCK_TTL_HOURS = int(os.environ.get("IP_BLOCK_TTL_HOURS", "24"))  # 0 = 영구
+# 시연용 분 단위 차단 기간. 0 이면 쓰지 않고 위 시간 단위 설정을 따른다. 0 보다 크면 시간 단위 설정보다 우선한다.
+IP_BLOCK_TTL_MINUTES = int(os.environ.get("IP_BLOCK_TTL_MINUTES", "0"))
 LOG_PAGE_LIMIT = 10  # FilterLogEvents 페이지 상한(Lambda 시간 초과 방지). 알람 구간 로그는 보통 1쪽이다.
 # 사용자 이름은 공격자가 정한다('x'@'10.0.1.25' 같은 값을 넣을 수 있다). 줄 끝의 비밀번호 표시 바로 앞 host 만 믿는다.
 AUTH_FAIL = re.compile(r"Access denied for user '.*'@'([^']+)' \(using password: (?:YES|NO)\)\s*$")
@@ -484,6 +486,13 @@ def _allowlisted_ips(candidates):
     return found
 
 
+def _block_ttl_seconds():
+    """차단 기간(초). 분 단위 설정(시연용)이 있으면 그것을, 없으면 시간 단위 설정을 쓴다. 0 = 영구."""
+    if IP_BLOCK_TTL_MINUTES > 0:
+        return IP_BLOCK_TTL_MINUTES * 60
+    return max(IP_BLOCK_TTL_HOURS, 0) * 3600
+
+
 def _record_block(ip, rule, token, count, exec_id, alarm_name):
     """차단 시작 시 차단 목록 표에 ACTIVE 행을 올린다(upsert). 예외 등록·버전은 유지하고 해제 흔적은 지운다.
     SSM 실행이 실패하면 _handle_automation_result 가 FAILED 로 바꾼다. 기록 실패는 차단·알림을 막지 않는다."""
@@ -496,11 +505,12 @@ def _record_block(ip, rule, token, count, exec_id, alarm_name):
     sets = ("#s = :s, rule_number = :r, nacl_id = :n, #src = :src, blocked_at = :at, evidence = :ev, "
             "ssm_execution_id = :x, updated_at = :at, allowlisted = if_not_exists(allowlisted, :f)")
     values[":f"] = False
-    if IP_BLOCK_TTL_HOURS > 0:
+    ttl_seconds = _block_ttl_seconds()
+    if ttl_seconds > 0:
         sets += ", expires_at = :exp"
-        values[":exp"] = now + IP_BLOCK_TTL_HOURS * 3600
+        values[":exp"] = now + ttl_seconds
     remove = "released_at, released_by, release_reason, release_kind, unblock_execution_id, last_error, release_attempts"
-    if IP_BLOCK_TTL_HOURS <= 0:
+    if ttl_seconds <= 0:
         remove += ", expires_at"
     try:
         dynamodb.Table(IP_BLOCKLIST_TABLE).update_item(

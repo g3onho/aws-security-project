@@ -473,6 +473,35 @@ def test_zero_ttl_means_no_expiry_and_clears_an_old_one():
     assert ":exp" not in call["ExpressionAttributeValues"] and "expires_at" in call["UpdateExpression"].split("REMOVE")[1]
 
 
+def test_minutes_override_sets_expiry_in_minutes_and_wins_over_hours():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 3), FakeBlocklist()
+    saved = handler.IP_BLOCK_TTL_MINUTES
+    handler.IP_BLOCK_TTL_MINUTES = 3
+    try:
+        with Blocklisted(f, bl, ttl_hours=24):
+            handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    finally:
+        handler.IP_BLOCK_TTL_MINUTES = saved
+    values = bl.updates[0]["ExpressionAttributeValues"]
+    assert 170 <= values[":exp"] - int(__import__("time").time()) <= 180        # 3분 뒤 만료(24시간 설정보다 우선)
+    assert "expires_at" not in bl.updates[0]["UpdateExpression"].split("REMOVE")[1]
+
+
+def test_minutes_override_zero_keeps_hour_based_behavior():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")] * 3), FakeBlocklist()
+    assert handler.IP_BLOCK_TTL_MINUTES == 0
+    with Blocklisted(f, bl, ttl_hours=1):
+        handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert 3500 <= bl.updates[0]["ExpressionAttributeValues"][":exp"] - int(__import__("time").time()) <= 3600
+
+
+def test_minutes_override_does_not_turn_permanent_blocks_into_expiring_when_zero():
+    f, bl = Fakes(log_messages=[hp("10.0.2.55")]), FakeBlocklist()
+    with Blocklisted(f, bl, ttl_hours=0):
+        handler.handler(alarm_event(name="soar-sec-dev-honeypot"), None)
+    assert ":exp" not in bl.updates[0]["ExpressionAttributeValues"]
+
+
 def test_allowlisted_ip_is_not_blocked_and_goes_manual():
     f = Fakes(log_messages=[hp("10.0.2.55")] * 9)
     bl = FakeBlocklist({"10.0.2.55": {"ip": "10.0.2.55", "allowlisted": True, "status": "RELEASED"}})

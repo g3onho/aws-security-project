@@ -207,6 +207,7 @@ resource "aws_lambda_function" "asr_trigger" {
       DOC_S3_ACCOUNT_BPA        = aws_ssm_document.automation["ASR-BlockS3AccountPublicAccess"].name
       IP_BLOCKLIST_TABLE        = aws_dynamodb_table.ip_blocklist.name
       IP_BLOCK_TTL_HOURS        = tostring(var.ip_block_default_ttl_hours)
+      IP_BLOCK_TTL_MINUTES      = tostring(var.ip_block_ttl_minutes_override)
       DOC_PASSWORD_POLICY       = aws_ssm_document.automation["ASR-SetIamPasswordPolicy"].name
       DOC_SSM_AUTOMATION_LOG    = aws_ssm_document.automation["ASR-EnableSsmAutomationLogging"].name
       DOC_SSM_PUBLIC_SHARING    = aws_ssm_document.automation["ASR-BlockSsmDocumentPublicSharing"].name
@@ -418,8 +419,8 @@ resource "aws_cloudwatch_event_rule" "block_expiry" {
   count = var.enable_block_expiry ? 1 : 0
 
   name                = "${var.name_prefix}-block-expiry"
-  description         = "Every 5 minutes: release expired IP blocks and finish pending releases"
-  schedule_expression = "rate(5 minutes)"
+  description         = "Every ${var.block_expiry_rate_minutes} minute(s): release expired IP blocks and finish pending releases"
+  schedule_expression = var.block_expiry_rate_minutes == 1 ? "rate(1 minute)" : "rate(${var.block_expiry_rate_minutes} minutes)"
   tags                = var.tags
 }
 

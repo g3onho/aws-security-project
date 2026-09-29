@@ -89,6 +89,26 @@ variable "ip_block_default_ttl_hours" {
   type        = number
   default     = 24
 }
+variable "ip_block_ttl_minutes_override" {
+  description = "시연용 차단 기간(분). 0 이면 쓰지 않고 ip_block_default_ttl_hours 를 따른다. 0 보다 크면 그 값이 우선한다."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.ip_block_ttl_minutes_override >= 0 && var.ip_block_ttl_minutes_override <= 1440 && floor(var.ip_block_ttl_minutes_override) == var.ip_block_ttl_minutes_override
+    error_message = "ip_block_ttl_minutes_override 는 0(미사용) ~ 1440 사이의 정수여야 합니다."
+  }
+}
+variable "block_expiry_rate_minutes" {
+  description = "block_expiry Lambda 실행 주기(분). 기본 5, 시연에서 빠른 해제가 필요하면 1."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.block_expiry_rate_minutes >= 1 && var.block_expiry_rate_minutes <= 60 && floor(var.block_expiry_rate_minutes) == var.block_expiry_rate_minutes
+    error_message = "block_expiry_rate_minutes 는 1~60 사이의 정수여야 합니다."
+  }
+}
 variable "enable_block_expiry" {
   description = "만료된 차단을 5분마다 자동 해제하는 block_expiry Lambda 사용 여부."
   type        = bool

@@ -20,6 +20,10 @@ variable "enable_vpc_endpoints" { type = bool }
 variable "enable_alb" { type = bool }
 variable "enable_flow_logs" { type = bool }
 variable "enable_attacker_instance" { type = bool }
+variable "honeypot_demo_attacker_count" {
+  type    = number
+  default = 0
+}
 variable "log_retention_days" { type = number }
 
 variable "tags" {

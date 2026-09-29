@@ -250,8 +250,8 @@ export const actions={
  // --- 허니팟 화면·차단 IP 관리(v25) -------------------------------------------------------------
  // 기간은 화면의 기간 버튼(filters.hours)을 따른다. 응답의 경고·partial 을 그대로 화면에 넘긴다(0건으로 위장하지 않는다).
  async honeypotStatus(){return honeypotRead('honeypotStatus',endpoints.honeypotStatus,{window:false});},
- async honeypotSessions({cursor=null,ip='',intent=''}={}){
-  const extra={limit:'50'};if(cursor)extra.cursor=cursor;if(ip)extra.ip=ip;if(intent)extra.intent=intent;
+ async honeypotSessions({cursor=null,ip='',intent='',limit=50}={}){
+  const extra={limit:String(limit)};if(cursor)extra.cursor=cursor;if(ip)extra.ip=ip;if(intent)extra.intent=intent;
   return honeypotRead('honeypotSessions',endpoints.honeypotSessions,{extra});
  },
  async honeypotSession(id,{reveal=false}={}){
@@ -269,6 +269,23 @@ export const actions={
    markRequest('assistantChat',{status:'success',lastUpdated:Date.now(),error:null});
    return response.data;
   }catch(error){markRequest('assistantChat',{status:'error',error:error.message});throw error;}
+ },
+ // 화면별 AI 요약 보고서(조회 전용). 필터는 Store 가 이 화면에서 실제로 쓰는 것만 골라 보낸다(숨겨진 필터가 섞이지 않게).
+ // 숫자는 서버가 집계하고 모델은 문장만 쓴다. 취약점·시나리오는 기간 막대를 쓰지 않아 서버가 31일로 고정한다.
+ async assistantReport(view){
+  const status=Object.keys(ACTION_LABELS).find(key=>ACTION_LABELS[key]===filters.status)||'';
+  const period={hours:filters.hours,endOffset:filters.endOffset};
+  const scoped={
+   events:{...period,region:filters.region==='all'?'':filters.region,resource:filters.resource,severity:filters.severity,status,source:filters.source,search:filters.search},
+   vulnerabilities:{region:filters.region==='all'?'':filters.region,search:filters.search},
+   infrastructure:period,drills:{},honeypot:period,
+  }[view];
+  markRequest('assistantReport',{status:'loading'});
+  try{
+   const response=envelope(await request(endpoints.assistantReport,{method:'POST',body:JSON.stringify({view,...(scoped||{})})}));
+   markRequest('assistantReport',{status:'success',lastUpdated:Date.now(),requestId:response.meta?.requestId||null,error:null});
+   return response.data;
+  }catch(error){markRequest('assistantReport',{status:'error',error:error.message});throw error;}
  },
  // 변경 요청은 자동 재시도하지 않는다(client.js). 같은 화면 조작 한 번 = Idempotency-Key 하나.
  async blocklistRelease(ip,body){return blocklistWrite('blocklistRelease',endpoints.blocklistRelease(ip),'POST',body);},

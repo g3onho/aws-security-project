@@ -59,6 +59,8 @@ module "network" {
   enable_flow_logs         = var.enable_flow_logs
   enable_attacker_instance = var.enable_attacker_instance
 
+  honeypot_demo_attacker_count = var.honeypot_demo_attacker_count
+
   tags = local.common_tags
 }
 
@@ -100,9 +102,11 @@ module "soar" {
   scan_results_bucket       = local.scan_results_bucket
 
   # IP 차단 목록·기간·만료 (v25)
-  ip_blocklist_table         = local.ip_blocklist_table
-  ip_block_default_ttl_hours = var.ip_block_default_ttl_hours
-  enable_block_expiry        = var.enable_block_expiry
+  ip_blocklist_table            = local.ip_blocklist_table
+  ip_block_default_ttl_hours    = var.ip_block_default_ttl_hours
+  ip_block_ttl_minutes_override = var.ip_block_ttl_minutes_override
+  block_expiry_rate_minutes     = var.block_expiry_rate_minutes
+  enable_block_expiry           = var.enable_block_expiry
 
   enable_auto_remediation  = var.enable_auto_remediation
   auto_remediable_patterns = var.auto_remediable_patterns
@@ -179,6 +183,8 @@ module "compute" {
   enable_waf               = var.enable_waf
   enable_dvwa_instance     = var.enable_dvwa_instance
   enable_attacker_instance = var.enable_attacker_instance
+
+  honeypot_demo_attacker_count = var.honeypot_demo_attacker_count
 
   log_group_nginx = local.log_group_nginx
   log_group_mysql = local.log_group_mysql

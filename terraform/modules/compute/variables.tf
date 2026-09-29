@@ -37,6 +37,12 @@ variable "enable_waf" { type = bool }
 variable "enable_dvwa_instance" { type = bool }
 variable "enable_attacker_instance" { type = bool }
 
+variable "honeypot_demo_attacker_count" {
+  description = "허니팟 AI 시연용 공격자 EC2 개수(0~4). 0 이면 만들지 않는다."
+  type        = number
+  default     = 0
+}
+
 variable "acm_certificate_arn" {
   description = "ALB HTTPS 리스너용 인증서 ARN. 비우면 HTTP 리스너만 만듭니다(SEC-02 탐지 대상)."
   type        = string
@@ -119,7 +125,7 @@ variable "enable_assistant" {
 }
 variable "assistant_model" {
   type    = string
-  default = "apac.amazon.nova-lite-v1:0"
+  default = "apac.amazon.nova-pro-v1:0"
 }
 
 # --- 허니팟 화면·차단 IP 관리 (v25) ---

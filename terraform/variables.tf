@@ -134,6 +134,17 @@ variable "enable_geo_attackers" {
   default     = false
 }
 
+variable "honeypot_demo_attacker_count" {
+  description = "허니팟 AI 시연용 내부 공격자 EC2 개수(사례 1~4당 1대). 0 이면 만들지 않는다. 시연 후 0 으로 되돌려 제거."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.honeypot_demo_attacker_count >= 0 && var.honeypot_demo_attacker_count <= 4 && floor(var.honeypot_demo_attacker_count) == var.honeypot_demo_attacker_count
+    error_message = "honeypot_demo_attacker_count 는 0~4 사이의 정수여야 합니다."
+  }
+}
+
 variable "attacker_instance_type" {
   description = "지리별 공격자 노드 인스턴스 타입. ATK-WebAttack이 nmap·hydra×2·ZAP·sqlmap 5개를 전부 동시 실행하므로 t3.micro(1GB)는 부족하다(2026-09-29 자원고갈로 SSM 에이전트 다운 사고). t3.medium(4GB)으로 5-way 동시 실행 여유를 둔다."
   type        = string
@@ -341,6 +352,17 @@ variable "enable_honeypot" {
   default     = false
 }
 
+variable "honeypot_alarm_period" {
+  description = "허니팟 접속 알람 집계 주기(초). 기본 300. 시연에서 사례를 빠르게 넘기려면 60, 끝나면 300 으로 되돌린다."
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.honeypot_alarm_period >= 60 && var.honeypot_alarm_period % 60 == 0
+    error_message = "honeypot_alarm_period 는 60 이상의 60 배수여야 합니다."
+  }
+}
+
 variable "honeypot_instance_type" {
   description = "미끼 서버 인스턴스 타입."
   type        = string
@@ -367,9 +389,9 @@ variable "enable_dashboard_assistant" {
 }
 
 variable "dashboard_assistant_model_id" {
-  description = "대시보드 도우미가 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Lite(서울 apac 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다."
+  description = "대시보드 도우미·AI 요약 보고서가 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Pro(서울 apac 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다. 미끼서버 AI(honeypot_ai_model_id)는 6초 제한 때문에 Nova Lite 를 유지한다."
   type        = string
-  default     = "apac.amazon.nova-lite-v1:0"
+  default     = "apac.amazon.nova-pro-v1:0"
 }
 
 # --- IP 차단 기간·만료 (v25, DEC-021) ---
@@ -381,6 +403,28 @@ variable "ip_block_default_ttl_hours" {
   validation {
     condition     = var.ip_block_default_ttl_hours >= 0 && var.ip_block_default_ttl_hours <= 720
     error_message = "ip_block_default_ttl_hours 는 0(영구) ~ 720 이어야 합니다."
+  }
+}
+
+variable "ip_block_ttl_minutes_override" {
+  description = "시연용 차단 기간(분). 0 이면 쓰지 않고 ip_block_default_ttl_hours(시간)를 따른다. 0 보다 크면 우선한다. 시연 후 0 으로 되돌린다."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.ip_block_ttl_minutes_override >= 0 && var.ip_block_ttl_minutes_override <= 1440 && floor(var.ip_block_ttl_minutes_override) == var.ip_block_ttl_minutes_override
+    error_message = "ip_block_ttl_minutes_override 는 0(미사용) ~ 1440 사이의 정수여야 합니다."
+  }
+}
+
+variable "block_expiry_rate_minutes" {
+  description = "만료된 IP 차단을 확인·해제하는 block_expiry Lambda 의 실행 주기(분). 기본 5. 시연에서 빠른 해제가 필요하면 1, 끝나면 5 로 되돌린다."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.block_expiry_rate_minutes >= 1 && var.block_expiry_rate_minutes <= 60 && floor(var.block_expiry_rate_minutes) == var.block_expiry_rate_minutes
+    error_message = "block_expiry_rate_minutes 는 1~60 사이의 정수여야 합니다."
   }
 }
 

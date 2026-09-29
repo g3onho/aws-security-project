@@ -134,7 +134,7 @@ export function stepVulnPage(control,direction){vulnPage+=direction==='next'?1:-
 export function setVulnSize(control,size){vulnSize=size;vulnPage=1;resetTableScroll(control);renderVulnerabilities({reuse:true});}
 export function selectVulnFilter(filter){vulnFilter=vulnFilter===filter?'':filter;vulnPage=1;renderVulnerabilities({reuse:true});}
 export function resetVulnerabilityView({clearFilter=false}={}){vulnTarget='';vulnPage=1;if(clearFilter)vulnFilter='';}
-export function exportVulnerabilities(){
+export function exportVulnerabilities(filename='vulnerabilities.csv'){
  if(!vulnData||vulnDataKey!==vulnKey()||$('#vulns').hasAttribute('aria-busy')){toast('목록 갱신이 완료된 후 다시 내보내주세요.');return;}
- downloadCsv('vulnerabilities.csv',vulnerabilityCsv({...vulnData,items:filteredRows(vulnData.items)},vulnTarget));
+ downloadCsv(filename,vulnerabilityCsv({...vulnData,items:filteredRows(vulnData.items)},vulnTarget));
 }

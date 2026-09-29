@@ -80,6 +80,11 @@ output "ssm_playbooks" {
   value       = module.soar.ssm_playbooks
 }
 
+output "honeypot_demo_attackers" {
+  description = "허니팟 AI 시연용 공격자 fleet [{ case, instance_id, private_ip }] (honeypot_demo_attacker_count > 0 일 때)"
+  value       = module.compute.honeypot_demo_attackers
+}
+
 output "manual_scan_documents" {
   description = "수동 모니터링 2 SSM Run Command 문서"
   value       = module.soar.manual_scan_document

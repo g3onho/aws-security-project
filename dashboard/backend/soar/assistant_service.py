@@ -187,16 +187,26 @@ class AssistantService:
                 q.popleft()
             if len(q) >= self.rate:
                 raise Problem(429, "질문이 너무 잦습니다. 잠시 후 다시 시도하세요.", "RATE_LIMITED")
-            day = time.strftime("%Y-%m-%d", time.gmtime(now))
-            if self._tokens["day"] != day:
-                self._tokens.update(day=day, used=0)
-            if self.budget and self._tokens["used"] >= self.budget:
-                raise Problem(429, "오늘의 AI 사용 예산을 다 썼습니다. 내일 다시 사용할 수 있습니다.", "ASSISTANT_BUDGET_EXHAUSTED")
+            self._check_budget_locked(now)
             q.append(now)
 
-    def _spend(self, usage):
+    def _check_budget_locked(self, now):
+        day = time.strftime("%Y-%m-%d", time.gmtime(now))
+        if self._tokens["day"] != day:
+            self._tokens.update(day=day, used=0)
+        if self.budget and self._tokens["used"] >= self.budget:
+            raise Problem(429, "오늘의 AI 사용 예산을 다 썼습니다. 내일 다시 사용할 수 있습니다.", "ASSISTANT_BUDGET_EXHAUSTED")
+
+    def check_budget(self):
+        """하루 토큰 예산 확인만 한다(요약 보고서가 도우미와 같은 예산을 나눠 쓴다)."""
+        with self._lock:
+            self._check_budget_locked(self.clock())
+
+    def spend(self, usage):
         with self._lock:
             self._tokens["used"] += int(usage.get("inputTokens", 0)) + int(usage.get("outputTokens", 0))
+
+    _spend = spend
 
     # -- 대화 -----------------------------------------------------------------
     def chat(self, messages, actor):
