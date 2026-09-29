@@ -1,25 +1,28 @@
 // 대시보드 시작점: 화면 조립(render)·새로고침(refresh)·사용자 입력 연결만 한다.
 // 화면별 표시는 ui/pages, 공통 부품은 ui/components, 차트는 ui/charts, 지도는 ui/map, 주소창은 ui/router(설계 2.1).
-import {regions,sources,statuses,periodStops} from './ui/constants.js?v=ui-1';
-import {periodTrackMarkup} from './ui/components/period-track.js?v=ui-3';
-import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=ui-1';
-import {esc,format} from './ui/components/format.js?v=ui-1';
-import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=ui-1';
-import {cleanCharts} from './ui/charts/charts.js?v=ui-1';
-import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=ui-1';
-import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=ui-1';
-import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=ui-1';
-import {titles,syncUrl,applyUrl} from './ui/router.js?v=ui-2';
-import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=ui-5';
-import {overviewCharts} from './ui/pages/overview.js?v=ui-10';
-import {table,eventTrendWidget,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=ui-6';
-import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=ui-3';
-import {renderAudit} from './ui/pages/history.js?v=ui-1';
-import {renderDrills} from './ui/pages/drills.js?v=ui-11';
-import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=ui-1';
-import {initAssistant} from './ui/components/assistant.js?v=ui-1';
-import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=ui-1';
-import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=ui-6';
+import {regions,sources,statuses,periodStops} from './ui/constants.js?v=q6-ui-1-l1';
+import {periodTrackMarkup} from './ui/components/period-track.js?v=q6-ui-3-l1';
+import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=q6-ui-1-l1';
+import {esc,format} from './ui/components/format.js?v=q6-ui-1';
+import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=q6-ui-1';
+import {cleanCharts} from './ui/charts/charts.js?v=q6-ui-1-l1';
+import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=q6-ui-1-l1';
+import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=q6-ui-1-l1';
+import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=q6-ui-1';
+import {titles,syncUrl,applyUrl} from './ui/router.js?v=q6-ui-2';
+import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=q6-ui-6-l1';
+import {overviewCharts,responseCard} from './ui/pages/overview.js?v=q6-ui-10';
+import {patchMarkup} from './ui/components/rendering.js?v=q6-ui-1';
+import {table,eventTrendWidget,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=q6-ui-11-l1';
+import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=q6-ui-4-l1';
+import './ui/components/remediate-bulk.js?v=q6-ui-11';
+import {loadEventResponse,eventResponseCard} from './ui/components/event-response.js?v=q6-ui-11';
+import {renderAudit} from './ui/pages/history.js?v=q6-ui-11';
+import {renderDrills} from './ui/pages/drills.js?v=q6-ui-11-l1';
+import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=q6-ui-1-l1';
+import {initAssistant} from './ui/components/assistant.js?v=q6-ui-1';
+import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=q6-ui-1-l1';
+import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=q6-ui-6-l1';
 function render({loadPanels=false}={}){
  const pending=[];
 
@@ -38,7 +41,8 @@ function render({loadPanels=false}={}){
  renderTrack(end);
  $$('[data-hours]').forEach(b=>{b.classList.toggle('active',+b.dataset.hours===state.hours);b.setAttribute('aria-pressed',String(+b.dataset.hours===state.hours));});
  syncTimeRange();
- if(state.view==='overview'){renderContent(overviewCharts()+eventTrendWidget(rows));mapRender(rows);}
+ if(state.view==='overview'){renderContent(overviewCharts()+eventTrendWidget(rows));mapRender(rows);
+   if(loadPanels)pending.push(loadEventResponse().then(()=>{const box=$('#overview-response-box');if(box)patchMarkup(box,responseCard());}));}
   else if(state.view==='infrastructure'){
    renderContent(infrastructure());
    drawInfrastructureChart();
@@ -47,7 +51,8 @@ function render({loadPanels=false}={}){
    if(loadPanels)pending.push(renderVulnerabilities());
  }else if(state.view==='responses'){
   // 탐지 목록이 아니라 조치 기록을 보여준다(v20). 설명 문구는 패널 안에 둔다(v23).
-  renderContent(`<section class="panel full-panel">${header('조치 이력','선택 기간에 마지막으로 발생한 기록')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
+  renderContent(eventResponseCard()+`<section class="panel full-panel">${header('조치 이력','선택 기간에 마지막으로 발생한 기록')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`);
+  if(loadPanels)pending.push(loadEventResponse());   // 대응 현황 카드: 기간 막대와 조치 이력 카드 사이
   if(loadPanels)pending.push(renderAudit().then(()=>renderTrack()));   // 1주일 이력이 오면 트랙을 이력 수로 다시 그린다
  }else if(state.view==='drills'){
   renderContent(`<div id="drills" data-async-panel><p class="panel-loading">불러오는 중…</p></div>`);
@@ -62,6 +67,7 @@ function render({loadPanels=false}={}){
   const after=state.view==='responses'
     ?`<section class="panel full-panel">${header('조치 이력','HISTORY')}<div id="audit-log" data-async-panel><p class="panel-loading">불러오는 중…</p></div></section>`:'';
   renderContent(head+table(visible,true)+after);
+  if(state.view==='events'&&loadPanels)pending.push(loadEventResponse());
   if(state.view==='responses'&&loadPanels)pending.push(renderAudit().then(()=>renderTrack()));
  }
  renderNotifications();
@@ -70,8 +76,7 @@ function render({loadPanels=false}={}){
  syncUrl();
  return Promise.all(pending);
 }
-// 계정 역할 표시: operator=조치 담당(실행), approver=승인 담당, viewer=조회 전용. 권한은 서버가 강제한다.
-const roleLabel=()=>({operator:'조치 담당',approver:'승인 담당'}[config().role]||'조회 전용');
+// 상단 계정 표시는 계정 이름만 쓴다(역할 문구 없음). 권한은 서버가 강제한다.
 function rangeEnd(){return summary.queryTo||Date.now();}
 // 기간 트랙(v20.5): 지금 → 15분·1시간·1일·1주일 누적 곡선. 지점 = 기간 버튼. 화면마다 세는 대상이 다르다.
 //  통합 관제·보안 이벤트 = 탐지 / 인프라 = 임계 초과 구간(끝 시각 기준 → 기간과 겹치는 구간, 화면 표와 같은 수) / 조치 이력 = 이력(마지막 발생 시각)
@@ -92,10 +97,10 @@ function renderTrack(end=rangeEnd()){
 const periodIndex=()=>Math.max(0,periodStops.findIndex(stop=>stop.hours===state.hours));
 function syncTimeRange(){if(state.endOffset)setFilters({endOffset:0});}
 function applyModeLabels(){
- $('#data-mode').textContent=config().dataSourceConnected?'실데이터':'데이터 소스 미연결';
- $('#aws-state').textContent=summary.health?.aws_connected?'AWS 연동 정상':'AWS 미연결';
- $('#env-label').textContent='실데이터 전용';
- $('#env-sub').textContent=config().writeEnabled?'조치 활성화':'읽기 전용';
+ // 정상(실데이터 연결·AWS 연동)일 때는 표시하지 않고, 연결되지 않았을 때만 경고로 보인다.
+ const mode=$('#data-mode'),aws=$('#aws-state'),dataOk=!!config().dataSourceConnected,awsOk=!!summary.health?.aws_connected;
+ mode.textContent=dataOk?'':'데이터 소스 미연결';mode.hidden=dataOk;
+ aws.textContent=awsOk?'':'AWS 미연결';aws.hidden=awsOk;
 }
 function setAuto(on){
  const button=$('#auto-refresh');
@@ -139,7 +144,7 @@ async function refresh(options={}){
    await render({loadPanels:true});
    if(serial!==ui.refreshSerial)return;
    box.hidden=true;content.removeAttribute('data-stale');
-   $('#session-user').textContent=config().user.name+' · '+roleLabel();
+   $('#session-user').textContent=config().user.name;
    applyModeLabels();
    $('#worker-state').textContent=state.view==='honeypot'?'허니팟 · 조회와 차단 IP 관리':'';
    $('#updated').textContent=state.view==='honeypot'?`갱신 ${format(Date.now(),true)} KST`:'카탈로그 조회';
@@ -152,7 +157,7 @@ async function refresh(options={}){
   if(serial!==ui.refreshSerial)return;
   box.hidden=true;content.removeAttribute('data-stale');
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
-  $('#session-user').textContent=config().user.name+' · '+roleLabel();
+  $('#session-user').textContent=config().user.name;
   applyModeLabels();
   // v23: '조치 실행 비활성 · 조회 전용' 고정 문구는 뺐다(대시보드는 조회 전용이고 자동 조치는 SOAR 가 한다). 경고만 보인다.
   $('#worker-state').textContent=summary.warnings?.length?'⚠ '+summary.warnings.join(' · '):'';
@@ -193,6 +198,10 @@ document.addEventListener('click',e=>{
  const eventSeverity=e.target.closest('[data-event-severity]');if(eventSeverity){const value=eventSeverity.dataset.eventSeverity;setFilters({severity:state.severity.toUpperCase()===value.toUpperCase()?'':value,page:1});syncControls();refresh();return;}
  const vp=e.target.closest('[data-vuln-page]');if(vp){stepVulnPage(vp,vp.dataset.vulnPage);return;}
  const notify=e.target.closest('[data-notify]');if(notify){applyNotification(notify.dataset.notify);return;}
+ const copy=e.target.closest('[data-copy]');
+ if(copy){const text=copy.dataset.copy,done=()=>{copy.textContent='복사됨';copy.classList.add('copied');setTimeout(()=>{copy.textContent='복사';copy.classList.remove('copied');},1500);};
+  const fallback=()=>{const area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();try{document.execCommand('copy');done();}catch{copy.textContent='복사 실패';}area.remove();};
+  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(done,fallback);else fallback();return;}
  const event=e.target.closest('[data-event]');if(event){eventDialog(event.dataset.event);return;}
  const action=e.target.closest('[data-action]');if(action){dialogAction(action.dataset.action);return;}
  const hours=e.target.closest('[data-hours]');if(hours){if(state.hours===+hours.dataset.hours)return;setFilters({hours:+hours.dataset.hours,page:1});refresh();return;}
@@ -209,6 +218,7 @@ document.addEventListener('click',e=>{
  if(id==='export-vulns')exportVulnerabilities();
  if(id==='logout'){setAuto(false);api.logout().catch(e=>toast(e.message));}
  const eventGroup=e.target.closest('[data-event-group]');if(eventGroup){toggleEventGroup(eventGroup.dataset.eventGroup);render();return;}
+ const groupRow=e.target.closest('tr.event-group-row');if(groupRow&&!e.target.closest('a,button,select,input,label')){toggleEventGroup(groupRow.dataset.key.replace(/^grp-/,''));render();return;}
  const pager=e.target.closest('[data-page]');if(pager){setFilters({page:state.page+(pager.dataset.page==='next'?1:-1)});resetTableScroll(pager);render();}
 
 });

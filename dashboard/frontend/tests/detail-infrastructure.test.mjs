@@ -22,7 +22,7 @@ test('infrastructure lists EC2 status and CloudWatch alarms while tiers stay sum
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="infrastructure"]');
- await until(()=>$('#content').textContent.includes('서버 가동 상태'),'server status did not render');
+ await until(()=>$('#content .host-card .signal.on-g'),'server signal did not render');
  const text=$('#content').textContent;
  assert(text.includes('docker-host')&&text.includes('running')&&text.includes('service-3tier'));
  assert(!text.includes('3계층 서비스'),'3계층 요약은 통합관제 화면에 둔다');

@@ -15,6 +15,7 @@ from .integrations.aws.blocklist import BlocklistStore
 from .integrations.aws.dynamodb import DynamoTable
 from .integrations.aws.honeypot import HoneypotSources
 from .integrations.aws.inspector import InspectorFindings
+from .integrations.aws.remediation import RemediationGateway
 from .integrations.aws.securityhub import SecurityHubFindings
 from .integrations.aws.session import AwsSession
 from .integrations.aws.ssm import AutomationExecutions
@@ -137,6 +138,8 @@ class AwsProvider:
         self.blocklist = (BlocklistStore(self._aws, blocklist_table, private_nacl_id, unblock_document,
                                          automation_role_arn, actions_table=actions_table)
                           if blocklist_table and private_nacl_id and unblock_document and automation_role_arn else None)
+        # 대시보드 원클릭 조치(SSM Automation 시작 + 같은 기준 재검증). 역할 ARN 이 없으면 None → 화면에 '설정 없음'.
+        self._remediation = RemediationGateway(self._aws, automation_role_arn, self.account_id) if automation_role_arn else None
 
     @property
     def as_of(self):
@@ -216,6 +219,36 @@ class AwsProvider:
 
     def measure(self, event):
         raise Problem(403, "실제 재검증 공급자는 아직 활성화되지 않았습니다.", "ACTION_PROVIDER_DISABLED")
+
+    # --- 대시보드 원클릭 조치(remediation_service 가 부른다) -------------------------------------
+    def remediation_missing(self):
+        """실행할 수 없는 설정상 이유. 없으면 None."""
+        if self._remediation is None:
+            return "자동화 실행 역할(AUTOMATION_ROLE_ARN) 설정이 없어 SSM Automation 을 시작할 수 없습니다."
+        return None
+
+    def remediation_precheck(self, plan):
+        """실행 전 대상 확인 + 지금 상태. 조치하면 안 되는 대상이면 blocked 에 이유를 담는다(읽기만 한다)."""
+        self.require_ready()
+        gateway, doc, params = self._remediation, plan["playbookId"], plan["parameters"]
+        blocked = None
+        if plan.get("needsTag") or doc == "ASR-RemoveDefaultSgRules":
+            group = gateway.describe_group(params["SecurityGroupId"])
+            if group is None:
+                blocked = "대상 보안그룹을 찾을 수 없습니다."
+            elif doc == "ASR-RemoveDefaultSgRules" and (group["name"] != "default" or group["vpc"] != params["VpcId"]):
+                blocked = "프로젝트 VPC 의 기본 보안그룹이 아니어서 조치하지 않습니다."
+            elif doc == "ASR-RevokeSecurityGroupIngress" and group["tags"].get("AutoRemediation") != "enabled":
+                blocked = "보안그룹에 AutoRemediation=enabled 태그가 없어(대조군·서비스용) 조치하지 않습니다."
+        return {"blocked": blocked, "state": None if blocked else gateway.measure(doc, params)}
+
+    def remediation_measure(self, plan):
+        self.require_ready()
+        return self._remediation.measure(plan["playbookId"], plan["parameters"])
+
+    def remediation_start(self, plan, seed):
+        self.require_ready()
+        return self._remediation.start(plan["playbookId"], plan["parameters"], seed)
 
     # --- 지리별 공격 실행(웹보안검사 [시작]) ---------------------------------
     # SSM Command 문서는 리전별 리소스라, 공격자가 있는 각 리전의 ssm 클라이언트로

@@ -67,7 +67,7 @@ flowchart TB
 | 모듈 | 소유 책임 | 입력·출력 관계 | 책임 밖 / 주의 |
 |---|---|---|---|
 | `modules/network` | VPC, IGW, 퍼블릭/프라이빗 서브넷, 라우트, 선택 NAT, 인터페이스·게이트웨이 VPC endpoint, SG, NACL, VPC Flow Logs | 루트 변수에서 네트워크 범위를 받고 VPC·서브넷·SG·NACL ID를 `compute`에 제공 | EC2 안의 앱 방화벽이나 Terraform 외부 공격 시나리오 입력을 소유하지 않음. NACL 1–99 SOAR 예약 범위를 코드에서 선언하지 않음 |
-| `modules/compute` | Docker 호스트, MySQL 탐지 대상 EC2, 대시보드 EC2, 선택 DVWA/공격자, 인스턴스 프로파일·IAM, ECR, Secrets Manager, 선택 ALB/WAF, 대시보드 코드 아카이브/배포 | `network` 식별자·`soar` 테이블/역할/알림 이름 입력; 인스턴스 ID와 WAF 값 제공 | 보호 대상 애플리케이션 기능·DB 스키마를 소유하지 않음. EC2 user-data와 S3 배포 zip 변경은 인스턴스 교체를 유발할 수 있어 plan 영향 확인 |
+| `modules/compute` | Docker 호스트, MySQL 탐지 대상 EC2, 대시보드 EC2, 선택 DVWA/공격자, 인스턴스 프로파일·IAM, ECR, Secrets Manager, 선택 ALB/WAF, 대시보드 코드 아카이브/배포 | `network` 식별자·`soar` 테이블/역할/알림 이름 입력; 인스턴스 ID와 WAF 값 제공 | 보호 대상 애플리케이션 기능·DB 스키마를 소유하지 않음. 대시보드의 기존 EC2는 로컬 SQLite를 보존하기 위해 user-data 변경을 무시하므로 S3 zip 갱신 후 SSM으로 코드·환경을 제자리 배포한다. 명시적 인스턴스 교체 전에는 데이터 보존 절차가 필요 |
 | `modules/security` | GuardDuty, Inspector2, AWS Config 규칙/기록, IAM Access Analyzer, Security Hub, CloudTrail·S3·KMS 구성 | 서비스 enable 변수와 계정/리전 정보 입력; AWS 관리형 finding·감사 데이터 생성 | 탐지 finding의 SOAR 정책상 의미나 조치 결정을 단독 소유하지 않음. 계정 기존 서비스와 중복 활성화 가능성 점검 |
 | `modules/soar` | EventBridge 규칙, Lambda 함수·역할, SSM 문서·실행 역할, DynamoDB 업무 테이블, 스캔 결과 버킷, SNS, CloudWatch 로그·알람·메트릭 필터·대시보드 | 보안 finding을 라우팅하고, `compute` 인스턴스와 WAF 신호를 받아 상관·판정·알림/작업을 연결 | 새로운 자동 확인/승인 정책을 암묵적으로 추가하지 않음. Terraform으로 선언한 문서가 호출 코드에 연결되었는지 별도 검증 |
 
@@ -99,6 +99,8 @@ flowchart TB
 | ALB → DVWA | 옵션 DVWA를 `8081` listener로 전달; HTTP `8081` ingress는 관리자 CIDR 기준 | 의도적으로 취약한 독립 공격 대상. 보호 대상 Nginx 서비스와 혼동 금지; `0.0.0.0/0` 공개 금지 |
 
 Terraform user-data는 배포 zip을 S3에서 가져와 `/opt/dashboard/dashboard.env`와 systemd 서비스를 구성한다. 현재 환경 입력에는 `DATA_PROVIDER=aws`, AWS 리전·테이블·토픽 이름, `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_PORT=5000`, `WRITE_ENABLED=true`가 포함된다. 이 설정은 프로세스 구성을 나타낸다. 실제 AWS 쓰기·조치·재검증 가능 여부는 대시보드 Provider 구현과 권한을 별도로 확인하며, 환경 변수만으로 활성화를 주장하지 않는다.
+
+기존 대시보드 EC2의 코드와 환경 변수는 Terraform user-data를 다시 실행하지 않는다. 배포 zip 갱신 후 SSM에서 코드를 임시 경로에 풀고 의존성·필수 파일을 확인한 뒤 서비스와 앱 경로를 교체한다. `/opt/dashboard/instance`의 SQLite 계정·감사·조치 이력은 유지한다. 배포 실패 시 이전 앱 경로와 환경 파일을 복원한다. 부팅 구성 변경으로 EC2 교체가 필요하면 데이터 보존·복구를 먼저 승인하고 검증한다.
 
 대시보드 웹 UI의 계정 인증과 네트워크 접근은 서로 다른 경계다. ALB ingress나 SSM 세션이 가능하다고 해서 애플리케이션 인가를 우회하지 않는다. 도메인·인증서·종단간 HTTPS, CIDR 기본값은 실제 환경별 결정 항목이다.
 
@@ -284,7 +286,8 @@ terraform/
 | SOAR 게이트 수 | 코드 주석/문서가 3중이라 설명하지만 SG tag 검사는 SG branch이며 IAM key 경로는 두 검사 | 구현·설명 일치 검증 대상 | 시나리오별 실제 통제 계층과 명명 표준을 확인; 보편적 3중 방어라 주장하지 않음 |
 | DynamoDB dashboard workflow | Terraform 선언 운영 테이블은 findings/vulnerabilities/correlation/자동 action 중심; dashboard SQLite 기반 승인/jobs/audit는 별도 코드에서 확인 | 구현 수정 대상 | `dashboard-design.md` 목표에 맞는 승인/작업/멱등/감사 데이터 계약·저장 책임과 migration 순서 결정 |
 | Dashboard IAM 역할 | read/execute 정책 문서는 나뉘어 있으나 현재 같은 dashboard role에 부착 | 구현 수정 또는 위험 수용 결정 | principal 격리, PassRole, AWS 권한 피해 범위 검토. IAM policy 분리와 identity 분리를 구분 |
-| Dashboard 쓰기 설정 | Terraform user-data는 `WRITE_ENABLED=true`를 전달한다. 이 값은 API의 write-disabled 검사를 통과시키지만, AWS provider의 실행·재검증 메서드는 `ACTION_PROVIDER_DISABLED`를 반환 | 구현/설계 일치 확인 | 환경변수만으로 실제 조치가 활성화됐다고 보지 않는다. 실제 AWS 실행·측정 연결은 대시보드 코드와 tracking에서 별도 판정 |
+| Dashboard 쓰기 설정 | Terraform user-data는 `WRITE_ENABLED=true`를 전달한다. 이 값은 API의 write-disabled 검사를 통과시킨다. 이벤트 승인 경로(`workflow`)의 provider 실행·재검증 메서드는 `ACTION_PROVIDER_DISABLED`를 반환하고, 대시보드 원클릭 조치(`/api/events/<id>/remediate`)는 별도 경로로 SSM Automation을 시작·재검증한다(실환경 실행은 미검증). 이 경로용으로 user-data에 `PROJECT_VPC_ID`, 읽기 정책 `ReadRemediationVerification`(재검증용 조회 5개)을 추가했다. user-data 변경은 대시보드 인스턴스 교체를 유발할 수 있어 plan 확인 필요 | 구현/설계 일치 확인 | 환경변수만으로 실제 조치가 활성화됐다고 보지 않는다. 실제 AWS 실행·측정 연결은 대시보드 코드와 tracking에서 별도 판정 |
+| v36.1 EC2 user-data 수명주기 | 팀 변경으로 compute의 docker-host·db·DVWA·attacker, 별도 attacker·honeypot EC2는 `ignore_changes=[user_data]`를 둔다. dashboard EC2는 이 목록에 없고 `user_data_replace_on_change=true`다 | 배포 운영 확인 | 앞의 인스턴스는 부팅 스크립트 내용 변경이 일반 apply에 반영되지 않으므로 의도한 변경이면 대상별 명시적 교체 plan을 검토한다. dashboard의 `PROJECT_VPC_ID` 변경은 교체 가능성을 plan에서 확인한다 |
 | CloudWatch Logs 경로 | `modules/soar/cloudwatch.tf`의 MySQL 실패 로그 metric filter/알람 및 GuardDuty의 SSH 관련 finding 흐름 별도 확인 | 설계·시나리오 문서와 계약 | 사용자가 선택한 MySQL→CloudWatch, SSH→GuardDuty 경로를 검증 행으로 두고 각 탐지 증적 확인 |
 | AI 허니팟 | Terraform 네 모듈에서 AI 허니팟 배포 자원 확인되지 않음 | 신규 설계 제안/미결정 | 목표 범위에는 포함. 서비스·격리·데이터 보존·Bedrock 등의 선택과 자동 차단은 별도 승인 전 인프라 구현 없음 |
 | Nginx hardening | SSM Command 문서가 있으나 자동 Lambda 호출 분기는 확인되지 않음 | 임시/수동 기준 | 사용자가 권장한 수동 hardening 경로를 반영; 배포 시점·재부팅/재생성 후 유지 확인 |

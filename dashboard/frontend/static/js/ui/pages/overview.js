@@ -1,7 +1,8 @@
 // 통합 관제: 인프라 상태·자원 표본·자동 대응·최근 보안 이벤트.
-import {summary,metricsFor,servicesOf} from '../context.js?v=ui-1';
-import {header} from '../components/panel.js?v=ui-1';
-import {esc} from '../components/format.js?v=ui-1';
+import {summary,metricsFor,servicesOf} from '../context.js?v=q6-ui-1-l1';
+import {header} from '../components/panel.js?v=q6-ui-1';
+import {esc} from '../components/format.js?v=q6-ui-1';
+import {responseStats} from '../components/event-response.js?v=q6-ui-11';
 
 function highestLatest(metric,key){
  const values=(metric?.series||[]).filter(s=>s.metric===key).map(s=>{
@@ -55,8 +56,10 @@ function infrastructureCard(){
  const components=svc?.components||[],running=components.filter(c=>c.status==='healthy').length;
  const other=Math.max(0,components.length-running),alarmTotal=count(alarms?.total),firing=count(alarms?.alarm),check=count(alarms?.needsCheck??alarms?.insufficientData),ok=Math.max(0,alarmTotal-firing-check);
  const segment=(value,total,key)=>value?`<i class="${key}" style="width:${(value/total*100).toFixed(1)}%"></i>`:'';
- const ec2Tile=`<div class="overview-infra-stat overview-infra-viz"><span>EC2 가동</span><b>${svc?`${running}/${components.length} 대`:'정보 없음'}</b>${svc&&components.length?`<div class="overview-mini-bar" role="img" aria-label="EC2 가동 ${running}대, 그 외 ${other}대">${segment(running,components.length,'running')}${segment(other,components.length,'other')}</div>`:''}<small>${svc?components.some(c=>c.status==='unknown')?'상태 미확인 포함':'인스턴스 상태':'조회 불가'}</small></div>`;
- const alarmTile=`<div class="overview-infra-stat overview-infra-viz${firing?' is-alert':''}"><span>CloudWatch 경보</span><b>${alarms?`${firing}건`:'정보 없음'}</b>${alarms&&alarmTotal?`<div class="overview-mini-bar" role="img" aria-label="경보 ${firing}건, 확인 필요 ${check}건, 정상 ${ok}건">${segment(firing,alarmTotal,'alarm')}${segment(check,alarmTotal,'insufficient')}${segment(ok,alarmTotal,'ok')}</div>`:''}<small>${alarms?`전체 ${alarmTotal} · 확인 필요 ${check}`:'조회 불가'}</small></div>`;
+ const st=key=>components.filter(c=>c.status===key).length,degraded=st('degraded'),unhealthy=st('unhealthy'),unknownN=Math.max(0,other-degraded-unhealthy);
+ const legend=items=>`<div class="overview-mini-legend">${items.filter(([,n])=>n).map(([cls,n,label])=>`<span><i class="${cls}"></i>${label} <b>${n}</b></span>`).join('')}</div>`;
+ const ec2Tile=`<div class="overview-infra-stat overview-infra-viz"><span>서버 상태</span><b>${svc?`${running}/${components.length} 대`:'정보 없음'}</b>${svc&&components.length?`<div class="overview-mini-bar" role="img" aria-label="서버 가동 ${running}대, 저하 ${degraded}대, 장애 ${unhealthy}대, 미확인 ${unknownN}대">${segment(running,components.length,'running')}${segment(degraded,components.length,'degraded')}${segment(unhealthy,components.length,'unhealthy')}${segment(unknownN,components.length,'other')}</div>${legend([['running',running,'정상'],['degraded',degraded,'저하'],['unhealthy',unhealthy,'장애'],['other',unknownN,'미확인']])}`:''}${svc?'':'<small>조회 불가</small>'}</div>`;
+ const alarmTile=`<div class="overview-infra-stat overview-infra-viz${firing?' is-alert':''}"><span>CloudWatch 경보</span><b>${alarms?`${alarmTotal}건`:'정보 없음'}</b>${alarms&&alarmTotal?`<div class="overview-mini-bar" role="img" aria-label="경보 ${firing}건, 확인 필요 ${check}건, 정상 ${ok}건">${segment(firing,alarmTotal,'alarm')}${segment(check,alarmTotal,'insufficient')}${segment(ok,alarmTotal,'ok')}</div>${legend([['alarm',firing,'경보'],['insufficient',check,'확인 필요'],['ok',ok,'정상']])}`:''}${alarms?'':'<small>조회 불가</small>'}</div>`;
  return `<section class="panel">${header('인프라 상태 요약','EC2 · CloudWatch')}<div class="overview-infra-body">
   <div class="overview-infra-stats">${ec2Tile}${alarmTile}
   ${sampleCard(metric,'cpu','CPU',metric?.thresholds?.cpu)}${sampleCard(metric,'memory','메모리',metric?.thresholds?.memory)}</div>
@@ -74,28 +77,33 @@ function tierSummary(svc){
   <div class="overview-tier-flow">${tiers.map((tier,index)=>`${index?'<span class="overview-tier-arrow" aria-hidden="true">→</span>':''}<div class="overview-tier-node"><b>${esc(tier.name)}</b><span class="${TIER_STATE[tier.status]?.[1]||'muted'}">${TIER_STATE[tier.status]?.[0]||'확인 불가'}</span></div>`).join('')}</div></div>`;
 }
 
-// 자동 대응은 판정 유형 세 가지로 나눈다. 실행 상태는 해당 카드 설명으로 분리한다.
+// 자동 대응 현황: 자동 조치 / 수동 대응 / 직접 조치 세 갈래. 링 그래프 = 각 갈래 대상 중 조치 완료 비율.
+// 자동은 SSM 실행 완료(재검증 전)까지만 뜻한다. 해결 여부는 보안 이벤트가 목록에서 사라지는지로 확인한다.
+const ratio=(done,total)=>total>0?Math.min(100,done/total*100):0;
 export function responseCard(){
- const a=summary.automation;
- const note=a==null?'자동 대응 기록을 불러오지 못했습니다.':a.configured===false?'조치 이력 테이블이 설정되지 않았습니다.':null;
- if(note)return `<section class="panel">${header('자동 대응 현황','SOAR')}<div class="response-body"><p class="muted">${note}</p></div></section>`;
- const total=count(a.total),groups=[
-  ['자동 실행',a.autoExecuted,'automatic',`완료 ${count(a.succeeded)} · 실패 ${count(a.failed)} · 진행 ${count(a.inProgress)}`],
-  ['수동 대응 필요',a.manual,'manual','담당자 알림'],
-  ['판단만',a.dryRun,'dry-run','dry-run 기록'],
- ].map(([label,value,key,detail])=>({label,count:count(value),key,detail}));
- const classified=groups.reduce((sum,item)=>sum+item.count,0),unclassified=Math.max(0,total-classified),noChange=count(a.noChange);
- const cards=groups.map(item=>{
-  const share=classified?item.count/classified*100:0;
-  return `<div class="response-summary-card ${item.key}"><span>${item.label}</span><b>${item.count}건</b>
-   <div class="response-share-ring" role="img" aria-label="${item.label} ${item.count}건, 판정 분류 중 ${Math.round(share)}%" style="--share:${share.toFixed(1)}%"><b>${Math.round(share)}%</b></div>
-   <small>${item.detail}</small></div>`;
+ const st=responseStats(),a=st.auto,m=st.manual,d=st.direct;
+ const waiting=st.error?'조치 이력을 읽지 못해 집계하지 못했습니다.':'조치 이력을 불러오는 중…';
+ const autoNote=summaryNote();
+ const groups=[
+  {key:'automatic',label:'자동 대응',ok:!!a,total:a?.total,done:a?.done,
+   desc:a?`정책에 따라 자동 실행한 조치 · 실행 완료 ${a.done} · 실패 ${a.failed} · 진행 ${a.running}`:autoNote,unit:'실행 완료(재검증 전)'},
+  {key:'manual',label:'수동 대응',ok:!!m,total:m?m.done+m.open:0,done:m?.done,
+   desc:m?`대시보드에서 조치할 수 있는 건 · 조치 완료(재검증 통과) ${m.done} · 미조치 ${m.open}${m.failed?` (자동 실패 ${m.failed} 포함)`:''}`:waiting,unit:'조치 완료'},
+  {key:'direct',label:'직접 조치',ok:!!d,total:d?d.done+d.open:0,done:d?.done,
+   desc:d?`AWS에서 직접 조치해야 하는 건 · 목록에서 사라짐(외부 해결 추정) ${d.done} · 미조치 ${d.open}`:waiting,unit:'해결 추정'},
+ ];
+ const cards=groups.map(g=>{
+  const share=g.ok?ratio(g.done,g.total):0,pctText=g.ok&&g.total>0?`${Math.round(share)}%`:'—';
+  return `<div class="response-summary-card ${g.key}" title="${esc(g.desc)}"><span>${g.label}</span><b>${g.ok?`${g.total}건`:'—'}</b>
+   <div class="response-share-ring" role="img" aria-label="${g.label} ${g.ok?`${g.total}건 중 ${g.unit} ${Math.round(share)}%`:'집계 불가'}" style="--share:${share.toFixed(1)}%">
+    <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><defs><linearGradient id="rr-${g.key}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--ring-from)"/><stop offset="1" stop-color="var(--ring-to)"/></linearGradient></defs>
+    <circle class="rr-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="rr-arc" cx="60" cy="60" r="50" pathLength="100" stroke="url(#rr-${g.key})" stroke-dasharray="${share>0?Math.max(share,1.5).toFixed(1):0} 100"/></svg><b>${pctText}</b></div></div>`;
  }).join('');
- const noteParts=[`판정 분류 ${classified}건 기준`,noChange?`변경 없음 ${noChange}건`:null,unclassified>noChange?`그 외 ${unclassified-noChange}건`:null].filter(Boolean);
- return `<section class="panel response-overview-panel">${header('자동 대응 현황',`${total}건 · 선택 기간`)}<div class="response-body">
-  <div class="response-summary">${cards}</div><p class="response-summary-footnote">${noteParts.join(' · ')}</p>
-  <div class="response-overview-footer"><small>실행 결과와 재검증 결과는 조치 이력에서 확인합니다.</small><button class="text-button" data-view="responses">조치 이력 보기 →</button></div></div></section>`;
+ return `<section class="panel response-overview-panel">${header('자동 대응 현황','선택 기간')}<div class="response-body">
+  <div class="response-summary">${cards}</div>
+  <div class="response-overview-footer"><button class="text-button" data-view="responses">조치 이력 보기 →</button></div></div></section>`;
 }
+function summaryNote(){const a=summary.automation;return a==null?'자동 대응 기록을 불러오지 못했습니다.':'조치 이력 테이블이 설정되지 않았습니다.';}
 export function overviewCharts(){
- return `<div class="overview-summary-grid">${infrastructureCard()}${responseCard()}</div>`;
+ return `<div class="overview-summary-grid">${infrastructureCard()}<div id="overview-response-box" class="overview-response-slot" data-key="overview-response-box">${responseCard()}</div></div>`;
 }

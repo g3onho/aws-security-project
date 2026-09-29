@@ -52,6 +52,8 @@ def configure(overrides=None):
         "PRIVATE_NACL_ID": os.getenv("PRIVATE_NACL_ID") or None,
         "DOC_UNBLOCK_IP": os.getenv("DOC_UNBLOCK_IP") or None,
         "AUTOMATION_ROLE_ARN": os.getenv("AUTOMATION_ROLE_ARN") or None,
+        # 대시보드 원클릭 조치의 기본 보안그룹 조치(ASR-RemoveDefaultSgRules)가 허용하는 프로젝트 VPC. 없으면 그 조치만 막는다.
+        "PROJECT_VPC_ID": os.getenv("PROJECT_VPC_ID") or None,
         "IP_BLOCK_TTL_HOURS": int(os.getenv("IP_BLOCK_TTL_HOURS", "24")),
         # 허니팟 화면에서 차단 해제·기간 변경·예외 등록·비밀번호 원문 보기가 가능한 역할(쉼표). viewer 는 넣을 수 없다.
         "BLOCKLIST_WRITE_ROLES": os.getenv("BLOCKLIST_WRITE_ROLES", "operator"),
@@ -66,6 +68,8 @@ def configure(overrides=None):
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),
+        # 정적 파일(/static)만 브라우저 캐시를 허용하는 시간(초). API·HTML 은 항상 no-store. 0 이면 매번 재검증(ETag).
+        "STATIC_MAX_AGE_SECONDS": int(os.getenv("STATIC_MAX_AGE_SECONDS", "3600")),
         "SECRET_KEY": os.getenv("FLASK_SECRET_KEY"),
         "TESTING": False,
         "SESSION_COOKIE_NAME": "soar_session",
@@ -79,8 +83,8 @@ def configure(overrides=None):
         "VERSION": "0.1.0",
     }
     config.update(overrides or {})
-    if config["DATA_PROVIDER"] not in {"none", "aws"}:
-        raise ValueError("DATA_PROVIDER must be none or aws")
+    if config["DATA_PROVIDER"] not in {"none", "aws", "demo"}:
+        raise ValueError("DATA_PROVIDER must be none, aws or demo")
     if config["EVENT_SOURCE"] not in {"securityhub", "dynamodb"}:
         raise ValueError("EVENT_SOURCE must be securityhub or dynamodb")
     if config["VULNERABILITY_SOURCE"] not in {"inspector", "dynamodb"}:
@@ -102,6 +106,8 @@ def configure(overrides=None):
         raise ValueError("ASSISTANT_REPORT_RATE_PER_10MIN must be >= 1 and ASSISTANT_REPORT_CACHE_SECONDS >= 0")
     config["WRITE_ENABLED"] = boolean(config["WRITE_ENABLED"], "WRITE_ENABLED")
     config["SESSION_COOKIE_SECURE"] = boolean(config["SESSION_COOKIE_SECURE"], "SESSION_COOKIE_SECURE")
+    if config["STATIC_MAX_AGE_SECONDS"] < 0:
+        raise ValueError("STATIC_MAX_AGE_SECONDS must be >= 0")
     if not 1 <= config["PORT"] <= 65535:
         raise ValueError("DASHBOARD_PORT must be between 1 and 65535")
     database = Path(config["DATABASE"]).resolve()

@@ -1,9 +1,9 @@
 // 화면별 AI 요약 보고서 대화상자(v28) — 조회 전용.
 // 서버가 수치를 집계하고 모델은 문장만 쓴다. 이 파일은 서버가 준 문자열(모델 본문·이벤트 제목 등 공격자가 조종할 수 있는 값 포함)을
 // 전부 esc() 를 거쳐 텍스트로만 그린다. 본문 마크다운은 제목(##)·목록·표·굵게(**)만 해석하고 링크·HTML·이미지는 해석하지 않는다.
-import {$,api} from '../context.js?v=ui-1';
-import {esc} from './format.js?v=ui-1';
-import {downloadFile,stampedName} from './downloads.js?v=ui-1';
+import {$,api} from '../context.js?v=q6-ui-1-l1';
+import {esc} from './format.js?v=q6-ui-1';
+import {downloadFile,stampedName} from './downloads.js?v=q6-ui-1-l1';
 
 const NAME={events:'보안 이벤트',vulnerabilities:'취약점 점검',infrastructure:'인프라 모니터링',drills:'보안 시나리오',honeypot:'허니팟'};
 const NOTE='문장은 AI가 작성했고, 수치는 원천 데이터 집계 기준입니다. 조치 전에 화면의 원본 자료로 확인하세요.';

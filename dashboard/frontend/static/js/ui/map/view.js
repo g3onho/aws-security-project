@@ -1,18 +1,18 @@
 // 통합 관제 지도: 지구본·국가·리전 마커·공격 흐름·리전 패널. 카메라와 지도 상태는 이 모듈만 바꾼다.
-import {globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './globe.js?v=ui-1';
-import {createMarkerLayer,createCameraController} from './interaction.js?v=ui-1';
-import {regions,severityColors} from '../constants.js?v=ui-1';
-import {$,state,summary,selectEvents,setFilters,hooks} from '../context.js?v=ui-1';
-import {esc} from '../components/format.js?v=ui-1';
-import {patchAnimated} from '../components/panel.js?v=ui-1';
-import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=ui-5';
-import {clearSelection} from '../pages/events.js?v=ui-1';
+import {globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './globe.js?v=q6-ui-1-l1';
+import {createMarkerLayer,createCameraController} from './interaction.js?v=q6-ui-1';
+import {regions,severityColors} from '../constants.js?v=q6-ui-1-l1';
+import {$,state,summary,selectEvents,setFilters,hooks} from '../context.js?v=q6-ui-1-l1';
+import {esc} from '../components/format.js?v=q6-ui-1';
+import {patchAnimated} from '../components/panel.js?v=q6-ui-1';
+import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=q6-ui-5-l1';
+import {clearSelection} from '../pages/events.js?v=q6-ui-1-l1';
 let attackSelection='all';
 let mapReady=false,zoom=DEFAULT_ZOOM,rotation=[...DEFAULT_ROTATION],panelOpen=true;
 let worldFeatures=[],cachedAll=[],cachedMapped=[],rafPending=false,selectedCountryIndex=-1;
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 export async function loadMap(){
- const response=await fetch('/static/data/countries.geojson?v=local-1');if(!response.ok)throw Error('지도 데이터를 불러오지 못했습니다.');
+ const response=await fetch('/static/data/countries.geojson?v=q6-local-2');if(!response.ok)throw Error('지도 데이터를 불러오지 못했습니다.');
  const data=await response.json();worldFeatures=data.features.filter(f=>f.properties.ADMIN!=='Antarctica');mapReady=true;
  updateSelectedCountry(state.region);
  renderCountries();
@@ -79,11 +79,11 @@ export function mapRender(rows){
  const eventSev=Object.fromEntries(EVENT_SEVERITIES.map(([key])=>[key,rows.filter(e=>e.severity===key).length]));
  const ov=summary.openVulnerabilities,vuln=ov==null?null:r?(ov.byRegion?.[r.id]||{total:0,bySeverity:{}}):ov;
  patchAnimated($('#region-panel'),`<button id="close-region" class="region-close" aria-label="지역 상세 닫기">×</button><div class="region-kicker">SELECTED REGION</div><div class="region-heading"><h3 class="region-title">${r?.en||'ALL REGIONS'}</h3><div class="region-code">${r?.id==='global'?'글로벌 서비스 / 위치 미상':r?`${r.name} · ${r.id}`:'전체 AWS 리전'}</div></div>
- <div class="region-cards">${regionCard('탐지 이벤트',`최근 ${PERIOD_LABEL[state.hours]||state.hours+'시간'}`,rows.length,EVENT_SEVERITIES,eventSev,{fixed:true,view:'events',target:'보안 이벤트'})}${regionCard('취약 현황','열린 취약점',vuln?.total??null,VULN_SEVERITIES,vuln?.bySeverity||{},{view:'vulnerabilities',target:'취약점 점검'})}</div>`);
+ <div class="region-cards">${regionCard('탐지 이벤트',`최근 ${PERIOD_LABEL[state.hours]||state.hours+'시간'}`,rows.length,EVENT_SEVERITIES,eventSev,{fixed:true,view:'events',target:'보안 이벤트'})}${regionCard('취약 현황','열린 취약점',vuln==null?null:VULN_SEVERITIES.reduce((a,[key])=>a+(vuln.bySeverity?.[key]||0),0),VULN_SEVERITIES,vuln?.bySeverity||{},{fixed:true,view:'vulnerabilities',target:'취약점 점검'})}</div>`);
 }
 const PERIOD_LABEL={0.25:'15분',1:'1시간',24:'1일',168:'1주일'};
 const EVENT_SEVERITIES=[['Critical','긴급'],['High','높음'],['Medium','보통'],['Low','낮음']];
-const VULN_SEVERITIES=[['CRITICAL','긴급'],['HIGH','높음'],['MEDIUM','보통'],['LOW','낮음'],['INFORMATIONAL','정보'],['UNTRIAGED','미분류']];
+const VULN_SEVERITIES=[['CRITICAL','긴급'],['HIGH','높음'],['MEDIUM','보통'],['LOW','낮음']];   // 지역 카드의 취약 현황은 이 네 등급만 보인다
 // 이벤트·취약점 화면과 같은 위험도 색. 미분류는 무채색.
 const SEV_COLOR={긴급:severityColors.Critical,높음:severityColors.High,보통:severityColors.Medium,낮음:severityColors.Low,정보:severityColors.Informational,미분류:severityColors.Unknown};
 // fixed: 0건 등급도 범례에 둔다(탐지 이벤트 — 긴급·높음·보통·낮음 한 줄 고정).

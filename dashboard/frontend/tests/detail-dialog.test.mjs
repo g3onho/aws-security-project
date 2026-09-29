@@ -30,9 +30,8 @@ test('event detail explains the problem, links AWS docs, predicts automation and
  assert.equal(link.getAttribute('href'),'https://docs.aws.amazon.com/console/securityhub/EC2.19/remediation');
  assert.equal(link.getAttribute('rel'),'noreferrer');assert.equal(link.getAttribute('target'),'_blank');
  assert(text.includes('조건부 자동')&&text.includes('AutoRemediation=enabled'));
- await until(()=>$('#event-history')?.textContent.includes('TCP 3306 ← 0.0.0.0/0'),'remediation record did not render');
- assert($('#event-history').textContent.includes('실행 완료 · 재검증 전'));
- assert(!$('#event-history').textContent.includes('해결'),'실행을 해결로 표시하지 않는다');
+ assert(!$('#event-history'),'보안 이벤트 상세에는 조치 이력을 넣지 않는다');
+ assert(!text.includes('조치 기록'));
  assert(!text.includes('측정값 없음'),'늘 비던 Before/After 칸은 없다');
  assert.deepEqual(errors,[]);
 });

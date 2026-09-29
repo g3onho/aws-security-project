@@ -15,6 +15,11 @@ export const endpoints=Object.freeze({
  honeypotSession:id=>`/api/honeypot/sessions/${encodeURIComponent(id)}`,
  // 대시보드 도우미(v27, 조회 전용)
  assistantStatus:'/api/assistant/status',assistantChat:'/api/assistant/chat',assistantReport:'/api/assistant/report',
+ // 대시보드 원클릭 조치(미리보기·실행·기록·재검증)
+ remediationPlan:id=>`/api/events/${encodeURIComponent(id)}/remediation`,
+ remediate:id=>`/api/events/${encodeURIComponent(id)}/remediate`,
+ remediations:'/api/remediations',
+ remediationRecheck:id=>`/api/remediations/${encodeURIComponent(id)}/recheck`,
  blocklist:'/api/blocklist',
  blocklistRelease:ip=>`/api/blocklist/${encodeURIComponent(ip)}/release`,
  blocklistPatch:ip=>`/api/blocklist/${encodeURIComponent(ip)}`,

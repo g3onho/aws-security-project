@@ -226,6 +226,65 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/VerifyQueuedEnvelope'}
         default: {$ref: '#/components/responses/Error'}
+  /api/events/{eventId}/remediation:
+    get:
+      operationId: getRemediationPlan
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/EventId'}
+      responses:
+        '200':
+          description: >-
+            대시보드 조치 미리보기(읽기 전용). 계획(문서·대상)은 서버가 탐지에서 만든다. supported=false 면 사유를 reason 으로 준다.
+            현재 상태를 읽지 못하면 currentError 를 싣고 canExecute=false 다. 이미 기준을 충족하면 alreadyCompliant=true.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RemediationPlanEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/events/{eventId}/remediate:
+    post:
+      operationId: remediateEvent
+      x-permission: soar:execute
+      parameters:
+        - {$ref: '#/components/parameters/EventId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RemediateRequest'}
+      responses:
+        '200': {description: 같은 Idempotency-Key 의 이전 요청 결과 또는 이미 기준을 충족해 실행하지 않음(ALREADY_COMPLIANT), content: {application/json: {schema: {$ref: '#/components/schemas/RemediationEnvelope'}}}}
+        '202':
+          description: >-
+            SSM Automation 시작을 접수. 실행 성공은 해결이 아니다 — 서버가 같은 기준으로 다시 읽어(VERIFYING) 통과했을 때만 VERIFIED 가 된다.
+            시작 응답을 잃으면 같은 Idempotency-Key 로 다시 보내 이전 실행을 조회한다(SSM ClientToken 으로 이중 실행 방지).
+          content: {application/json: {schema: {$ref: '#/components/schemas/RemediationEnvelope'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/remediations:
+    get:
+      operationId: listRemediations
+      x-permission: dashboard:read
+      parameters:
+        - {name: eventId, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: 대시보드 조치 기록. 조회할 때 진행 중인 실행의 상태를 갱신한다(별도 백그라운드 작업 없음).
+          content: {application/json: {schema: {$ref: '#/components/schemas/RemediationListEnvelope'}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/remediations/{remediationId}/recheck:
+    post:
+      operationId: recheckRemediation
+      x-permission: soar:execute
+      parameters:
+        - {name: remediationId, in: path, required: true, schema: {type: string}}
+        - {$ref: '#/components/parameters/CsrfToken'}
+      responses:
+        '200':
+          description: 재검증을 다시 읽는다(상태 변경 조치는 재실행하지 않는다). 읽지 못하면 VERIFY_ERROR 이며 통과가 아니다.
+          content: {application/json: {schema: {$ref: '#/components/schemas/RemediationEnvelope'}}}
+        default: {$ref: '#/components/responses/Error'}
   /api/drills/catalog:
     get:
       operationId: getDrillCatalog
@@ -765,6 +824,9 @@ components:
             url: {type: [string, 'null'], format: uri}
         guidance: {$ref: '#/components/schemas/Guidance'}
         autoRemediation: {$ref: '#/components/schemas/AutoRemediation'}
+        dashboardAction:
+          type: [object, 'null']
+          description: 대시보드에서 조치할 수 있으면 {playbookId, title, category(manual|auto-eligible)}, 아니면 null
     Guidance:
       type: [object, 'null']
       description: 팀이 쓴 한글 설명(AWS 원문과 별개). 설명표에 없는 탐지는 null.
@@ -1095,6 +1157,102 @@ components:
                 items: {type: array, items: {$ref: '#/components/schemas/Evidence'}}
                 jobs: {type: array, items: {$ref: '#/components/schemas/Evidence'}}
                 nextCursor: {type: [string, 'null']}
+                remediations: {type: array, items: {$ref: '#/components/schemas/Remediation'}, description: 대시보드 조치 기록}
+                external: {type: array, items: {$ref: '#/components/schemas/ExternalResolved'}, description: 외부 해결(추정)}
+    RemediateRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, playbookId]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 500}
+        playbookId: {type: string, description: 미리보기에서 받은 playbookId(서버 계획과 다르면 거부)}
+    Remediation:
+      type: object
+      required: [id, eventId, actor, state, playbookId, createdAt, updatedAt]
+      properties:
+        id: {type: string}
+        eventId: {type: string}
+        actor: {type: string}
+        state:
+          type: string
+          enum: [STARTING, RUNNING, VERIFYING, VERIFIED, NOT_RESOLVED, EXEC_FAILED, VERIFY_ERROR, ALREADY_COMPLIANT, START_FAILED]
+          description: VERIFIED(재검증 통과)만 해결이다. SSM 실행 성공만으로는 해결이 아니다.
+        playbookId: {type: string}
+        title: {type: string}
+        change: {type: string}
+        criterion: {type: string}
+        parameters: {type: object}
+        target: {type: [string, 'null']}
+        reason: {type: string}
+        executionId: {type: [string, 'null']}
+        ssmStatus: {type: [string, 'null']}
+        before: {type: [object, 'null']}
+        after: {type: [object, 'null']}
+        verification: {type: [object, 'null'], description: '{passed, text, checkedAt}. passed=null 은 읽지 못함'}
+        error: {type: [string, 'null']}
+        resource: {type: string}
+        region: {type: string}
+        eventTitle: {type: string}
+        severity: {type: string}
+        controlId: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    RemediationEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data: {$ref: '#/components/schemas/Remediation'}
+    RemediationListEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [items]
+              properties:
+                items: {type: array, items: {$ref: '#/components/schemas/Remediation'}}
+    RemediationPlanEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/Envelope'}
+        - properties:
+            data:
+              type: object
+              required: [eventId, supported, canExecute, canWrite]
+              properties:
+                eventId: {type: string}
+                supported: {type: boolean}
+                eligible: {type: boolean}
+                reason: {type: [string, 'null']}
+                playbookId: {type: string}
+                title: {type: string}
+                change: {type: string}
+                criterion: {type: string}
+                parameters: {type: object}
+                category: {type: string, enum: [auto-eligible, manual]}
+                target: {type: [string, 'null']}
+                canExecute: {type: boolean}
+                canWrite: {type: boolean}
+                blockedReason: {type: [string, 'null']}
+                alreadyCompliant: {type: boolean}
+                current: {type: [object, 'null']}
+                currentError: {type: string}
+                latest: {type: array, items: {$ref: '#/components/schemas/Remediation'}}
+                mode: {type: string, enum: [demo, aws]}
+    ExternalResolved:
+      type: object
+      required: [id, eventId, resolvedAt]
+      description: >-
+        열린 탐지에서 사라졌고 대시보드·자동 조치 기록이 없는 항목(추정). 누가·어떻게 고쳤는지는 알 수 없다.
+      properties:
+        id: {type: string}
+        eventId: {type: string}
+        title: {type: [string, 'null']}
+        resource: {type: [string, 'null']}
+        severity: {type: [string, 'null']}
+        region: {type: [string, 'null']}
+        controlId: {type: [string, 'null']}
+        resolvedAt: {type: string, format: date-time, description: 처음 사라진 것을 관찰한 시각}
+        lastSeenAt: {type: string, format: date-time}
     ApproveRequest:
       type: object
       additionalProperties: false

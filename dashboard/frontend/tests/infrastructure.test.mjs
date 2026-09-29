@@ -13,8 +13,8 @@ test('infrastructure uses standard metrics and component status fields',async t=
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="infrastructure"]');
- await until(()=>$('#content .service-table')&&$('#content').textContent.includes('42%'),'infrastructure details did not render');
- assert($('#content').textContent.includes('healthy'));
+ await until(()=>$('#content .host-card .signal')&&$('#content').textContent.includes('42%'),'infrastructure details did not render');
+ assert($('#content .host-card .signal.on-g'));assert($('#content').textContent.includes('정상'));assert(!$('#content .service-table'),'별도 가동 상태 표는 없다');
  // 되살린 v17 화면: 호스트 카드 이름, 임계치(80%) 초과 구간 1개, CPU 최대값
  assert($('#content').textContent.includes('docker-host'));
  assert($('#content').textContent.includes('임계 초과 1구간'));
@@ -42,7 +42,6 @@ test('infrastructure uses standard metrics and component status fields',async t=
  await until(()=>charts.at(-1)?.options.scales.x.max-charts.at(-1)?.options.scales.x.min===7*86400000,'1주일 x축이 선택 기간 전체로 바뀌어야 한다');
  assert(charts.at(-1).data.datasets[0].data.some(point=>point.x===Date.parse(twoHours)),'과거 CloudWatch 표본이 차트에 남아야 한다');
  assert(charts.at(-1).data.datasets[0].data.some(point=>point.x>Date.parse(twoHours)&&point.x<Date.parse(earlier)&&point.y===null),'수집되지 않은 시간은 선으로 이어 붙이지 않는다');
- assert($('#content').textContent.includes('이전 인스턴스 1개의 CloudWatch 기록을 연결했습니다'));
  assert(!charts.at(-1).data.datasets.some(dataset=>/서버 교체/.test(dataset.label)),'서버 교체 세로선은 그리지 않는다');
  assert(!$('#content').textContent.includes('서버 교체 시점'));
  const weekX=charts.at(-1).options.scales.x,weekAxis={min:weekX.min,max:weekX.max,ticks:[]};

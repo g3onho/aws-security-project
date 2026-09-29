@@ -1,13 +1,21 @@
 // 보안 시나리오: 시나리오 표가 화면의 뼈대이고, 선택 없이 [전부 실행] 한 번으로 준비된 모든 시나리오를 실행한다.
 // 실행은 백엔드 POST /api/drills/run-all/start(SSM)이며 WRITE_ENABLED 가 꺼져 있으면 403 이다.
-import {$,api} from '../context.js?v=ui-1';
-import {esc,format,milliseconds} from '../components/format.js?v=ui-1';
-import {loadPanel,header} from '../components/panel.js?v=ui-1';
-import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=ui-1';
+import {$,api} from '../context.js?v=q6-ui-1-l1';
+import {esc,format,milliseconds} from '../components/format.js?v=q6-ui-1';
+import {loadPanel,header} from '../components/panel.js?v=q6-ui-1';
+import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=q6-ui-1-l1';
 
-const SUPPORT_COLOR={runnable:'#087a68','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#526e84'};
+const SUPPORT_COLOR={runnable:'#bcfbf1','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#93a7b7'};
 // 백엔드 DrillService.start_all 이 한 번에 실행하는 시나리오(SEC-06B 는 SEC-08 지리 공격 실행에 함께 들어 있다).
 const RUN_ALL_SECS=['SEC-02','SEC-04','SEC-07','SEC-08','SEC-06B','SEC-10'];
+// [전부 실행] 카드에 보여줄 시나리오별 공격·점검 방법(백엔드 DrillService.start_all 이 쓰는 도구 기준).
+const RUN_METHODS=[
+ ['SEC-02','포트·헤더 점검','nmap 으로 열린 포트를 스캔하고 curl 로 응답 보안 헤더를 확인'],
+ ['SEC-04','이미지 CVE','Trivy 로 컨테이너 이미지의 알려진 취약점(CVE)을 스캔'],
+ ['SEC-07','비밀값 스캔','코드·이미지에 합성 테스트 비밀값이 남아 있는지 스캔'],
+ ['SEC-08/06B','지리 공격','5개 리전 공격자 EC2 가 nmap 스캔 → hydra SSH·웹 무차별 대입 → ZAP·sqlmap 으로 DVWA 공격'],
+ ['SEC-10','부하','stress-ng 로 서울 EC2(대시보드 제외)에 CPU·메모리 부하'],
+ ['HONEYPOT','내부 침투','서울 공격자 EC2 에서 미끼 서버로 SSH 접속 시도, 자동 차단 시연']];
 const RUN_SEC_OF={'SEC-06B':'SEC-08'};
 // 새로고침해도 진행 중인 실행을 잃지 않도록 runId 만 저장한다(진행표는 서버에서 다시 받는다). 저장소 접근은 항상 try/catch.
 const RUN_ALL_LS_KEY='drills-run-all-id';
@@ -55,17 +63,29 @@ function resultOf(id){
  const label=states.some(s=>s==='Failed'||s==='TimedOut')?'실패':states.some(s=>RUNNING.has(s))?'실행 중':states.every(s=>s==='Success')?'완료':states.some(s=>s==='Cancelled')?'취소':'알 수 없음';
  return `<strong>${label}</strong> <small class="muted">${mine.length}건</small>`;
 }
-const openMaps=new Set();   // 경로 지도를 펼친 시나리오 ID (화면 안 상태)
+let flowId=null;   // 경로 지도 팝업에 열려 있는 시나리오 ID
 function scenarioRow(s){
  const obs=s.observation==='connected'?'연결됨':'미연결';
- const open=openMaps.has(s.id);
- const row=`<tr><td class="drill-scenario-main"><strong>${esc(s.id)}</strong><span>${esc(s.purpose)}</span>
-  <button type="button" class="flow-toggle" data-flow-toggle="${esc(s.id)}" aria-expanded="${open}" aria-controls="flow-${esc(s.id)}">${open?'경로 지도 닫기':'경로 지도 보기'}</button></td>
+ return `<tr><td class="drill-scenario-main"><strong>${esc(s.id)}</strong><span>${esc(s.purpose)}</span>
+  <button type="button" class="flow-toggle" data-flow-toggle="${esc(s.id)}" aria-haspopup="dialog">경로 지도 보기</button></td>
   <td class="drill-scenario-evidence"><span><b>관측</b> ${s.sources.map(esc).join(' · ')}</span><span><b>대응</b> ${esc(s.response)}</span></td>
   <td class="drill-scenario-status"><div>${supportPill(s.support,s.supportLabel)}</div><small>관측 ${obs}</small></td>
   <td class="drill-scenario-result">${resultOf(s.id)}</td></tr>`;
- if(!open)return row;
- return row+`<tr class="flow-row"><td colspan="4"><div id="flow-${esc(s.id)}" class="scenario-flow">${flowBlock(scenarioStages(s,run.items),FLOW_NOTE_SCENARIO)}</div></td></tr>`;
+}
+// 경로 지도는 보안 이벤트 상세와 같은 큰 팝업으로 연다(표 안에서 펼치면 좁아서 글씨가 잘린다).
+function paintFlowDialog(){
+ const box=$('#flow-dialog');if(!box)return;
+ const s=flowId&&catalog?.scenarios.find(x=>x.id===flowId);
+ if(!s){if(box.open)box.close();return;}
+ $('#flow-dialog-content').innerHTML=`<div class="dialog-header"><div><div class="eyebrow">${esc(s.id)} / 경로 지도</div><h2 id="flow-dialog-title">${esc(s.purpose)}</h2></div><button type="button" class="dialog-close" data-flow-close aria-label="경로 지도 닫기">×</button></div>
+  <div class="dialog-body"><div id="flow-${esc(s.id)}" class="scenario-flow">${flowBlock(scenarioStages(s,run.items),FLOW_NOTE_SCENARIO)}</div></div>
+  <div class="dialog-actions"><span>읽기 전용</span><button type="button" class="cancel-button" data-flow-close>닫기</button></div>`;
+ if(!box.open)box.showModal();
+}
+function closeFlow(){
+ const id=flowId;flowId=null;
+ const box=$('#flow-dialog');if(box&&box.open)box.close();
+ const again=[...document.querySelectorAll('[data-flow-toggle]')].find(b=>b.dataset.flowToggle===id);if(again)again.focus();
 }
 function scenarioTable(){
  return `<div class="table-scroll"><table class="drill-scenario-table"><caption class="sr-only">보안 시나리오 카탈로그</caption>
@@ -76,15 +96,16 @@ function scenarioTable(){
 function runPanel(){
  const env=catalog.environment||{};
  const ready=env.dataSourceConnected===true;
- const geoLine=env.webScanReady===true?'지리별 웹 공격(SEC-08/06B) 포함 · 미국·싱가포르·시드니·뭄바이·도쿄':'지리별 공격자 미배포 — SEC-08/06B 는 건너뜁니다(terraform enable_geo_attackers)';
- const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#32d4be"></span>실행 가능 · ${esc(geoLine)}</div>`
+ const geoLine=env.webScanReady===true?'지리 공격 포함':'지리 공격자 미배포 — SEC-08/06B 건너뜀';
+ const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#0b8577"></span>실행 가능 · ${esc(geoLine)}</div>`
   :`<div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · 데이터 소스 미연결</div>`;
  const attr=ready&&!run.busy?'data-run-all-start':'disabled';
  // 이번 실행에 SEC-08 이 하나라도 잡혔으면 보고서 버튼을 켠다(완료 전이라도 눌러서 확인 가능 — 끝난 리전만 링크가 뜬다).
  const hasAtk=run.items.some(item=>item.sec==='SEC-08');
  const reportAttr=run.runId&&hasAtk&&!report.loading?'data-report-extract':'disabled';
  return `<div class="drill-config"><h3>전부 실행</h3>
-  <p class="muted">시나리오를 고르지 않고 준비된 모든 시나리오를 한 번에 실행합니다: SEC-02(서비스 포트·헤더), SEC-04(Trivy 이미지 CVE), SEC-07(비밀값 스캔), SEC-08/06B(DVWA·SSH 지리 공격: nmap·hydra·ZAP·sqlmap), SEC-10(서울 EC2 부하·대시보드 제외), HONEYPOT(내부 침투: 서울 공격자 EC2 → 미끼서버 SSH, 자동 차단 시연). 대상이 없는 항목은 건너뛰고 사유를 남깁니다.</p>
+  <p class="muted">준비된 시나리오를 한 번에 실행합니다. 대상이 없으면 건너뛰고 사유를 남깁니다.</p>
+  <ul class="drill-run-list">${RUN_METHODS.map(([id,name,how])=>`<li><b>${esc(id)}</b><span><em>${esc(name)}</em><small>${esc(how)}</small></span></li>`).join('')}</ul>
   ${elig}
   <div class="drill-actions">
    <button type="button" class="primary-button" ${attr}>${run.busy?'실행 중…':'전부 실행'}</button>
@@ -128,14 +149,14 @@ function progressSection(){
 function runsSection(){
  if(!runs||!runs.items.length){
   return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
-   <p class="muted">기록된 실행이 없습니다. [전부 실행]을 누르면 이곳에 이력이 남습니다.</p></section>`;
+   <div class="run-empty"><strong>기록된 실행이 없습니다</strong><span>위의 [전부 실행]을 누르면 실행 ID·유형·SEC 항목·상태가 이곳에 남습니다.</span></div></section>`;
  }
  const rows=runs.items.map(r=>{
   const secs=(r.secs&&r.secs.length)?r.secs.join(' · '):(r.type||'—');
-  return `<tr><td>${esc(r.runId||'—')}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td>${esc(r.state||'—')}</td><td>${format(milliseconds(r.createdAt))}</td></tr>`;
+  return `<tr><td class="run-id">${esc(r.runId||'—')}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td><span class="run-state" data-state="${esc(String(r.state||'').toLowerCase())}">${esc(r.state||'—')}</span></td><td>${format(milliseconds(r.createdAt))}</td></tr>`;
  }).join('');
  return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
-  <div class="table-scroll"><table><caption class="sr-only">실행 이력</caption>
+  <div class="table-scroll run-history"><table><caption class="sr-only">실행 이력</caption>
   <thead><tr><th>실행 ID</th><th>유형</th><th>SEC 항목</th><th>상태</th><th>접수 시각 (KST)</th></tr></thead>
   <tbody>${rows}</tbody></table></div></section>`;
 }
@@ -144,7 +165,7 @@ function paint(){
  return `<section class="panel full-panel drill-workspace">${header('보안 시나리오','SCENARIOS')}
   ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${progressSection()}${reportSection()}${runsSection()}`;
 }
-function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();}
+function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();if(flowId)paintFlowDialog();}
 
 async function refreshHistory(){try{runs=await api.drills();}catch(error){/* 이력 갱신 실패는 진행 표시를 막지 않는다 */}}
 async function poll(){
@@ -196,7 +217,7 @@ function onClick(e){
  if(e.target.closest('[data-run-all-start]')){start();return;}
  if(e.target.closest('[data-report-extract]')){extractReport();return;}
  const toggle=e.target.closest('[data-flow-toggle]');
- if(toggle){const id=toggle.dataset.flowToggle;if(openMaps.has(id))openMaps.delete(id);else openMaps.add(id);rerender();const again=[...document.querySelectorAll('[data-flow-toggle]')].find(b=>b.dataset.flowToggle===id);if(again)again.focus();}
+ if(toggle){flowId=toggle.dataset.flowToggle;paintFlowDialog();}
 }
 
 // 새로고침 직후 한 번만: 저장된 runId 가 있으면 새로 시작하지 않고 그 실행 상태를 이어 본다.
@@ -209,6 +230,12 @@ function resumeRunAll(){
 export function renderDrills(){
  const box=$('#drills');
  if(box&&!box._drillsBound){box.addEventListener('click',onClick);box._drillsBound=true;}
+ const fd=$('#flow-dialog');
+ if(fd&&!fd._flowBound){
+  fd._flowBound=true;
+  fd.addEventListener('click',e=>{if(e.target.closest('[data-flow-close]')||e.target===fd)closeFlow();});
+  fd.addEventListener('cancel',e=>{e.preventDefault();closeFlow();});
+ }
  resumeRunAll();
  return loadPanel(box,
   async()=>{const [c,r]=await Promise.all([api.drillsCatalog(),api.drills()]);catalog=c;runs=r;return {catalog:c,runs:r};},

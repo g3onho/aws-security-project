@@ -75,6 +75,13 @@ export function appDOM(fetchMock) {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/g, '').replace(/<link[^>]*>/g, '');
   const dom = new JSDOM(html, {url: 'http://localhost/', pretendToBeVisual: true});
   const w = dom.window;
+  // jsdom Blob lacks modern read methods; implement them through its FileReader for export assertions.
+  if (!w.Blob.prototype.text) w.Blob.prototype.text = function () {
+    return new Promise((resolve, reject) => { const reader = new w.FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsText(this); });
+  };
+  if (!w.Blob.prototype.arrayBuffer) w.Blob.prototype.arrayBuffer = function () {
+    return new Promise((resolve, reject) => { const reader = new w.FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsArrayBuffer(this); });
+  };
   // Imported browser modules use global timers. Dispose them with their window,
   // just as a real navigation does, instead of leaving Node timers after a test.
   const nativeTimers = Object.fromEntries(['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']

@@ -2,7 +2,7 @@
 // 곡선 = 지금부터 그 시점까지 쌓인 수(누적). 그래서 각 지점의 높이·숫자가 곧 그 기간 버튼을 눌렀을 때의 수다.
 // 무엇을 세는지는 화면이 정한다: 탐지(통합 관제·보안 이벤트) · 임계 초과 구간(인프라) · 조치 이력(조치 이력).
 // 선택한 기간까지는 밝게, 그 너머는 흐리게. 지점을 누르면 기간 버튼과 같은 동작(data-hours)을 한다.
-import {esc} from './format.js?v=ui-1';
+import {esc} from './format.js?v=q6-ui-1';
 
 const HOUR=3600000;
 export const PERIOD_STOPS=Object.freeze([{hours:0,label:'지금'},{hours:.25,label:'15분'},{hours:1,label:'1시간'},{hours:24,label:'1일'},{hours:168,label:'1주일'}]);
@@ -47,7 +47,7 @@ export function periodTrackMarkup(times,hours,now,{noun='탐지',unit='건'}={})
  return `<div class="pt" role="group" aria-label="조회 기간: 지금부터 과거로. 곡선은 지금부터 쌓인 ${esc(noun)} 수">
  <svg class="pt-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
   <defs><clipPath id="pt-sel"><rect x="0" y="0" width="${selX.toFixed(1)}" height="${H}"/></clipPath>
-  <linearGradient id="pt-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#32d4be" stop-opacity=".42"/><stop offset="1" stop-color="#32d4be" stop-opacity=".04"/></linearGradient></defs>
+  <linearGradient id="pt-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e8f80" stop-opacity=".42"/><stop offset="1" stop-color="#0e8f80" stop-opacity=".04"/></linearGradient></defs>
   <line class="pt-base" x1="0" x2="${W}" y1="${BASE}" y2="${BASE}"/>
   <path class="pt-area-dim" d="${area}"/><path class="pt-line-dim" d="${line}"/>
   <g clip-path="url(#pt-sel)"><path class="pt-area" d="${area}" fill="url(#pt-fill)"/><path class="pt-line" d="${line}"/></g>

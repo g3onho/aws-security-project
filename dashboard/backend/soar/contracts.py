@@ -17,9 +17,12 @@ from urllib.parse import quote
 from .errors import Problem
 from .guidance import control_title
 from .history_repository import HistoryRepository
+from .remediation_plans import resolve as resolve_plan
 from .repositories.correlations import apply as apply_correlations
 from .scope import matches as scope_matches
 from .store import encode, now_ms
+
+EXTERNAL_KEEP_MS = 30 * 86400 * 1000  # 조치 기록 보존 기간(30일)과 같게 유지
 
 ACTION_STATES = {
     "PENDING_APPROVAL", "APPROVED", "CANCELLED", "QUEUED", "RUNNING", "EXECUTED",
@@ -134,9 +137,17 @@ def measurement(value):
             "resource": value.get("resource")}
 
 
-def event_dto(event, allowed_actions):
+def dashboard_action(event, project_vpc_id):
+    """대시보드에서 조치할 수 있는 탐지인지(계획만 본다. 권한·현재 상태는 조치 확인창이 읽는다)."""
+    plan = resolve_plan(event, project_vpc_id)
+    if not plan["supported"]:
+        return None
+    return {"playbookId": plan["playbookId"], "title": plan["title"], "category": plan["category"]}
+
+
+def event_dto(event, allowed_actions, action=None):
     plan = event.get("plan") or {}
-    return {"id": event["id"], "title": event["title"], "severity": event["severity"],
+    return {"dashboardAction": action, "id": event["id"], "title": event["title"], "severity": event["severity"],
             "resource": event["resource"], "accountId": event.get("accountId"),
             "region": event["region"], "source": event["source"], "scenario": event["scenario"],
             "actionState": action_state(event), "version": event.get("version", 1),
@@ -182,6 +193,26 @@ class StandardService:
         self.history = HistoryRepository(store)
         self.secret = str(cursor_secret).encode()
         self.writes_enabled = writes_enabled
+        self.project_vpc_id = None  # 앱 조립 때 설정(기본 보안그룹 조치 가능 여부 판단용)
+        self.remediations = None   # 앱 조립 때 RemediationService 를 붙인다(조치 이력에 대시보드 조치를 싣는다)
+
+    def visible_events(self, actor):
+        """이 사용자에게 보이는 탐지(원클릭 조치 서비스가 계획을 만들 때 쓴다)."""
+        return self._events(actor, self.workflow.principal(actor))
+
+    def _event_sync_warning(self):
+        """전체 열린 탐지 목록을 믿을 수 없으면 사라짐을 외부 해결로 추정하지 않는다."""
+        sync_status = getattr(self.provider, "sync_status", None)
+        if sync_status is None:
+            return None
+        try:
+            status = sync_status("events")
+        except Exception:  # noqa: BLE001 — 동기화 상태 자체를 못 읽으면 보수적으로 보류한다.
+            logging.getLogger(__name__).exception("event sync status read failed")
+            return "탐지 동기화 상태를 읽지 못해 외부 해결 추정을 보류했습니다."
+        if status and status.get("warnings"):
+            return "탐지 동기화가 불완전해 외부 해결 추정을 보류했습니다."
+        return None
 
     def _decode_cursor(self, token):
         try:
@@ -229,6 +260,11 @@ class StandardService:
         # broadens the current principal, including when a session is reused.
         connected = getattr(self.provider, "connected", False)
         source = self.provider.observations({}) if connected else self.workflow.events()
+        if connected and not self._event_sync_warning():
+            try:  # 열린 탐지를 완전히 읽었을 때만 장부에 반영(읽기 실패는 위에서 예외라 여기 오지 않는다).
+                self.store.observe_events(source, now_ms(), EXTERNAL_KEEP_MS)
+            except Exception:  # noqa: BLE001 — 부가 기록. 실패해도 목록은 그대로.
+                logging.getLogger(__name__).exception("event ledger update failed")
         if connected and hasattr(self.provider, "correlations"):
             try:
                 source = apply_correlations(source, self.provider.correlations())
@@ -297,7 +333,8 @@ class StandardService:
         q, binding, marker = self._query(kind, raw, principal)
         events = self._events(actor, principal)
         if kind == "events":
-            rows = [{**event_dto(event, self.workflow.allowed_actions(event, actor) if self.writes_enabled else []), "_sortAt": event["at"]}
+            rows = [{**event_dto(event, self.workflow.allowed_actions(event, actor) if self.writes_enabled else [],
+                                   dashboard_action(event, self.project_vpc_id)), "_sortAt": event["at"]}
                     for event in self._filtered(events, q)]
             return self._page(rows, q, binding, marker)
         if kind == "summary":
@@ -645,9 +682,60 @@ class StandardService:
                 and all(not q.get(field) or q[field] == row.get(field) for field in ("eventId", "actionId", "jobId"))]
         result = self._page(rows, q, binding, marker)
         result["jobs"] = sorted(selected_jobs, key=lambda row: (row["createdAt"], row["jobId"]), reverse=True)
+        if self.remediations is not None:
+            try:
+                result["remediations"] = self.remediations.history_items(q, principal)
+            except Exception:  # noqa: BLE001 — 부가 기록. 실패를 0건으로 위장하지 않고 경고로 알린다.
+                logging.getLogger(__name__).exception("remediation history read failed")
+                result["remediations"] = []
+                notes["warnings"].append("대시보드 조치 기록을 읽지 못했습니다.")
+                notes["partial"] = True
+        result["external"] = self._external_resolved(q, principal, notes)
         if notes["warnings"]:
             result["_warnings"], result["_partial"] = notes["warnings"], notes["partial"]
         return result
+
+    def _external_resolved(self, q, principal, notes):
+        """열린 탐지에서 사라졌는데 대시보드·자동 조치 기록이 없는 것 = '외부 해결(추정)'. 사라진 이유는 알 수 없으므로
+        확정하지 않는다. 조치 기록을 읽지 못한 항목은 외부 해결로 단정하지 않고 건너뛴다."""
+        if not getattr(self.provider, "connected", False):
+            return []
+        warning = self._event_sync_warning()
+        if warning:
+            notes["warnings"].append(warning)
+            notes["partial"] = True
+            return []
+        out = []
+        for gone in self.store.gone_events(q["from"], q["to"]):
+            if ((q.get("eventId") and q["eventId"] != gone["id"])
+                    or any(q.get(key) and q[key] != gone.get(key) for key in ("region", "resource"))):
+                continue
+            if not scope_matches({"accountId": gone.get("accountId"), "region": gone.get("region"),
+                                  "resource": gone.get("resource")}, principal):
+                continue
+            with self.store.connect() as db:
+                if db.execute("SELECT 1 FROM remediations WHERE event_id=? LIMIT 1", (gone["id"],)).fetchone():
+                    continue
+            external = gone.get("externalFindingId")
+            finding_ids = [external] if external else None
+            if finding_ids and ":guardduty:" in external and "/finding/" in external:
+                finding_ids.append(external.rsplit("/finding/", 1)[-1])
+            local = {"warnings": [], "partial": False}
+            records = self._automation_records(principal, local, finding_ids) if finding_ids else []
+            if local["partial"]:
+                notes["warnings"].append("일부 외부 해결 판정은 자동조치 기록을 읽지 못해 보류했습니다.")
+                notes["partial"] = True
+                continue
+            if any(r.get("decision") in ("auto-executed", "auto-skipped") for r in records or []):
+                continue
+            with self.store.connect() as db:
+                if db.execute("SELECT 1 FROM audit WHERE event_id=? LIMIT 1", (gone["id"],)).fetchone():
+                    continue
+            out.append({"id": "external:" + gone["id"], "eventId": gone["id"], "title": gone.get("title"),
+                        "resource": gone.get("resource"), "severity": gone.get("severity"), "region": gone.get("region"),
+                        "controlId": gone.get("controlId"), "resolvedAt": iso(gone["goneAt"]),
+                        "lastSeenAt": iso(gone["lastSeen"]), "dataMode": "live"})
+        return out
 
     def command(self, action, event_id, body, actor, key, request_id):
         self.provider.require_ready()

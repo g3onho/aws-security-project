@@ -15,7 +15,7 @@ test('read-only accounts get no change buttons and no password reveal',async t=>
  await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');
  await until(()=>$('[data-block]')&&$('.hp-steps'),'honeypot did not render');
- assert.equal($('#session-user').textContent,'leader · 승인 담당');
+ assert.equal($('#session-user').textContent,'leader');
  assert.equal(document.querySelectorAll('[data-hp-release],[data-hp-period],[data-hp-allow]').length,0);
  assert(document.querySelector('[data-block]').textContent.includes('권한 없음'));
  assert($('#hp-blocklist').textContent.includes('조치 담당 계정만 해제·기간 변경·예외 등록을 할 수 있습니다'));

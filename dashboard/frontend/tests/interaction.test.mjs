@@ -20,7 +20,7 @@ test('canonical events, vulnerabilities, and history render without legacy reque
  const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content .event-trend-widget'),'overview did not render');
- assert.equal($('#data-mode').textContent,'실데이터');
+ assert.equal($('#data-mode').hidden,true,'연결 정상이면 실데이터 표시를 숨긴다');
  await until(()=>$('#content .event-trend-chart'));
  assert.equal($('#content .event-trend-chart').getAttribute('role'),'img');
  assert($('#content .event-trend-widget').textContent.includes('시간대별 탐지 추이'));
@@ -31,7 +31,8 @@ test('canonical events, vulnerabilities, and history render without legacy reque
  click('#content .event-link');
  await until(()=>$('#event-dialog').open&&$('#dialog-content').textContent.includes('i-fixture'));
  assert($('#dialog-content').textContent.includes('무엇이 문제인가'));
- await until(()=>$('#event-history')?.textContent.includes('자동 조치 판정 기록이 없습니다'),'event history loads through the Store');
+ await until(()=>network.calls.some(call=>call.pathname==='/api/history'),'경로 지도용 기록은 Store 를 통해 읽는다');
+ assert(!$('#event-history'),'상세에는 조치 기록 영역이 없다');
  assert(network.calls.some(call=>call.pathname==='/api/history'&&call.url.searchParams.get('eventId')==='EVT-0003'));
  assert.equal($('#dialog-content').querySelector('[data-action="approve"]'),null);
  click('#dialog-content [data-action="close"]');
@@ -39,7 +40,6 @@ test('canonical events, vulnerabilities, and history render without legacy reque
  await until(()=>$('#vulns')?.textContent.includes('CVE-2026-0001'),'vulnerability view did not render');
  assert($('#vulns').textContent.includes('Inspector'));
  assert($('#vulns .cve-group'),'CVE 는 서버×패키지 묶음으로 보여야 한다');
- assert($('#vulns').textContent.includes('실제 업데이트 가능 여부'));
  assert.match($('#vulns .view-summary').textContent,/고유 CVE\s*2종\s*· 서버별 finding 5건/);
  assert.equal($('#vulns .vuln-summary').querySelectorAll('button').length,4,'요약 필터는 네 묶음만 보여준다');
  assert.match($('#vulns .vuln-summary').textContent,/높음\s*1/);

@@ -147,6 +147,7 @@ resource "aws_instance" "dashboard" {
     honeypot_log_group        = var.honeypot_log_group
     honeypot_alarm_name       = var.honeypot_alarm_name
     private_nacl_id           = var.private_nacl_id
+    project_vpc_id            = var.vpc_id
     vpc_cidr                  = var.vpc_cidr
     findings_table            = var.findings_table
     vulnerabilities_table     = var.vulnerabilities_table
@@ -161,7 +162,7 @@ resource "aws_instance" "dashboard" {
     dvwa_target_ip = var.enable_dvwa_instance ? aws_instance.web_dvwa[0].public_ip : ""
     # 웹 공격(hydra) 대상 URL — ALB:8081(WAF 경유). DVWA IP 직접은 WAF 를 안 타 빨간선이 안 뜬다.
     dvwa_web_url = var.enable_alb && var.enable_dvwa_instance ? "http://${aws_lb.main[0].dns_name}:8081" : ""
-    # 코드 zip 의 MD5. 코드가 바뀌면 user_data 가 바뀌어 인스턴스가 새로 뜬다.
+    # 새 인스턴스의 부팅 시 내려받을 코드 버전. 기존 인스턴스는 SSM 으로 제자리 배포한다.
     code_version = var.enable_dashboard_deploy ? data.archive_file.dashboard[0].output_md5 : "none"
   })
 
@@ -169,6 +170,13 @@ resource "aws_instance" "dashboard" {
   depends_on = [aws_s3_object.dashboard_code]
 
   user_data_replace_on_change = true
+
+  # SQLite 계정·감사·수동 조치 이력이 로컬 디스크에 있어 코드 변경만으로 인스턴스를
+  # 교체하지 않는다. 기존 서버의 코드·환경 변수는 SSM 제자리 배포로 갱신한다.
+  # 부팅 구성 자체를 바꿔야 할 때는 데이터 보존 절차를 확인한 뒤 -replace 로 교체한다.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-dashboard"

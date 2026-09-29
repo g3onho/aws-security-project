@@ -16,7 +16,7 @@ export function backoff(attempt){
  const cap=Math.min(RETRY.maxMs,RETRY.baseMs*2**attempt);
  return Math.round(cap/2+timers.random()*cap/2); // 지터: 여러 탭이 같은 순간에 몰리지 않게
 }
-class HttpError extends Error{constructor(message,status){super(message);this.status=status;}}
+class HttpError extends Error{constructor(message,status,code){super(message);this.status=status;this.code=code;}}
 
 async function once(url,options,ctx){
  // 시간 제한과 호출자의 중단 신호를 하나로 묶는다(구현이 다른 AbortSignal 끼리도 동작하게 직접 연결).
@@ -48,7 +48,7 @@ export async function request(url,options={},ctx={}){
    await timers.sleep(backoff(attempt),options.signal);continue;
   }
   let payload;try{payload=await response.json();}catch{throw new HttpError('서버 응답을 읽을 수 없습니다.',response.status);}
-  if(!response.ok)throw new HttpError(payload?.title||payload?.error?.message||'서버 요청에 실패했습니다.',response.status);
+  if(!response.ok)throw new HttpError(payload?.title||payload?.error?.message||'서버 요청에 실패했습니다.',response.status,payload?.error?.code||payload?.code);
   return payload;
  }
 }

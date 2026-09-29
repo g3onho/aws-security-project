@@ -14,6 +14,7 @@ test('buttons show only on the five screens and never call the AI on their own',
     seen[view] = !$('#page-exports').hidden;
   }
   assert.deepEqual(seen, {events: true, vulnerabilities: true, infrastructure: true, responses: false, drills: true, honeypot: true, overview: false});
+  await until(() => !$('#refresh').disabled, 'last view did not finish loading');
   assert.equal(bodies.length, 0, 'the model is only called when the button is pressed');
   assert.deepEqual(errors, []);
 });

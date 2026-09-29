@@ -1,12 +1,12 @@
 // UI 가 Store 에 요청하는 유일한 경로(설계 2.1-1·4). 통신은 api/client, 변환은 adapters 가 맡는다.
-import {request as send} from './api/client.js?v=local-2';
-import {endpoints} from './api/endpoints.js?v=local-2';
-import {envelope,listEnvelope,requireContract,isObject,warningsOf} from './api/validators.js?v=local-2';
-import {adaptEvents,ACTION_LABELS} from './adapters/events.js?v=local-2';
-import {adaptVulnerabilities} from './adapters/vulnerabilities.js?v=local-2';
-import {adaptHistory} from './adapters/history.js?v=local-2';
-import {createPoller} from './polling.js?v=local-2';
-import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=local-2';
+import {request as send} from './api/client.js?v=q6-local-2';
+import {endpoints} from './api/endpoints.js?v=q6-local-2-l1';
+import {envelope,listEnvelope,requireContract,isObject,warningsOf} from './api/validators.js?v=q6-local-2';
+import {adaptEvents,ACTION_LABELS} from './adapters/events.js?v=q6-local-2-l1';
+import {adaptVulnerabilities} from './adapters/vulnerabilities.js?v=q6-local-2-l1';
+import {adaptHistory} from './adapters/history.js?v=q6-local-2';
+import {createPoller} from './polling.js?v=q6-local-2';
+import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=q6-local-2';
 
 const listeners=new Set();
 export function subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener);}
@@ -197,7 +197,9 @@ export const actions={
    const result=await pages(endpoints.history,q);const adapted=adaptHistory(result.items,result.extra.jobs);
    data.historyWeek=adapted.rows;notify('history');
    markRequest('history',{status:'success',lastUpdated:milliseconds(result.meta?.asOf),requestId:result.meta?.requestId||null,error:null});
-   return {items:adapted.rows.filter(row=>historyAt(row)>=from),jobs:adapted.jobs,warnings:unique([...result.warnings,...adapted.warnings]),partial:result.meta?.partial===true};
+   const remediations=(Array.isArray(result.extra.remediations)?result.extra.remediations:[]).filter(row=>isObject(row)&&Date.parse(row.createdAt)>=from);
+   const external=(Array.isArray(result.extra.external)?result.extra.external:[]).filter(row=>isObject(row)&&Date.parse(row.resolvedAt)>=from);
+   return {items:adapted.rows.filter(row=>historyAt(row)>=from),jobs:adapted.jobs,remediations,external,warnings:unique([...result.warnings,...adapted.warnings]),partial:result.meta?.partial===true};
   }catch(error){markRequest('history',{status:'error',error:error.message});throw error;}
  },
  async drillsCatalog(){
@@ -290,6 +292,11 @@ export const actions={
  // 변경 요청은 자동 재시도하지 않는다(client.js). 같은 화면 조작 한 번 = Idempotency-Key 하나.
  async blocklistRelease(ip,body){return blocklistWrite('blocklistRelease',endpoints.blocklistRelease(ip),'POST',body);},
  async blocklistPatch(ip,body){return blocklistWrite('blocklistPatch',endpoints.blocklistPatch(ip),'PATCH',body);},
+ // 대시보드 원클릭 조치. 실행은 자동 재시도하지 않는다(client.js). 키는 화면이 만들어 같은 창의 재시도에 재사용한다.
+ async remediationPlan(eventId){return envelope(await request(endpoints.remediationPlan(eventId))).data;},
+ async remediate(eventId,body,key){return envelope(await request(endpoints.remediate(eventId),{method:'POST',headers:{'Idempotency-Key':key},body:JSON.stringify(body)})).data;},
+ async remediations(eventId){const q=new URLSearchParams();if(eventId)q.set('eventId',eventId);return envelope(await request(endpoints.remediations+(q.size?'?'+q:''))).data;},
+ async remediationRecheck(id){return envelope(await request(endpoints.remediationRecheck(id),{method:'POST',body:'{}'})).data;},
  async logout(){session.controller?.abort();session.generation++;await request(endpoints.logout,{method:'POST',body:'{}'});reset();location.assign('/login');},
  // CSV 내보내기용 이벤트 전체(현재 기간·리전·위험도·상태 필터). 파일 만들기·내려받기는 화면(downloads.js) 몫이다.
  async exportEvents(){const {items}=await pages(endpoints.events,query());return {items};},

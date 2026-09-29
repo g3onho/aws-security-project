@@ -6,7 +6,7 @@
   <title>AWS Security Operations · 로그인</title>
   <link rel="stylesheet" href="/static/css/app.css">
   <link rel="stylesheet" href="/static/css/local.css">
-  <script type="module" src="/static/js/ui/pages/login.js?v=ui-1"></script>
+  <script type="module" src="/static/js/ui/pages/login.js?v=q5-ui-1"></script>
 </head>
 <body class="login-page">
   <main class="login-card">
@@ -17,11 +17,13 @@
       <label for="username">아이디</label>
       <input id="username" autocomplete="username" required maxlength="64" value="admin">
       <label for="password">암호</label>
-      <input id="password" type="password" autocomplete="current-password" required maxlength="256" value="rapa6074!">
+      <div class="password-field">
+        <input id="password" type="password" autocomplete="current-password" required maxlength="256" value="rapa6074!">
+        <button type="button" id="toggle-password" class="toggle-password" aria-label="암호 표시" aria-pressed="false">표시</button>
+      </div>
       <button class="primary-button" type="submit">로그인</button>
       <p id="login-error" role="alert"></p>
     </form>
-    <p class="muted">첫 실행 계정은 backend/instance/initial-login.txt에서 확인하세요.</p>
   </main>
 </body>
 </html>

@@ -1,4 +1,4 @@
-"""The ten authenticated schema-v1 routes; /health belongs to the app factory."""
+"""The authenticated schema-v1 routes (읽기 6 + 명령 4 + 원클릭 조치 4 + 실습); /health belongs to the app factory."""
 from flask import Blueprint, current_app, g, jsonify, request
 
 from .contracts import envelope
@@ -13,6 +13,10 @@ def service():
 
 def drills():
     return current_app.extensions["drill_service"]
+
+
+def remediation():
+    return current_app.extensions["remediation_service"]
 
 
 def read(kind):
@@ -82,6 +86,35 @@ def execute():
 @bp.post("/verify")
 def verify():
     return command("verify")
+
+
+# --- 대시보드 원클릭 조치: 미리보기 · 실행 · 기록 · 재검증 ---------------------------------------------
+@bp.get("/api/events/<string:event_id>/remediation")
+def remediation_plan(event_id):
+    return jsonify(envelope(remediation().plan(event_id, g.actor), g.request_id))
+
+
+@bp.post("/api/events/<string:event_id>/remediate")
+def remediation_execute(event_id):
+    if not request.is_json:
+        raise Problem(400, "Content-Type: application/json이 필요합니다.", "INVALID_PARAMETER")
+    if not current_app.config["WRITE_ENABLED"]:
+        raise Problem(403, "현재 조회 전용 모드입니다.", "WRITE_DISABLED")
+    data, status = remediation().execute(event_id, request.get_json(silent=True), g.actor,
+                                         request.headers.get("Idempotency-Key"), g.request_id)
+    return jsonify(envelope(data, g.request_id)), status
+
+
+@bp.get("/api/remediations")
+def remediation_list():
+    return jsonify(envelope(remediation().list(dict(request.args.lists()), g.actor), g.request_id))
+
+
+@bp.post("/api/remediations/<string:remediation_id>/recheck")
+def remediation_recheck(remediation_id):
+    if not request.is_json:
+        raise Problem(400, "Content-Type: application/json이 필요합니다.", "INVALID_PARAMETER")
+    return jsonify(envelope(remediation().recheck(remediation_id, g.actor), g.request_id))
 
 
 @bp.get("/api/drills/catalog")

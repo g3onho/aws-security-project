@@ -1,46 +1,87 @@
-// 조치 이력(v23): 자동 조치 실행 기록과 사람이 대응해야 하는 기록을 나눠 보여준다. '실행 완료'는 재검증 전.
-import {$,api} from '../context.js?v=ui-1';
-import {esc,format,milliseconds,shortResource} from '../components/format.js?v=ui-1';
-import {loadPanel} from '../components/panel.js?v=ui-1';
-import {automationState,changeList,recordTitle,DECISION_KO} from '../components/remediation.js?v=ui-1';
-// ── 조치 이력 ──────────────────────────────────────────────
-const at=r=>format(milliseconds(r.lastSeenAt||r.createdAt));
-// 원래 탐지가 지금 조회 범위에 있으면 상세 창으로 잇는다.
-const eventLink=r=>r.eventId&&api.get(r.eventId)?`<button class="link-button" data-event="${esc(r.eventId)}">탐지 보기</button>`:'';
-// NACL 차단 기록의 자원은 'acl-… ← 10.0.2.15/32' 형태 — 줄이지 않고 그대로 보여준다.
+// 조치 이력(v32): 조치를 '시도'한 기록을 시간순 한 목록으로 보여준다. 줄마다 [방식]·[실행] 칩.
+// 고쳐졌는지는 여기서 판정하지 않는다 — 보안 이벤트 목록에서 이벤트가 사라지는지로 확인한다(실행 성공 ≠ 해결).
+// 아직 조치하지 않은 취약 항목은 여기 넣지 않는다 — 보안 이벤트 화면의 '수동 대응' 버튼(팝업)에서 확인한다.
+import {$,api} from '../context.js?v=q6-ui-1-l1';
+import {esc,format,milliseconds,shortResource} from '../components/format.js?v=q6-ui-1';
+import {loadPanel} from '../components/panel.js?v=q6-ui-1';
+import {recordTitle,DECISION_KO,AUTOMATION_KO,REMEDIATION_STATE} from '../components/remediation.js?v=q6-ui-1';
+// ── 분류 ───────────────────────────────────────────────────
+export const WHO={auto:['자동','who'],dashboard:['대시보드','who'],external:['외부 해결(추정)','muted']};
+export const EXEC={success:['실행 성공','ok'],failed:['실행 실패','bad'],running:['실행 중','run'],skipped:['실행 안 함','muted']};
+export const VERIFY={passed:['재검증 통과','ok'],failed:['재검증 미통과','bad'],error:['재검증 읽기 실패','warn'],none:['재검증 안 함','muted'],running:['재검증 중','run']};
+// [실행, 재검증]. 실행이 실패·진행 중이면 재검증은 해당 없음(null).
+const AUTO_STATE={SUCCESS:['success','none'],NO_CHANGE:['success','none'],IN_PROGRESS:['running',null],FAILED:['failed',null],TIMED_OUT:['failed',null],CANCELLED:['failed',null]};
+const RUN_STATE={VERIFIED:['success','passed'],ALREADY_COMPLIANT:['skipped','passed'],EXEC_FAILED:['failed',null],START_FAILED:['failed',null],
+ NOT_RESOLVED:['success','failed'],VERIFY_ERROR:['success','error'],STARTING:['running',null],RUNNING:['running',null],VERIFYING:['success','running']};
+const LEGACY_STATE={QUEUED:['running',null],RUNNING:['running',null],VERIFY_QUEUED:['success','running'],VERIFYING:['success','running'],VERIFIED:['success','passed'],
+ EXECUTION_FAILED:['failed',null],VERIFICATION_ERROR:['success','error'],VERIFICATION_FAILED:['success','failed'],EXECUTED:['success','none']};
+const JOB_KO={QUEUED:'대기',RUNNING:'실행 중',SUCCEEDED:'완료',FAILED:'실패'};
+const at=r=>format(milliseconds(r.lastSeenAt||r.updatedAt||r.createdAt||r.resolvedAt));
+const stamp=r=>milliseconds(r.lastSeenAt||r.updatedAt||r.createdAt||r.resolvedAt)||0;
+const eventLink=id=>id&&api.get(id)?`<button class="link-button" data-event="${esc(id)}">탐지 보기</button>`:'';
 const resourceText=r=>!r.resource?'—':r.resource.includes('←')?r.resource:shortResource(r.resource);
-function target(r){return `<div class="record-target"><strong>${recordTitle(r)}</strong><small><span class="resource-id" title="${esc(r.resource||'')}">${esc(resourceText(r))}</span>${eventLink(r)}</small></div>`;}
-// 자동 실행: 무엇을(플레이북) 어떻게 바꿨는지(SSM 보고값 전/후).
-function executedRow(r){
- const change=r.execution?changeList(r.execution):`<p class="muted-mini">${esc(r.beforeState?.text||'—')} → ${esc(r.afterState?.text||'—')}</p>`;
- return `<tr><td>${at(r)}</td><td>${target(r)}</td><td><span title="${esc(r.executionId?'SSM 실행 '+r.executionId:'')}">${esc(r.playbookId||DECISION_KO[r.decision]||r.decision)}</span><br>${automationState(r.automationStatus)}</td><td class="change-cell">${change}</td><td class="reason-cell">${esc(r.reason||'—')}</td></tr>`;
+const firstLine=execution=>{const l=[...(execution?.removed||[]).map(x=>'− '+x),...(execution?.added||[]).map(x=>'+ '+x)];return l.length?l[0]+(l.length>1?` 외 ${l.length-1}줄`:''):'';};
+function normalize(data){
+ const rows=[];
+ const add=(row,[exec,verify])=>rows.push({...row,exec,verify});
+ for(const r of data.items||[]){
+  if(r.source==='automatic'){
+   if(!['auto-executed','auto-skipped'].includes(r.decision))continue;  // 알림만·판단만은 조치 시도가 아니다
+   const detail=[r.reason,firstLine(r.execution),r.execution?.failureMessage].filter(Boolean)[0]||'';
+   add({who:'auto',at:stamp(r),time:at(r),title:recordTitle(r),resource:resourceText(r),full:r.resource,
+    eventId:r.eventId,what:r.playbookId||DECISION_KO[r.decision]||r.decision,detail,state:AUTOMATION_KO[r.automationStatus]||r.automationStatus||'',
+    tip:r.executionId?'SSM 실행 '+r.executionId:''},AUTO_STATE[r.automationStatus]||['success','none']);
+  }else add({who:'dashboard',at:stamp(r),time:at(r),title:esc(r.eventId),resource:'—',full:'',eventId:r.eventId,
+   what:DECISION_KO[r.decision]||r.decision,detail:r.reason||'',state:r.actionState||'',tip:''},LEGACY_STATE[r.actionState]||['success','none']);
+ }
+ for(const r of data.remediations||[])add({who:'dashboard',at:stamp(r),time:at(r),
+  title:esc(r.eventTitle||r.controlId||r.eventId),resource:resourceText(r),full:r.resource,eventId:r.eventId,what:r.playbookId,
+  detail:r.error||r.verification?.text||r.reason||'',state:(REMEDIATION_STATE[r.state]||[r.state])[0],tip:r.executionId?'SSM 실행 '+r.executionId:'',by:r.actor},RUN_STATE[r.state]||['success','none']);
+ for(const r of data.jobs||[])add({who:'dashboard',at:stamp(r),time:at(r),
+  title:esc(r.eventId),resource:'—',full:'',eventId:r.eventId,what:r.jobId?`작업 ${r.jobId}`:(DECISION_KO[r.decision]||r.decision),detail:r.error||'',state:JOB_KO[r.status]||r.actionState||r.status||'',tip:''},
+  LEGACY_STATE[r.actionState]||({FAILED:['failed',null],SUCCEEDED:['success','none']})[r.status]||['running',null]);
+ // 외부 해결은 우리가 시도한 것이 아니므로 실행·재검증 칩이 없다.
+ for(const r of data.external||[])rows.push({who:'external',exec:null,verify:null,at:stamp(r),time:at(r),title:esc(r.title||r.eventId),resource:resourceText(r),full:r.resource,
+  eventId:r.eventId,what:'대시보드 기록 없이 사라짐',detail:'열린 탐지에서 사라졌고 대시보드·자동 조치 기록이 없어 외부에서 해결된 것으로 추정합니다. 실제 조치는 확인하지 못했습니다.',state:'',tip:'추정'});
+ return rows.sort((a,b)=>b.at-a.at);
 }
-// 수동 대응 필요·판단만: 왜 자동으로 안 고쳤는지(판정 이유)와 반복 횟수.
-function pendingRow(r){
- return `<tr><td>${at(r)}</td><td>${target(r)}</td><td>${esc(DECISION_KO[r.decision]||r.decision)}<br>${automationState(r.automationStatus)}</td><td class="reason-cell">${esc(r.reason||'판정 이유 기록 없음(이전 형식 기록)')}</td><td>${esc(r.occurrenceCount??1)}회</td></tr>`;
+// 같은 이벤트를 여러 번 시도했으면 마지막 시도만 본다. 마지막 시도가 실패했거나 재검증을 통과하지 못했으면 주의 대상.
+function attention(rows){
+ const latest=new Map();
+ for(const r of rows){if(r.who==='external')continue;const k=r.eventId||r.what+r.at;if(!latest.has(k)||latest.get(k).at<r.at)latest.set(k,r);}
+ const failed=[];
+ for(const r of latest.values()){
+  if(r.exec==='failed'){failed.push(r);r.attn='bad';}
+ }
+ return {events:latest.size,failed};
 }
-function manualRow(r){return `<tr><td>${at(r)}</td><td>${esc(r.eventId)}</td><td>${esc(DECISION_KO[r.decision]||r.decision)}</td><td>${esc(r.actionState)}</td><td>${esc(r.reason||'—')}</td></tr>`;}
-const table=(caption,heads,rows)=>`<div class="table-scroll"><table><caption class="sr-only">${caption}</caption><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
-const JOB_STATE={QUEUED:['대기','muted'],RUNNING:['실행 중','warn'],SUCCEEDED:['완료','ok'],FAILED:['실패','bad']};
-function jobState(status){const [label,kind]=JOB_STATE[status]||[status||'상태 미상','muted'];return `<span class="history-job-state ${kind}">${esc(label)}</span>`;}
-function historyBlock(title,count,description,content,wide=false){return `<section class="history-block${wide?' history-block-wide':''}"><div class="history-block-head"><div><h3>${title}</h3><p>${description}</p></div><b>${count}건</b></div>${content}</section>`;}
+const chip=([label,tone],extra='',cls='')=>`<span class="hist-chip ${cls||tone}"${extra}>${esc(label)}</span>`;
+function line(r){
+ const tipText=[r.state,r.tip].filter(Boolean).join(' · '),tip=tipText?` title="${esc(tipText)}"`:'';   // 상태 문구(재검증 전 등)는 칩 툴팁에 둔다
+ const way=chip(WHO[r.who],'','who'),run=r.exec?chip(EXEC[r.exec],tip):'<span class="muted-mini">—</span>';
+ return `<tr data-key="${esc(r.who+r.at+r.eventId+r.what)}"${r.attn?` class="attn-${r.attn}"`:''}><td class="hist-time">${r.time}</td><td class="hist-chips">${way}</td>
+  <td><div class="record-target"><strong>${r.title}</strong><small><span class="resource-id" title="${esc(r.full||'')}">${esc(r.resource)}</span>${eventLink(r.eventId)}</small></div></td>
+  <td class="hist-what"><b>${esc(r.what||'—')}</b>${r.detail?`<small class="hist-detail">${esc(r.detail)}</small>`:''}</td>
+  <td class="hist-run">${run}</td></tr>`;
+}
+function summary(all){
+ const tries=all.filter(r=>r.who!=='external'),a=attention(all);
+ const n=(key,value)=>tries.filter(r=>r[key]===value).length;
+ const alert=a.failed.length
+  ?`<strong>주의 필요</strong> 마지막 시도가 실패한 이벤트 ${a.failed.length}건 — 보안 이벤트의 '수동 대응'에서 다시 조치하세요.`
+  :`<strong>실패한 시도가 없습니다.</strong>`;
+ const last=tries.length?` · 마지막 시도 ${tries[0].time} KST`:'';
+ return `<div class="history-summary ${a.failed.length?'bad':'ok'}" role="status"><p>${alert}</p>
+  <small>시도 ${tries.length}건(이벤트 ${a.events}개) · 실행 성공 ${n('exec','success')} · 실행 실패 ${n('exec','failed')}${last}. 실행 성공이 해결은 아닙니다 — 이벤트가 목록에서 사라졌는지로 확인하세요.</small></div>`;
+}
 export function renderAudit(){
  return loadPanel($('#audit-log'),()=>api.history(),data=>{
-  const items=data.items||[],jobs=data.jobs||[];
   const warn=(data.warnings||[]).map(w=>`<p class="panel-error" role="status">${esc(w)}</p>`).join('');
-  const auto=items.filter(r=>r.source==='automatic'),manual=items.filter(r=>r.source!=='automatic');
-  const executed=auto.filter(r=>['auto-executed','auto-skipped'].includes(r.decision)),pending=auto.filter(r=>!executed.includes(r));
-  const failed=executed.filter(r=>['FAILED','TIMED_OUT','CANCELLED'].includes(r.automationStatus)).length;
-  const none='<p class="history-empty">선택 기간에 기록이 없습니다.</p>';
-  const autoContent=executed.length?table('자동 조치 실행 기록',['마지막 시각 (KST)','대상','조치 · 상태','바뀐 내용 (조치 직후 SSM 보고값)','판정 이유'],executed.map(executedRow).join('')):none;
-  const pendingContent=pending.length?table('수동 대응 필요 기록',['마지막 시각 (KST)','대상','판정 · 상태','판정 이유','횟수'],pending.map(pendingRow).join('')):none;
-  const manualContent=manual.length?table('대시보드 수동 기록',['시각 (KST)','이벤트','작업','상태','사유'],manual.map(manualRow).join('')):none;
-  const jobsContent=jobs.length?table('작업 상태 목록',['작업 ID','이벤트','상태','오류'],jobs.map(job=>`<tr><td>${esc(job.jobId)}</td><td>${esc(job.eventId)}</td><td>${jobState(job.status)}</td><td>${esc(job.error||'—')}</td></tr>`).join('')):none;
-  const sections=`<p class="muted history-summary">자동 조치 ${auto.length}건 · 수동 대응 판정 ${pending.length}건 · 대시보드 수동 기록 ${manual.length}건 · 작업 ${jobs.length}건${failed?` · 자동 실행 실패 ${failed}건`:''}. 반복 판정은 한 줄에 횟수로 표시합니다.</p>
-   <div class="history-sections">${historyBlock('자동 조치',executed.length,'SSM 실행 결과와 변경 전·후 보고값. 실행 성공은 보안 문제 해결을 뜻하지 않습니다.',autoContent)}
-   ${historyBlock('수동 대응 · 판단만',pending.length,'자동 조치 대상이 아니거나 조건이 맞지 않아 담당자에게 전달된 판정입니다.',pendingContent)}
-   ${historyBlock('대시보드 수동 기록',manual.length,'화면에서 사람이 남긴 조치와 사유입니다.',manualContent)}
-   ${historyBlock('작업 상태',jobs.length,'비동기 작업의 진행 상태와 오류를 표시합니다.',jobsContent,true)}</div>`;
-  return warn+sections+'<p class="muted">이력은 시간·리전·자원 범위로 조회합니다. 조치 기록은 30일 보존합니다.</p>';
+  const rows=normalize(data),sum=summary(rows);   // summary 가 attn 표시를 rows 에 남기므로 표보다 먼저 계산한다
+  const table=rows.length?`<div class="table-scroll"><table class="history-grid hist-list"><caption class="sr-only">조치 시도 ${rows.length}건</caption>
+   <colgroup><col><col><col><col><col></colgroup><thead><tr><th>시간 (KST)</th><th>방식</th><th>대상</th><th>내용</th><th>실행</th></tr></thead><tbody>${rows.map(line).join('')}</tbody></table></div>`
+   :'<p class="history-empty">선택 기간에 조치 기록이 없습니다.</p>';
+  return warn+sum+table+`
+   <p class="muted">이력은 시간·리전·자원 범위로 조회합니다. 조치 기록은 30일 보존합니다. 아직 조치하지 않은 취약 항목은 보안 이벤트에서 확인하세요.</p>`;
  },'조치 이력');
 }

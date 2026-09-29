@@ -3,9 +3,9 @@
 // 그림의 선·번호 배지에 옮길 뿐이다. AI 가 그림을 만들지 않는다(없는 경로를 그럴듯하게 그리는 위험을 피한다).
 // 단계의 상태(done/missing/failed/pending/unknown)를 색뿐 아니라 배지 글자(✓ – ✕ … ?)로도 표기한다.
 // 공격자가 조종할 수 있는 문자열(단계 detail)은 esc() 를 거쳐 <title>·텍스트로만 넣는다. 고정 라벨만 원문 그대로 쓴다.
-import {esc} from '../components/format.js?v=ui-1';
+import {esc} from '../components/format.js?v=q6-ui-1';
 
-const MINT='#32d4be',SOFT='#85b1d5',AMBER='#d8ca78',RED='#ef777f',GRAY='#8fa295';
+const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const STATE={done:['완료','✓',MINT],missing:['기록 없음','–',GRAY],failed:['실패','✕',RED],pending:['진행 중','…',AMBER],unknown:['읽지 못함','?',AMBER]};
 
 // 단계 → 그림 위 위치(번호 배지). 번호는 실제 진행 순서다.
@@ -56,27 +56,42 @@ const ICON={ // 24×24 안에서 그린 단순 아이콘. 외부 글꼴·이미�
 const icon=(name,x,y,size,color)=>`<g transform="translate(${x-size/2} ${y-size/2}) scale(${size/24})" fill="none" stroke="${color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</g>`;
 
 // 노드 하나. active 면 밝게, 아니면 흐리게. glow 는 관측된 노드만.
+// 글씨가 상자(rect) 밖으로 나가지 않게: 폭을 어림해서 넘치면 textLength 로 상자 안에 맞춘다(글자 폭 압축).
+export const FONT={t:14.5,s:12.5};
+export function setFont(t,s){FONT.t=t;FONT.s=s;}
+function textWidth(text,fs,bold){
+ let em=0;
+ for(const ch of String(text).replace(/&[a-z#0-9]+;/g,'x')){
+  const c=ch.codePointAt(0);
+  em+=c>0x2e7f?1:/[A-Z0-9]/.test(ch)?.66:/[ilj.,:;'|·! ]/.test(ch)?.36:/[mwMW]/.test(ch)?.9:.58;
+ }
+ return em*fs*(bold?1.06:1);
+}
+function fitText(x,y,cls,text,avail,fs,bold){
+ const over=textWidth(text,fs,bold)>avail;
+ return `<text x="${x}" y="${y}" class="${cls}"${over?` textLength="${avail.toFixed(0)}" lengthAdjust="spacingAndGlyphs"`:''}>${text}</text>`;
+}
 function node({id,x,y,w=104,h=58,title,sub,ic,color=SOFT,active=true,extra=''}){
- const stroke=active?color:'#3a4a43',op=active?1:.55;
+ const stroke=active?color:'#d6dfdb',op=active?1:.55;
  return `<g class="hp-mp-node${active?' on':''}" data-node="${id}" opacity="${op}">
-  <rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="9" fill="#141d1a" stroke="${stroke}" stroke-width="${active?1.6:1}"${active?` filter="url(#hp-glow)"`:''}/>
+  <rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="9" fill="#eff4f3" stroke="${stroke}" stroke-width="${active?1.6:1}"${active?` filter="url(#hp-glow)"`:''}/>
   ${icon(ic,x-w/2+20,y-4,22,active?color:GRAY)}
-  <text x="${x-w/2+38}" y="${y-3}" class="hp-mp-t">${title}</text>
-  <text x="${x-w/2+38}" y="${y+13}" class="hp-mp-s">${sub}</text>${extra}</g>`;
+  ${fitText(x-w/2+38,y-3,'hp-mp-t',title,w-38-12,FONT.t,true)}
+  ${fitText(x-w/2+38,y+13,'hp-mp-s',sub,w-38-12,FONT.s,false)}${extra}</g>`;
 }
 
 const stepOf=(steps,key)=>steps?steps.find(s=>s.key===key)||null:null;
 const stateOf=(steps,key)=>steps?(stepOf(steps,key)?.state||'missing'):'idle';
 
 function edge(e,steps,first){
- if(e.dim)return `<path class="hp-mp-edge dim" d="${e.d}" fill="none" stroke="#3a4a43" stroke-width="1.6" stroke-dasharray="3 6"/>`;
+ if(e.dim)return `<path class="hp-mp-edge dim" d="${e.d}" fill="none" stroke="#d6dfdb" stroke-width="1.6" stroke-dasharray="3 6"/>`;
  const st=stateOf(steps,e.stage),color=ROLE_COLOR[e.role];
  const cls=st==='done'?'done':st==='pending'?'pending':st==='failed'?'failed':st==='unknown'?'unknown':'off';
- const col=st==='done'||st==='pending'?color:st==='failed'?RED:st==='unknown'?AMBER:'#3a4a43';
+ const col=st==='done'||st==='pending'?color:st==='failed'?RED:st==='unknown'?AMBER:'#d6dfdb';
  const delay=(e.order*0.45).toFixed(2);
  const label=e.label?`<text x="${e.lx}" y="${e.ly}" class="hp-mp-e" fill="${st==='done'?color:GRAY}">${e.label}</text>`:'';
  return `<g class="hp-mp-eg ${cls}" style="--d:${delay}s" data-edge="${e.id}" data-state="${st}">
-  <path d="${e.d}" fill="none" stroke="#25322d" stroke-width="5" stroke-linecap="round"/>
+  <path d="${e.d}" fill="none" stroke="#e6ecea" stroke-width="5" stroke-linecap="round"/>
   <path class="hp-mp-line" d="${e.d}" fill="none" stroke="${col}" stroke-width="${st==='done'?2.6:1.8}" stroke-linecap="round"${st==='failed'||st==='unknown'?' stroke-dasharray="2 6"':''}/>
   ${label}</g>`;
 }
@@ -89,7 +104,7 @@ function badge(stage,steps,first){
  const delay=(stage.n*0.45-.2).toFixed(2);
  return `<g class="hp-mp-badge" style="--d:${delay}s" data-stage="${stage.key}" data-state="${st}" tabindex="0" role="img" aria-label="${esc(tip)}">
   <title>${esc(tip)}</title>
-  <circle cx="${stage.x}" cy="${stage.y}" r="12.5" fill="#101614" stroke="${color}" stroke-width="1.8"/>
+  <circle cx="${stage.x}" cy="${stage.y}" r="12.5" fill="#f3f6f5" stroke="${color}" stroke-width="1.8"/>
   <text x="${stage.x}" y="${stage.y+4}" text-anchor="middle" class="hp-mp-n" fill="${color}">${stage.n}</text>
   <text x="${stage.x+15}" y="${stage.y-10}" class="hp-mp-m" fill="${color}">${mark}</text>
   ${after?`<text x="${stage.x}" y="${stage.y+27}" text-anchor="middle" class="hp-mp-time">${esc(after)}</text>`:''}</g>`;
@@ -97,6 +112,7 @@ function badge(stage,steps,first){
 
 // 지도 SVG. steps 가 null 이면 "대기"(IP 미선택·기간 내 공격 없음) 모드로 구조만 보여 준다.
 export function mapSvg(steps){
+ setFont(14.5,12.5);
  const first=steps?steps.find(s=>s.at)?.at:null;
  const done=k=>stateOf(steps,k)==='done';
  const connected=done('connect'),blocked=done('nacl');
@@ -107,20 +123,20 @@ export function mapSvg(steps){
  return `<svg class="hp-map-svg" viewBox="0 0 1240 650" role="group" aria-label="아키텍처 위 공격 경로" xmlns="http://www.w3.org/2000/svg">
  <defs>
   <filter id="hp-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  <pattern id="hp-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#1a2622" stroke-width="1"/></pattern>
-  <linearGradient id="hp-zone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#32d4be" stop-opacity=".07"/><stop offset="1" stop-color="#32d4be" stop-opacity=".01"/></linearGradient>
+  <pattern id="hp-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#ebf2f0" stroke-width="1"/></pattern>
+  <linearGradient id="hp-zone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e8f80" stop-opacity=".07"/><stop offset="1" stop-color="#0e8f80" stop-opacity=".01"/></linearGradient>
   <radialGradient id="hp-pulse"><stop offset="0" stop-color="${AMBER}" stop-opacity=".45"/><stop offset="1" stop-color="${AMBER}" stop-opacity="0"/></radialGradient>
  </defs>
- <rect width="1240" height="650" fill="#0f1513"/><rect width="1240" height="650" fill="url(#hp-grid)"/>
+ <rect width="1240" height="650" fill="#f3f6f5"/><rect width="1240" height="650" fill="url(#hp-grid)"/>
 
  <g class="hp-mp-zones">
-  <rect x="14" y="60" width="166" height="330" rx="12" fill="none" stroke="#2c3a34" stroke-dasharray="4 6"/><text x="28" y="82" class="hp-mp-z">INTERNET · EDGE</text>
-  <rect x="200" y="50" width="1024" height="342" rx="14" fill="url(#hp-zone)" stroke="#3b5148" stroke-width="1.4"/><text x="216" y="72" class="hp-mp-z">VPC 10.0.0.0/16</text>
-  <rect x="216" y="92" width="256" height="284" rx="10" fill="#111a17" stroke="#2f4139"/><text x="230" y="112" class="hp-mp-z">PUBLIC · WEB</text>
-  <rect x="490" y="92" width="316" height="284" rx="10" fill="#111a17" stroke="#2f4139"/><text x="504" y="112" class="hp-mp-z">PRIVATE · APP</text>
-  <rect x="826" y="92" width="386" height="284" rx="10" fill="#111a17" stroke="#2f4139"/><text x="840" y="112" class="hp-mp-z">PRIVATE · DB</text>
+  <rect x="14" y="60" width="166" height="330" rx="12" fill="none" stroke="#e1e8e5" stroke-dasharray="4 6"/><text x="28" y="82" class="hp-mp-z">INTERNET · EDGE</text>
+  <rect x="200" y="50" width="1024" height="342" rx="14" fill="url(#hp-zone)" stroke="#d2ded9" stroke-width="1.4"/><text x="216" y="72" class="hp-mp-z">VPC 10.0.0.0/16</text>
+  <rect x="216" y="92" width="256" height="284" rx="10" fill="#f1f6f4" stroke="#dde6e2"/><text x="230" y="112" class="hp-mp-z">PUBLIC · WEB</text>
+  <rect x="490" y="92" width="316" height="284" rx="10" fill="#f1f6f4" stroke="#dde6e2"/><text x="504" y="112" class="hp-mp-z">PRIVATE · APP</text>
+  <rect x="826" y="92" width="386" height="284" rx="10" fill="#f1f6f4" stroke="#dde6e2"/><text x="840" y="112" class="hp-mp-z">PRIVATE · DB</text>
   <rect x="481" y="82" width="740" height="302" rx="14" fill="none" stroke="${AMBER}" stroke-opacity=".55" stroke-dasharray="7 5"/><text x="1200" y="104" text-anchor="end" class="hp-mp-z" fill="${AMBER}">PRIVATE NACL · SOAR Deny 1~99</text>
-  <rect x="200" y="416" width="1024" height="218" rx="14" fill="none" stroke="#2f4139" stroke-dasharray="2 5"/><text x="216" y="438" class="hp-mp-z">탐지 · 자동 조치 (SIEM · SOAR)</text>
+  <rect x="200" y="416" width="1024" height="218" rx="14" fill="none" stroke="#dde6e2" stroke-dasharray="2 5"/><text x="216" y="438" class="hp-mp-z">탐지 · 자동 조치 (SIEM · SOAR)</text>
  </g>
 
  <g class="hp-mp-ctx">
@@ -140,7 +156,7 @@ export function mapSvg(steps){
   ${node({id:'inner',x:706,y:214,w:124,h:66,title:'내부 공격자',sub:'EC2 · 침투 가정',ic:'attacker',color:RED,active:connected||steps===null?connected:false})}
   ${node({id:'honeypot',x:1070,y:252,w:142,h:70,title:'허니팟(미끼)',sub:hpDetail,ic:'spark',color:AMBER,active:connected})}
   ${connected?`<circle class="hp-mp-pulse" cx="1070" cy="252" r="64" fill="url(#hp-pulse)"/>`:''}
-  <g class="hp-mp-gate" data-gate="${blocked?'closed':'open'}"><circle cx="841" cy="238" r="17" fill="#101614" stroke="${gateColor}" stroke-width="${blocked?2.4:1.4}"${blocked?' filter="url(#hp-glow)"':''}/>${icon('shield',841,238,20,gateColor)}</g>
+  <g class="hp-mp-gate" data-gate="${blocked?'closed':'open'}"><circle cx="841" cy="238" r="17" fill="#f3f6f5" stroke="${gateColor}" stroke-width="${blocked?2.4:1.4}"${blocked?' filter="url(#hp-glow)"':''}/>${icon('shield',841,238,20,gateColor)}</g>
   ${cut}
   ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Nova Lite',ic:'spark',color:SOFT,active:done('analysis')})}
   ${node({id:'logs',x:262,y:500,w:100,h:58,title:'Logs',sub:'/honeypot/*',ic:'logs',color:SOFT,active:done('alarm')})}

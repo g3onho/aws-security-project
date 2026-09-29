@@ -3,10 +3,10 @@
 // 시나리오 카탈로그(sources·response)와 실습 실행 상태만 그림에 옮긴다. 기록이 없는 단계를 성공으로 그리지 않는다.
 // 상태: done 완료 · pending 진행/대기 · failed 실패 · missing 기록 없음 · unknown 읽지 못함 · design 설계 경로(관측 근거 없음).
 // 이벤트 필드는 AWS·공격자가 조종할 수 있는 문자열이므로 esc() 를 거쳐 텍스트·툴팁으로만 넣는다.
-import {esc} from '../components/format.js?v=ui-1';
-import {icon,node} from './honeypot-map.js?v=ui-1';
+import {esc} from '../components/format.js?v=q6-ui-1';
+import {icon,node,setFont} from './honeypot-map.js?v=q6-ui-1-l1';
 
-const MINT='#32d4be',SOFT='#85b1d5',AMBER='#d8ca78',RED='#ef777f',GRAY='#8fa295';
+const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 export const FLOW_STATE={done:['완료','✓',MINT],pending:['진행·대기','…',AMBER],failed:['실패','✕',RED],missing:['기록 없음','–',GRAY],
  unknown:['읽지 못함','?',AMBER],design:['설계 경로','·',SOFT],idle:['대기','·',GRAY]};
 
@@ -97,7 +97,7 @@ export function scenarioStages(s,items=null){
   judge:none?st('missing','자동 조치 판정 없음'):dsn(`대응: ${response}`),
   act:none?st('missing','조치 없음'):auto?dsn('자동 조치(SSM Automation)'):manual?dsn('수동 승인 후 조치'):dsn(`대응: ${response}`),
   verify:none?st('missing','재검증 대상 아님'):dsn('실행 뒤 동일 조건 재검증')};
- return {stages,detectors,targetTitle:s.id,targetSub:s.purpose.slice(0,16),targetIcon:'host',mode:'scenario'};
+ return {stages,detectors,targetTitle:s.id,targetSub:s.purpose.length>9?s.purpose.slice(0,8)+'…':s.purpose,targetIcon:'host',mode:'scenario'};
 }
 
 // ── 그림 ─────────────────────────────────────────────────────────────────────
@@ -122,13 +122,13 @@ function edgeState(e,model){
 }
 function edgeSvg(e,model){
  const s=edgeState(e,model);
- if(s==='dim')return `<path class="hp-mp-edge dim" d="${e.d}" fill="none" stroke="#2a3833" stroke-width="1.4" stroke-dasharray="3 6"/>`;
- const lit=s==='done'||s==='pending',color=lit?ROLE[e.role]:s==='failed'?RED:s==='unknown'?AMBER:s==='design'?SOFT:'#3a4a43';
+ if(s==='dim')return `<path class="hp-mp-edge dim" d="${e.d}" fill="none" stroke="#e2e9e7" stroke-width="1.4" stroke-dasharray="3 6"/>`;
+ const lit=s==='done'||s==='pending',color=lit?ROLE[e.role]:s==='failed'?RED:s==='unknown'?AMBER:s==='design'?SOFT:'#d6dfdb';
  const cls=s==='done'?'done':s==='pending'?'pending':s==='failed'?'failed':s==='unknown'?'unknown':s==='design'?'design':'off';
  const dash=s==='failed'||s==='unknown'?' stroke-dasharray="2 6"':s==='design'?' stroke-dasharray="5 6"':'';
  const label=e.label?`<text x="${e.lx}" y="${e.ly}" class="hp-mp-e" fill="${lit?color:GRAY}">${e.label}</text>`:'';
  return `<g class="hp-mp-eg ${cls}" style="--d:${(e.order*.45).toFixed(2)}s" data-edge="${e.id}" data-state="${s}">
-  <path d="${e.d}" fill="none" stroke="#25322d" stroke-width="5" stroke-linecap="round"/>
+  <path d="${e.d}" fill="none" stroke="#e6ecea" stroke-width="5" stroke-linecap="round"/>
   <path class="hp-mp-line" d="${e.d}" fill="none" stroke="${color}" stroke-width="${s==='done'?2.6:1.8}" stroke-linecap="round"${dash}/>${label}</g>`;
 }
 function badgeSvg(stage,model){
@@ -136,29 +136,30 @@ function badgeSvg(stage,model){
  const [text,mark,color]=FLOW_STATE[info.state]||FLOW_STATE.idle;
  const tip=`${stage.n}. ${stage.label} · ${text}${info.detail?' — '+info.detail:''}`;
  return `<g class="hp-mp-badge" style="--d:${(stage.n*.45-.2).toFixed(2)}s" data-stage="${stage.key}" data-state="${info.state}" tabindex="0" role="img" aria-label="${esc(tip)}">
-  <title>${esc(tip)}</title><circle cx="${stage.x}" cy="${stage.y}" r="12.5" fill="#101614" stroke="${color}" stroke-width="1.8"/>
+  <title>${esc(tip)}</title><circle cx="${stage.x}" cy="${stage.y}" r="12.5" fill="#f3f6f5" stroke="${color}" stroke-width="1.8"/>
   <text x="${stage.x}" y="${stage.y+4}" text-anchor="middle" class="hp-mp-n" fill="${color}">${stage.n}</text>
   <text x="${stage.x+15}" y="${stage.y-10}" class="hp-mp-m" fill="${color}">${mark}</text></g>`;
 }
 const on=s=>['done','pending','failed','unknown','design'].includes(s);
 
 export function flowSvg(model){
+ setFont(11.5,10.5);
  const S=k=>model.stages[k]?.state;
  const det=k=>model.detectors.includes(k)&&on(S('detect'));
  const lit=(k,role)=>({active:on(S(k)),color:ROLE[role]});
  const N=(id,x,y,t,s,ic,activeKey,role,w=96,h=52)=>node({id,x,y,w,h,title:t,sub:s,ic,color:ROLE[role],active:on(S(activeKey))});
  return `<svg class="hp-map-svg flow-svg" viewBox="0 0 1240 650" role="group" aria-label="아키텍처 위 탐지 경로" xmlns="http://www.w3.org/2000/svg">
  <defs><filter id="hp-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  <pattern id="hp-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#1a2622" stroke-width="1"/></pattern>
-  <linearGradient id="hp-zone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#32d4be" stop-opacity=".07"/><stop offset="1" stop-color="#32d4be" stop-opacity=".01"/></linearGradient></defs>
- <rect width="1240" height="650" fill="#0f1513"/><rect width="1240" height="650" fill="url(#hp-grid)"/>
+  <pattern id="hp-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#ebf2f0" stroke-width="1"/></pattern>
+  <linearGradient id="hp-zone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e8f80" stop-opacity=".07"/><stop offset="1" stop-color="#0e8f80" stop-opacity=".01"/></linearGradient></defs>
+ <rect width="1240" height="650" fill="#f3f6f5"/><rect width="1240" height="650" fill="url(#hp-grid)"/>
  <g class="hp-mp-zones">
-  <rect x="14" y="60" width="166" height="330" rx="12" fill="none" stroke="#2c3a34" stroke-dasharray="4 6"/><text x="28" y="82" class="hp-mp-z">INTERNET · EDGE</text>
-  <rect x="200" y="50" width="1024" height="342" rx="14" fill="url(#hp-zone)" stroke="#3b5148" stroke-width="1.4"/><text x="216" y="72" class="hp-mp-z">VPC 10.0.0.0/16</text>
-  <rect x="216" y="92" width="256" height="284" rx="10" fill="#111a17" stroke="#2f4139"/><text x="230" y="112" class="hp-mp-z">PUBLIC · WEB</text>
-  <rect x="490" y="92" width="316" height="284" rx="10" fill="#111a17" stroke="#2f4139"/><text x="504" y="112" class="hp-mp-z">PRIVATE · APP</text>
-  <rect x="826" y="92" width="386" height="284" rx="10" fill="#111a17" stroke="#2f4139"/><text x="840" y="112" class="hp-mp-z">PRIVATE · DB</text>
-  <rect x="200" y="416" width="1024" height="218" rx="14" fill="none" stroke="#2f4139" stroke-dasharray="2 5"/><text x="216" y="438" class="hp-mp-z">탐지 · 수집(SIEM) → 자동 조치(SOAR)</text>
+  <rect x="14" y="60" width="166" height="330" rx="12" fill="none" stroke="#e1e8e5" stroke-dasharray="4 6"/><text x="28" y="82" class="hp-mp-z">INTERNET · EDGE</text>
+  <rect x="200" y="50" width="1024" height="342" rx="14" fill="url(#hp-zone)" stroke="#d2ded9" stroke-width="1.4"/><text x="216" y="72" class="hp-mp-z">VPC 10.0.0.0/16</text>
+  <rect x="216" y="92" width="256" height="284" rx="10" fill="#f1f6f4" stroke="#dde6e2"/><text x="230" y="112" class="hp-mp-z">PUBLIC · WEB</text>
+  <rect x="490" y="92" width="316" height="284" rx="10" fill="#f1f6f4" stroke="#dde6e2"/><text x="504" y="112" class="hp-mp-z">PRIVATE · APP</text>
+  <rect x="826" y="92" width="386" height="284" rx="10" fill="#f1f6f4" stroke="#dde6e2"/><text x="840" y="112" class="hp-mp-z">PRIVATE · DB</text>
+  <rect x="200" y="416" width="1024" height="218" rx="14" fill="none" stroke="#dde6e2" stroke-dasharray="2 5"/><text x="216" y="438" class="hp-mp-z">탐지 · 수집(SIEM) → 자동 조치(SOAR)</text>
  </g>
  <g class="hp-mp-ctx">
   ${node({id:'ext',x:95,y:168,w:120,title:'외부 공격자',sub:model.stages.origin?.state==='done'?'출발지 확인':'ZAP · sqlmap',ic:'attacker',color:RED,active:S('origin')==='done'})}
@@ -173,13 +174,13 @@ export function flowSvg(model){
  ${EDGES.map(e=>edgeSvg(e,model)).join('')}
  <g class="hp-mp-main">
   ${node({id:'target',x:700,y:225,w:140,h:76,title:esc(model.targetTitle),sub:esc(model.targetSub),ic:model.targetIcon,color:model.mode==='scenario'?SOFT:AMBER,active:true})}
-  ${Object.entries(DET).map(([k,v])=>node({id:'det-'+k,x:v.x,y:470,w:96,h:52,title:v.t,sub:v.s,ic:v.ic,color:SOFT,active:det(k)})).join('')}
-  ${node({id:'sh',x:760,y:470,w:96,h:52,title:'Security Hub',sub:'통합 finding',ic:'hub',color:SOFT,active:on(S('hub'))})}
-  ${node({id:'eb',x:890,y:470,w:96,h:52,title:'EventBridge',sub:'이벤트',ic:'bolt',color:MINT,active:on(S('store'))})}
-  ${node({id:'asr',x:1020,y:470,w:96,h:52,title:'asr_trigger',sub:'규칙 판정',ic:'lambda',color:MINT,active:on(S('judge'))})}
-  ${node({id:'ssm',x:1150,y:470,w:96,h:52,title:'SSM',sub:'Automation',ic:'gear',color:MINT,active:on(S('act'))})}
-  ${node({id:'corr',x:890,y:590,w:96,h:52,title:'correlator',sub:'상관분석',ic:'lambda',color:SOFT,active:on(S('store'))})}
-  ${node({id:'ddb',x:1020,y:590,w:96,h:52,title:'DynamoDB',sub:'findings·이력',ic:'db',color:SOFT,active:on(S('store'))})}
+  ${Object.entries(DET).map(([k,v])=>node({id:'det-'+k,x:v.x,y:470,w:104,h:52,title:v.t,sub:v.s,ic:v.ic,color:SOFT,active:det(k)})).join('')}
+  ${node({id:'sh',x:760,y:470,w:118,h:52,title:'Security Hub',sub:'통합 finding',ic:'hub',color:SOFT,active:on(S('hub'))})}
+  ${node({id:'eb',x:890,y:470,w:118,h:52,title:'EventBridge',sub:'이벤트',ic:'bolt',color:MINT,active:on(S('store'))})}
+  ${node({id:'asr',x:1020,y:470,w:118,h:52,title:'asr_trigger',sub:'규칙 판정',ic:'lambda',color:MINT,active:on(S('judge'))})}
+  ${node({id:'ssm',x:1150,y:470,w:118,h:52,title:'SSM',sub:'Automation',ic:'gear',color:MINT,active:on(S('act'))})}
+  ${node({id:'corr',x:890,y:590,w:118,h:52,title:'correlator',sub:'상관분석',ic:'lambda',color:SOFT,active:on(S('store'))})}
+  ${node({id:'ddb',x:1020,y:590,w:118,h:52,title:'DynamoDB',sub:'findings·이력',ic:'db',color:SOFT,active:on(S('store'))})}
  </g>
  ${FLOW_STAGES.map(s=>badgeSvg(s,model)).join('')}
 </svg>`;

@@ -2,21 +2,21 @@
 // 세션의 명령·사용자명·비밀번호·미끼 응답·AI 요약은 모두 공격자가 조종할 수 있는 값이다 — 이 파일은 그 값을
 // 항상 esc() 를 거쳐 텍스트로만 그린다(innerHTML 에 원문을 넣지 않는다). 그래프도 SVG 문자열을 esc() 로 만든다.
 // 원천을 읽지 못한 구역은 그 구역에만 "읽지 못함"을 표시하고, 빈 표나 0 으로 바꾸지 않는다.
-import {$,$$,api,config,state,ui} from '../context.js?v=ui-1';
-import {esc,format,formatAt} from '../components/format.js?v=ui-1';
-import {header,canvas,toast} from '../components/panel.js?v=ui-1';
-import {drawChart} from '../charts/charts.js?v=ui-1';
-import {severityColors} from '../constants.js?v=ui-1';
-import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=ui-1';
-import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=ui-1';
+import {$,$$,api,config,state,ui} from '../context.js?v=q6-ui-1-l1';
+import {esc,format,formatAt} from '../components/format.js?v=q6-ui-1';
+import {header,canvas,toast} from '../components/panel.js?v=q6-ui-1';
+import {drawChart} from '../charts/charts.js?v=q6-ui-1-l1';
+import {severityColors} from '../constants.js?v=q6-ui-1-l1';
+import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=q6-ui-1-l1';
+import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=q6-ui-1-l1';
 
-const MINT='#32d4be',SOFT='#85b1d5',AMBER='#d8ca78',RED='#ef777f',GRAY='#8fa295';
+const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const VERDICT={ok:['정상 동작',MINT],waiting:['동작 확인 중',AMBER],partial:['일부 동작',AMBER],unknown:['확인 불가',GRAY],not_deployed:['허니팟 미배포',GRAY]};
 const CARD_LABEL={instance:'미끼 인스턴스',logs:'로그 수신',ai:'AI 응답',alarm:'탐지 알람',block:'자동 차단'};
 const CARD_COLOR={ok:MINT,info:SOFT,warn:AMBER,bad:RED,unknown:GRAY};
 const CARD_MARK={ok:'✓',info:'i',warn:'!',bad:'✕',unknown:'?'};
 const INTENT_KO={recon:'정찰','credential-access':'자격증명 접근','lateral-movement':'내부 이동',exfiltration:'유출',impact:'영향·파괴',unknown:'미상'};
-const INTENT_COLOR={recon:SOFT,'credential-access':AMBER,'lateral-movement':'#c99be8',exfiltration:'#e7a064',impact:RED,unknown:GRAY};
+const INTENT_COLOR={recon:SOFT,'credential-access':AMBER,'lateral-movement':'#8f30cf',exfiltration:'#c4691c',impact:RED,unknown:GRAY};
 const SEVERITY_KO={low:'낮음',medium:'보통',high:'높음',critical:'치명'};
 const SEVERITY_COLOR={low:severityColors.Low,medium:severityColors.Medium,high:severityColors.High,critical:severityColors.Critical};
 const STEP_STATE={done:['완료','✓',MINT],missing:['기록 없음','–',GRAY],failed:['실패','✕',RED],pending:['진행 중','…',AMBER],unknown:['읽지 못함','?',AMBER]};
@@ -131,12 +131,12 @@ function drawCharts(){
  const d=S.stats.data,span=(Date.parse(d.to)-Date.parse(d.from))/3600000;
  drawChart('hp-chart-timeline','bar',{labels:d.timeline.map(b=>formatAt(b.at,span)),datasets:[
   {label:'세션',data:d.timeline.map(b=>b.sessions),backgroundColor:MINT},{label:'명령',data:d.timeline.map(b=>b.commands),backgroundColor:SOFT}]},
-  opts({plugins:{legend:{display:true,labels:{color:'#c4d7cb'}}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}));
+  opts({plugins:{legend:{display:true,labels:{color:'#28372d'}}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}));
  horizontal('hp-chart-ips',d.topIps.map(r=>({key:r.ip,count:r.sessions})),MINT,'세션');
  horizontal('hp-chart-commands',d.topCommands,SOFT,'횟수');
  horizontal('hp-chart-users',d.topUsers,AMBER,'시도');
  const donut=(id,rows,names,colors)=>drawChart(id,'doughnut',{labels:rows.map(r=>names[r.key]),datasets:[{data:rows.map(r=>r.count),backgroundColor:rows.map(r=>colors[r.key]),borderWidth:0}]},
-  opts({plugins:{legend:{display:true,position:'right',labels:{color:'#c4d7cb'}}}}));
+  opts({plugins:{legend:{display:true,position:'right',labels:{color:'#28372d'}}}}));
  donut('hp-chart-intents',d.intents,INTENT_KO,INTENT_COLOR);
  donut('hp-chart-severity',d.severities,SEVERITY_KO,SEVERITY_COLOR);
 }
@@ -166,7 +166,7 @@ function graphSection(){
  const lay=layout(g),at=Object.fromEntries(lay.nodes.map(n=>[n.id,n]));
  const lines=lay.links.map(l=>at[l.source]&&at[l.target]?`<line x1="${at[l.source].x.toFixed(1)}" y1="${at[l.source].y.toFixed(1)}" x2="${at[l.target].x.toFixed(1)}" y2="${at[l.target].y.toFixed(1)}"/>`:'').join('');
  const dots=lay.nodes.map(n=>{
-  const r=n.type==='ip'?13:n.type==='session'?8:5,fill=n.type==='ip'?MINT:n.type==='session'?(INTENT_COLOR[n.intent]||GRAY):'#c4d7cb';
+  const r=n.type==='ip'?13:n.type==='session'?8:5,fill=n.type==='ip'?MINT:n.type==='session'?(INTENT_COLOR[n.intent]||GRAY):'#28372d';
   const name=n.type==='ip'?n.label:n.type==='session'?`세션 ${n.label} · ${INTENT_KO[n.intent]||'미상'}`:n.label;
   const tip=`<title>${esc(name)}</title>`;
   const text=n.type==='session'?'':`<text x="${(n.x+r+3).toFixed(1)}" y="${(n.y+4).toFixed(1)}">${esc(n.label.slice(0,n.type==='ip'?20:18))}</text>`;
@@ -175,7 +175,7 @@ function graphSection(){
  const more=hidden.ips||hidden.sessions||hidden.commands?`<p class="muted hp-note">화면이 복잡해지지 않도록 일부만 그렸습니다: 외 IP ${hidden.ips}개 · 세션 ${hidden.sessions}개 · 명령 ${hidden.commands}종.</p>`:'';
  return `<section class="panel full-panel">${header('공격 관계 그래프 · IP → 세션 → 명령','RELATIONS')}${warnLines(part)}
   <svg class="hp-graph" viewBox="0 0 ${W} ${H}" role="group" aria-label="출발지 IP, 세션, 명령의 관계 그래프"><g class="hp-links">${lines}</g>${dots}</svg>
-  <div class="hp-legend"><span><i style="background:${MINT}"></i>출발지 IP</span>${Object.entries(INTENT_KO).map(([k,v])=>`<span><i style="background:${INTENT_COLOR[k]}"></i>세션 · ${esc(v)}</span>`).join('')}<span><i style="background:#c4d7cb"></i>명령</span></div>
+  <div class="hp-legend"><span><i style="background:${MINT}"></i>출발지 IP</span>${Object.entries(INTENT_KO).map(([k,v])=>`<span><i style="background:${INTENT_COLOR[k]}"></i>세션 · ${esc(v)}</span>`).join('')}<span><i style="background:#28372d"></i>명령</span></div>
   ${lay.plain?'<p class="muted hp-note">그래프 배치 라이브러리를 불러오지 못해 격자로 표시합니다.</p>':''}${more}
   <p class="muted hp-note">IP·세션 노드를 누르면 아래 타임라인·세션 상세로 이동합니다.</p></section>`;
 }

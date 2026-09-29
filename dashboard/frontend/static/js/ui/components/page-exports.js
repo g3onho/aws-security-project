@@ -1,11 +1,11 @@
 // 화면 우측 상단 [로그 저장] · [AI 요약 보고서] (v28). 보안 이벤트·취약점 점검·인프라 모니터링·보안 시나리오·허니팟에서만 보인다.
 // 두 버튼은 서로 독립이다(로그 저장은 AI 를 쓰지 않는다). 기존 패널 안의 CSV 버튼도 그대로 두고, 같은 함수를 다시 쓴다.
-import {$,api,state,metricsFor,servicesOf} from '../context.js?v=ui-1';
-import {toast} from './panel.js?v=ui-1';
-import {eventCsv,downloadCsv,stampedName,infrastructureCsv,drillsCsv,honeypotSessionsCsv} from './downloads.js?v=ui-1';
-import {hostViews} from '../pages/infrastructure.js?v=ui-3';
-import {exportVulnerabilities} from '../pages/vulnerabilities.js?v=ui-6';
-import {openReport,initReportDialog} from './report.js?v=ui-1';
+import {$,api,state,metricsFor,servicesOf} from '../context.js?v=q6-ui-1-l1';
+import {toast} from './panel.js?v=q6-ui-1';
+import {eventCsv,downloadCsv,stampedName,infrastructureCsv,drillsCsv,honeypotSessionsCsv} from './downloads.js?v=q6-ui-1-l1';
+import {hostViews} from '../pages/infrastructure.js?v=q6-ui-4-l1';
+import {exportVulnerabilities} from '../pages/vulnerabilities.js?v=q6-ui-6-l1';
+import {openReport,initReportDialog} from './report.js?v=q6-ui-1-l1';
 
 export const EXPORT_VIEWS=new Set(['events','vulnerabilities','infrastructure','drills','honeypot']);
 const iso=ms=>ms?new Date(ms).toISOString():'';

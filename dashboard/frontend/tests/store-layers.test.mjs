@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {ROOT, until, makeFetchMock, appDOM, snapshot} from './dom-test-support.mjs';
 
 // v20.3 (PR-5): Store 계층(설계 2.1·2.2) — client 재시도, 어댑터 행 단위 오류, Store 폴링, UI 경계.
-const js=file=>pathToFileURL(path.join(ROOT,'static/js',file)).href+'?v=local-2';
+const js=file=>pathToFileURL(path.join(ROOT,'static/js',file)).href+'?v=q6-local-2';
 const {adaptEvents}=await import(js('store/adapters/events.js'));
 const {adaptVulnerabilities}=await import(js('store/adapters/vulnerabilities.js'));
 const {adaptHistory}=await import(js('store/adapters/history.js'));

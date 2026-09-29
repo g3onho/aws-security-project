@@ -19,4 +19,4 @@ export function detailedEvents(){
 export const SUMMARY=()=>envelope({totalEvents:1,verifiedEvents:0,resolutionRate:0,openVulnerabilities:{total:7,bySeverity:{},byRegion:{}},
  automation:{configured:true,total:4,autoExecuted:2,succeeded:1,failed:1,inProgress:0,noChange:0,manual:2,dryRun:0,byStatus:{},byDecision:{},
   recent:[{actionId:'ssm-1',eventId:'EVT-0003',controlId:'EC2.2',controlTitle:'VPC 기본 보안그룹에 규칙이 남아 있음',decision:'auto-executed',status:'SUCCESS',lastSeenAt:iso()}]},
- alarms:{total:5,alarm:1,insufficientData:0,noData:1,firing:[{name:'soar-sec-dev-ssh-reject',label:'SSH(22) 접속 거부 급증 (Flow Logs)',scenario:'SEC-06B'}]}});
+ alarms:{total:5,alarm:1,needsCheck:1,insufficientData:0,noData:1,firing:[{name:'soar-sec-dev-ssh-reject',label:'SSH(22) 접속 거부 급증 (Flow Logs)',scenario:'SEC-06B'}]}});

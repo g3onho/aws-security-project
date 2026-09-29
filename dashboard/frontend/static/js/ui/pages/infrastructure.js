@@ -1,22 +1,28 @@
 // 인프라 모니터링: 호스트 카드·CPU/메모리 차트·임계치 초과 구간·CloudWatch 경보·서버 가동 상태·3계층(확인 불가).
-import {state,metricsFor,servicesOf} from '../context.js?v=ui-1';
-import {esc,format,formatAt,milliseconds} from '../components/format.js?v=ui-1';
-import {header,empty,canvas} from '../components/panel.js?v=ui-1';
-import {drawChart} from '../charts/charts.js?v=ui-2';
-import {periodStops} from '../constants.js?v=ui-1';
+import {state,metricsFor,servicesOf} from '../context.js?v=q6-ui-1-l1';
+import {esc,format,formatAt,milliseconds} from '../components/format.js?v=q6-ui-1';
+import {header,empty,canvas} from '../components/panel.js?v=q6-ui-1';
+import {drawChart} from '../charts/charts.js?v=q6-ui-2-l1';
+import {periodStops} from '../constants.js?v=q6-ui-1-l1';
 // ── 인프라 모니터링 ────────────────────────────────────────
 // 7934104(v17) 화면 — 호스트 카드 · CPU/메모리 차트 · 임계치 초과 구간 · 3계층 상태 — 을
 // 표준 API(/api/metrics 시계열, /api/infra/status 구성요소)에 맞춰 되살린 것.
 // 호스트 선택은 화면 안에서만 바꾼다. state.resource 를 쓰면 이벤트·지표 조회 범위까지 좁아진다.
 const SERVICE_TEXT={healthy:'정상',degraded:'저하',unhealthy:'장애',unknown:'확인 불가'};
-const SERVICE_COLOR={healthy:'#087a68',degraded:'#9d5b22',unhealthy:'#b42332',unknown:'#526e84'};
 const periodLabel=s=>s==null?'—':s>=3600?`${s/3600}시간`:`${s/60}분`;
 const pct=v=>v==null?'—':Math.round(v*10)/10+'%';
 const metricKo=m=>m==='cpu'?'CPU':'메모리';
 // 기간 버튼과 같은 이름(15분·1시간·1일·1주일). 목록에 없는 값만 시간·분으로 적는다.
 const periodName=hours=>periodStops.find(s=>s.hours===hours)?.label||(hours<1?Math.round(hours*60)+'분':hours+'시간');
 let infraHost='';
-function servicePill(status){const c=SERVICE_COLOR[status]||SERVICE_COLOR.unknown;return `<span class="service-pill" style="color:${c}"><i style="background:${c}"></i>${SERVICE_TEXT[status]||esc(status)} <small>${esc(status)}</small></span>`;}
+// 서버 가동 신호등: EC2 인스턴스 상태를 세 개의 램프(빨강·노랑·초록)와 글자로 함께 보인다. 색만으로 뜻을 전하지 않는다.
+// healthy=초록, degraded=노랑, unhealthy=빨강, unknown(조회 실패·자료 없음)=모두 꺼짐. 서버 안의 서비스 응답은 뜻하지 않는다.
+const LAMP={healthy:'g',degraded:'y',unhealthy:'r'};
+function signalTitle(c){return c?[`가동 상태: ${SERVICE_TEXT[c.status]||c.status}`,c.detail&&`근거: ${c.detail}`,c.source&&`출처: ${c.source}`,c.observedAt&&`관측: ${format(milliseconds(c.observedAt))} KST`].filter(Boolean).join(' · '):'가동 상태를 조회하지 못했습니다';}
+function signal(c){
+ const status=c?.status||'unknown',on=LAMP[status]||'',text=SERVICE_TEXT[status]||esc(status);
+ return `<span class="signal ${on?'on-'+on:'off'}" role="img" aria-label="가동 상태: ${text}" title="${esc(signalTitle(c))}"><span class="lamps" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i></span><b>${text}</b></span>`;
+}
 // 임계치를 넘은 연속 표본을 한 구간으로 묶는다.
 function breachesOf(points,metric,limit){
  const out=[];let cur=null;
@@ -49,30 +55,30 @@ function hostPicker(hosts,sel){
  return `<label class="host-picker"><span>대상 호스트</span><select id="host">${hosts.map(h=>`<option value="${esc(h.resource)}"${h===sel?' selected':''}>${esc(h.name)} · ${esc(h.resource)}</option>`).join('')}</select></label>`;
 }
 function breachPanel(h,span){
- if(!h.breaches.length)return `<div class="context-note">선택 구간에 ${h.threshold.cpu}% 임계치를 넘은 표본이 없습니다. CPU 최대 ${pct(h.stats.cpu.max)} · 메모리 최대 ${pct(h.stats.memory.max)}.</div>`;
- return `<ul class="breach-list">${h.breaches.map(b=>`<li><span class="breach-metric" style="color:${b.metric==='cpu'?'#e7a064':'#ef777f'}">${metricKo(b.metric)}</span><span>${formatAt(b.from,span)} — ${formatAt(b.to,span)} KST</span><b>최고 ${pct(b.peak)}</b><small>표본 ${b.samples}개 · 임계치 ${h.threshold[b.metric]}%</small></li>`).join('')}</ul>`;
+ if(!h.breaches.length)return `<p class="muted breach-none">임계치 초과 없음 · CPU 최대 ${pct(h.stats.cpu.max)} · 메모리 최대 ${pct(h.stats.memory.max)}</p>`;
+ return `<ul class="breach-list">${h.breaches.map(b=>`<li><span class="breach-metric" style="color:${b.metric==='cpu'?'#a4530f':'#c62f3c'}">${metricKo(b.metric)}</span><span>${formatAt(b.from,span)} — ${formatAt(b.to,span)} KST</span><b>최고 ${pct(b.peak)}</b><small>표본 ${b.samples}개 · 임계치 ${h.threshold[b.metric]}%</small></li>`).join('')}</ul>`;
 }
 // 카드 수치는 선택 기간의 평균·최대다(마지막 표본이 아니다) — 기간 버튼을 바꾸면 함께 바뀐다.
-function hostGrid(hosts,sel,label){
- const bar=(v,limit)=>`<div class="host-bar"><div class="host-bar-fill" style="width:${Math.min(100,v||0)}%;background:${v>limit?'#e7a064':'#32d4be'}"></div><i style="left:${limit}%"></i></div>`;
+function hostGrid(hosts,sel,label,svc){
+ const bar=(v,limit)=>`<div class="host-bar"><div class="host-bar-fill" style="width:${Math.min(100,v||0)}%;background:${v>limit?'#ec8a3c':'#0b8577'}"></div><i style="left:${limit}%"></i></div>`;
  const row=(name,s)=>`<div class="host-metric"><span>${name} <small>${esc(label)} 평균</small></span><b>${pct(s.avg)}</b></div><div class="host-metric host-metric-sub"><span>최대</span><span>${pct(s.max)}</span></div>`;
- return `<div class="host-grid">${hosts.map(h=>{
-  const over=h.breaches.length,on=h===sel;
+ const comps=new Map((svc?.components||[]).map(c=>[c.resource,c]));
+ const sub=c=>c?`<small class="host-run">${esc([c.detail,c.role].filter(Boolean).join(' · '))}</small>`:'';
+ const cards=hosts.map(h=>{
+  const over=h.breaches.length,on=h===sel,c=comps.get(h.resource);
   return `<button data-key="host-${esc(h.resource)}" class="host-card ${on?'selected':''} ${over?'over':''}" data-host="${esc(h.resource)}" aria-pressed="${on}">
-   <div class="host-card-head"><strong>${esc(h.name)}</strong><small>EC2</small></div>
+   <div class="host-card-head"><strong>${esc(h.name)}</strong>${signal(c)}</div>${sub(c)}
    ${row('CPU',h.stats.cpu)}${bar(h.stats.cpu.avg,h.threshold.cpu)}
    ${row('메모리',h.stats.memory)}${bar(h.stats.memory.avg,h.threshold.memory)}
    <div class="host-card-foot">${over?`<span class="over-flag">임계 초과 ${over}구간</span>`:'<span>임계 초과 없음</span>'}<small>${esc(h.resource)}</small></div>
-  </button>`;}).join('')}</div>`;
-}
-// v23: EC2 가동 상태와 3계층(Nginx·Flask·MySQL)을 나눈다. EC2 목록을 화살표로 이어 계층처럼 보이게 하지 않는다.
-function serverStatus(svc,hosts){
- if(!svc)return `<div class="context-note">서버 상태를 불러오지 못했습니다. 새로고침 후에도 같으면 백엔드 /api/infra/status 응답을 확인하세요.</div>`;
- const items=svc.components||[];
- if(!items.length)return empty('조회 범위에 EC2 서버가 없습니다.');
- const nameOf=c=>hosts.find(h=>h.resource===c.resource)?.name||c.name||c.resource;
- return `<div class="table-scroll"><table class="service-table"><caption class="sr-only">서버 가동 상태</caption><thead><tr><th>서버</th><th>역할</th><th>가동 상태</th><th>근거</th><th>관측 시각</th></tr></thead><tbody>${items.map(c=>`<tr><td>${esc(nameOf(c))}<br><small class="muted">${esc(c.resource)}</small></td><td>${esc(c.role||'—')}</td><td>${servicePill(c.status)}</td><td>${esc(c.detail||'—')}<br><small class="muted">${esc(c.source||'')}</small></td><td>${format(milliseconds(c.observedAt))}</td></tr>`).join('')}</tbody></table></div>
- <div class="context-note">EC2 인스턴스 상태(running 등)입니다. 서버 안의 서비스가 응답하는지는 뜻하지 않습니다.</div>`;
+  </button>`;});
+ // 지표가 없는 EC2 도 가동 상태는 보인다(별도 가동 상태 표를 없앤 대신). 선택·차트 대상은 아니다.
+ const known=new Set(hosts.map(h=>h.resource));
+ const only=(svc?.components||[]).filter(c=>!known.has(c.resource)).map(c=>`<div class="host-card status-only">
+   <div class="host-card-head"><strong>${esc(c.name||c.resource)}</strong>${signal(c)}</div>${sub(c)}
+   <p class="muted">조회 기간에 CPU·메모리 지표가 없습니다.</p>
+   <div class="host-card-foot"><span></span><small>${esc(c.resource)}</small></div></div>`);
+ return `<div class="host-grid">${cards.concat(only).join('')}</div>`;
 }
 const ALARM_TEXT={ALARM:'경보',OK:'정상',INSUFFICIENT_DATA:'데이터 부족'};
 export function alarmOverviewChart(alarms){
@@ -102,30 +108,31 @@ function alarmState(a){
 const compareKo={GreaterThanThreshold:'>',GreaterThanOrEqualToThreshold:'≥',LessThanThreshold:'<',LessThanOrEqualToThreshold:'≤'};
 function alarmTable(svc){
  const alarms=svc?.alarms;
- if(alarms==null)return `<div class="context-note">CloudWatch 경보 정보를 불러오지 못했거나 대시보드에 알람 이름 접두어(NAME_PREFIX)가 설정되지 않았습니다.</div>`;
+ if(alarms==null)return `<div class="panel-error" role="status">CloudWatch 경보 정보를 불러오지 못했거나 대시보드에 알람 이름 접두어(NAME_PREFIX)가 설정되지 않았습니다.</div>`;
  if(!alarms.length)return empty('조회 범위에 CloudWatch 경보가 없습니다.');
  return `<details class="alarm-details"><summary>경보 조건·대응 설정 자세히 보기</summary><div class="table-scroll"><table class="alarm-table"><caption class="sr-only">CloudWatch 경보</caption><thead><tr><th>상태</th><th>경보</th><th>조건</th><th>자동 대응</th><th>마지막 변경 (KST)</th></tr></thead><tbody>${alarms.map(a=>`<tr><td>${alarmState(a)}</td><td>${esc(a.label||a.name)}${a.scenario?` <span class="scenario-tag">${esc(a.scenario)}</span>`:''}<br><small class="muted">${esc(a.name)}</small></td><td>${esc(a.metric||'')} ${esc(compareKo[a.comparison]||a.comparison||'')} ${esc(a.threshold??'')}<br><small class="muted">${a.periodSeconds?`${Math.round(a.periodSeconds/60)}분`:''}${a.evaluationPeriods?` × ${a.evaluationPeriods}회`:''}${a.notifies?' · SNS 알림':''}</small></td><td>${a.autoResponse?`<span class="auto-chip ${a.autoResponse.mode==='auto'?'ok':a.autoResponse.mode==='dry-run'?'muted':'warn'}" title="${esc(a.autoResponse.detail||'')}">${esc(a.autoResponse.label)}</span>`:`<span class="muted">${a.notifies?'SNS 알림':'대응 설정 없음'}</span>`}</td><td>${format(milliseconds(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div></details>`;
 }
+// 서버 가동 상태는 '운영 중인 서버' 카드의 신호등으로 보인다(별도 표 없음). 조회 실패는 숨기지 않고 알린다.
+const statusNote=svc=>svc?'':`<div class="panel-error" role="status">서버 가동 상태를 불러오지 못했습니다. 새로고침 후에도 같으면 백엔드 /api/infra/status 응답을 확인하세요.</div>`;
+const lampNote='';
 function infraSections(svc,hosts){
  const alarms=svc?.alarms,firing=(alarms||[]).filter(a=>a.state==='ALARM').length;
- return `<section class="panel full-panel">${header('CloudWatch 경보',alarms==null?'정보 없음':`${alarms.length}개 · 경보 ${firing}개`)}${alarmOverviewChart(alarms)}${alarmTable(svc)}</section>
- <section class="panel full-panel">${header('서버 가동 상태',svc?`EC2 ${(svc.components||[]).length}대`:'조회 실패')}${serverStatus(svc,hosts)}</section>`;
+ return `<section class="panel full-panel">${header('CloudWatch 경보',alarms==null?'정보 없음':`${alarms.length}개 · 경보 ${firing}개`)}${alarmOverviewChart(alarms)}${alarmTable(svc)}</section>`;
 }
 export function infrastructure(){
  const m=metricsFor(),svc=servicesOf(),span=state.hours*3600000,hosts=hostViews(m);
- if(!hosts.length)return `<div class="view-intro"><span>CloudWatch · CPU / 메모리</span></div><section class="panel">${header('EC2 자원 사용률','대상 없음')}${empty('조회 기간에 수집된 EC2 지표가 없습니다.')}</section>
+ if(!hosts.length){
+  const n=(svc?.components||[]).length;
+  return `<section class="panel">${header('운영 중인 서버',n?`${n}대`:'대상 없음')}${statusNote(svc)}${n?hostGrid(hosts,null,periodName(state.hours),svc)+lampNote:''}${empty('조회 기간에 수집된 EC2 지표가 없습니다.')}</section>
   ${infraSections(svc,hosts)}`;
+ }
  const label=periodName(state.hours),h=selectedHost(hosts),overCpu=h.breaches.filter(b=>b.metric==='cpu').length,overMem=h.breaches.length-overCpu;
  const samples=hosts.reduce((a,x)=>a+x.stats.cpu.samples,0);
- return `<div class="view-intro"><span>운영 중인 서버 ${hosts.length}대 · ${periodLabel(m.periodSeconds)} 평균 · 표본 ${samples}개</span><span>최근 ${esc(label)} · 경보 임계치 <strong class="mint">${h.threshold.cpu}%</strong></span></div>
- <section class="panel">${header('운영 중인 서버',`${hosts.length}대 · 카드를 누르면 아래 상세 차트가 바뀝니다`)}${hostGrid(hosts,h,label)}
-  <div class="context-note">리전에서 조회된 EC2 전체입니다. 카드 수치는 선택 기간(최근 ${esc(label)})의 5분 평균 표본을 다시 평균·최대로 낸 값이며, 기간 버튼을 바꾸면 함께 바뀝니다. 표본은 5분 평균입니다(CPU 는 EC2 기본 모니터링 5분 간격). 메모리는 CloudWatch Agent 가 설치된 호스트만 수집됩니다.</div></section>
+ return `<section class="panel">${header('운영 중인 서버',`${hosts.length}대`)}${statusNote(svc)}${hostGrid(hosts,h,label,svc)}${lampNote}</section>
  <div class="infrastructure-grid">
   <section class="panel">${header(`상세 · ${esc(h.name)}`,hostPicker(hosts,h))}<div class="metric-large">${canvas('metrics-chart',`CPU ${pct(h.stats.cpu.now)}, 메모리 ${pct(h.stats.memory.now)}, 임계치 ${h.threshold.cpu}%`)}</div>
-   <div class="metric-stats"><div><span>CPU 최근 표본</span><b>${pct(h.stats.cpu.now)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(h.stats.cpu.max)} / ${pct(h.stats.cpu.avg)}</b></div><div><span>메모리 최근 표본</span><b>${pct(h.stats.memory.now)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(h.stats.memory.max)} / ${pct(h.stats.memory.avg)}</b></div></div>
-   <div class="context-note">${esc(h.resource)} — x축은 선택 기간 전체를 표시합니다. 최근 수치는 그 기간의 마지막 수집 표본입니다. 빈 구간에는 수집된 지표가 없습니다.${h.instanceIds.length>1?` 이전 인스턴스 ${h.instanceIds.length-1}개의 CloudWatch 기록을 연결했습니다.`:''}</div></section>
-  <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(h,span)}
-   <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>
+   <div class="metric-stats">${[['cpu','CPU',h.stats.cpu],['memory','메모리',h.stats.memory]].map(([key,name,x])=>`<div class="ms-group ${key}"><h4>${name}</h4><dl><div><dt>최근 표본</dt><dd>${pct(x.now)}</dd></div><div><dt>최대</dt><dd>${pct(x.max)}</dd></div><div><dt>평균</dt><dd>${pct(x.avg)}</dd></div></dl></div>`).join('')}</div></section>
+  <section class="panel breach-panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(h,span)}<p class="context-note">${periodLabel(m.periodSeconds)} 평균 표본 · 임계치 CPU ${h.threshold.cpu}% · 메모리 ${h.threshold.memory}% 초과 구간만 표시</p></section>
  </div>${infraSections(svc,hosts)}`;
 }
 // x축 눈금(DEC-036). 표본은 5분 평균이라 모든 기간에서 전부 그리고, 눈금만 KST 정시에 맞춰 둔다.
@@ -153,8 +160,8 @@ const tickLabel=stepMs=>value=>{
 export function xAxisOptions(from,to,span){
  const step=tickStepMs(span);
  return {type:'linear',min:from,max:to,afterBuildTicks:axis=>{axis.ticks=alignedTicks(axis.min,axis.max,step);},
-  grid:{color:ctx=>step>=60*MIN_MS&&isKstMidnight(ctx.tick?.value)?'rgba(120,140,160,.45)':'rgba(120,140,160,.14)'},
-  ticks:{color:'#62798c',autoSkip:false,maxRotation:0,font:{size:10},callback:tickLabel(step)}};
+  grid:{color:ctx=>step>=60*MIN_MS&&isKstMidnight(ctx.tick?.value)?'rgba(92,108,123,.45)':'rgba(92,108,123,.14)'},
+  ticks:{color:'#8193a2',autoSkip:false,maxRotation:0,font:{size:10},callback:tickLabel(step)}};
 }
 // 5분 표본(v20.5)은 1주일에 2,016개라 그대로 그린다. 그보다 많아지면(집계 간격을 줄일 때) 구간 최댓값으로
 // 묶어 그린다(임계치 초과가 평균에 묻히지 않게). 통계·초과 구간 계산은 원본 표본 그대로다.
@@ -186,7 +193,7 @@ export function drawInfrastructureChart(){
    pointRadius:mem.map(v=>v>t.memory?3.5:0),pointBackgroundColor:mem.map(v=>v>t.memory?'#b42332':'#258474')},
   {label:`${t.cpu}% 임계치`,data:[{x:from,y:t.cpu},{x:to,y:t.cpu}],borderColor:'#a76629',borderDash:[5,5],pointRadius:0,borderWidth:1},
   ]},
-  {plugins:{legend:{display:true,labels:{color:'#526e84',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#62798c'}},x:xAxisOptions(from,to,span)}});
+  {plugins:{legend:{display:true,labels:{color:'#93a7b7',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#8193a2'}},x:xAxisOptions(from,to,span)}});
 }
 // 호스트 선택은 화면 안에서만(조회 범위를 바꾸지 않는다). 바뀌었으면 true.
 export function selectHost(id){if(infraHost===id)return false;infraHost=id;return true;}

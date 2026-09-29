@@ -25,7 +25,7 @@ test('honeypot view shows status, timeline, charts, graph, sessions and the bloc
  assert.equal($('nav [data-view="honeypot"]').textContent.includes('허니팟'),true);
  assert.equal($('.filters').hidden,true);assert.equal($('.timeline').hidden,false);
  assert.equal($('#page-title').textContent.includes('허니팟'),true);
- assert.equal($('#session-user').textContent,'admin · 조치 담당');
+ assert.equal($('#session-user').textContent,'admin');
 
  // ① 동작 상태
  assert.equal($('.hp-verdict').dataset.verdict,'ok');assert(text().includes('정상 동작'));

@@ -218,6 +218,20 @@ data "aws_iam_policy_document" "dashboard_read" {
     resources = ["*"]
   }
 
+  # 대시보드 원클릭 조치(v29)의 재검증 — ASR-* 문서가 바꾼 값을 같은 기준으로 다시 읽는다. 읽기 전용이며
+  # 보안그룹·EC2 설정 조회(ec2:DescribeSecurityGroups)와 SSM 실행 조회(ssm:GetAutomationExecution)는 아래·dashboard_execute 에 이미 있다.
+  statement {
+    sid = "ReadRemediationVerification"
+    actions = [
+      "ec2:GetEbsEncryptionByDefault",
+      "ec2:GetSnapshotBlockPublicAccessState",
+      "s3:GetAccountPublicAccessBlock",
+      "iam:GetAccountPasswordPolicy",
+      "ssm:GetServiceSetting",
+    ]
+    resources = ["*"]
+  }
+
   statement {
     sid = "ReadInfrastructureState"
     actions = [

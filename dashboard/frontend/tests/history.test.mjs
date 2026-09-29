@@ -18,7 +18,7 @@ test('response history shows automatic records, repeat counts and warnings witho
    eventId:'SH-2',createdAt:iso,lastSeenAt:iso,verification:'NOT_RUN'},
   {id:'auto:fnd-old',source:'automatic',decision:'manual-notified',automationStatus:'NOTIFIED',actionState:'PENDING_APPROVAL',
    findingType:'Three days old record',resource:'arn:aws:iam::111:user/old',occurrenceCount:1,executionId:null,
-   eventId:'SH-3',createdAt:old,lastSeenAt:old,verification:'NOT_RUN'}],jobs:[],nextCursor:null},
+   eventId:'SH-3',createdAt:old,lastSeenAt:old,verification:'NOT_RUN'}],jobs:[],external:[{id:'external:SH-9',eventId:'SH-9',title:'Old open finding',resource:'arn:aws:s3:::bucket-x',severity:'HIGH',resolvedAt:iso}],remediations:[{id:'rem-1',eventId:'SH-1',actor:'admin',state:'NOT_RESOLVED',playbookId:'ASR-RevokeSecurityGroupIngress',title:'보안그룹 전체 공개 규칙 회수',reason:'화면 확인',resource:'arn:aws:ec2:::security-group/sg-0abc',region:'ap-northeast-2',eventTitle:'EC2.19 open port',controlId:'EC2.19',executionId:'exec-9',ssmStatus:'Success',before:{text:'전체 공개 규칙 1개'},verification:{passed:false,text:'전체 공개 규칙 1개',checkedAt:iso},createdAt:iso,updatedAt:iso}],nextCursor:null},
   meta:{schemaVersion:'1',asOf:iso,partial:true,warnings:['자동조치 이력이 많아 일부만 표시합니다.']}});
  const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
@@ -26,16 +26,23 @@ test('response history shows automatic records, repeat counts and warnings witho
  click('nav [data-view="responses"]');
  await until(()=>$('#audit-log')?.textContent.includes('EC2.19 open port'),'automatic record did not render');
  const text=$('#audit-log').textContent;
- assert(text.includes('자동 실행')&&text.includes('실행 완료 · 재검증 전'));
- assert(text.includes('수동 대응 필요')&&text.includes('담당자 알림'));
- assert(text.includes('자동 조치 2건'));
- assert($('#audit-log [title="SSM 실행 exec-1"]'),'실행 ID 는 툴팁으로 남긴다');
- assert(text.includes('자동 조치 실행')&&text.includes('수동 대응 · 판단만'),'자동 실행과 수동 대응을 나눈다');
- assert(text.includes('TCP 3306 ← 0.0.0.0/0')&&text.includes('조치 직후 SSM 보고값 · 재검증 전'),'바뀐 내용은 SSM 보고값으로 표시');
+ const rowsOf=()=>[...$('#audit-log').querySelectorAll('tbody tr')];
+ assert($('#content').innerHTML.includes('실행 완료 · 재검증 전')&&!$('#content .hist-state'),'자동 실행 성공은 재검증 전으로 표시');
+ assert(!text.includes('MFA should be enabled'),'알림만 보낸 판정은 조치 이력이 아니다(보안 이벤트에서 확인)');
+ assert(!$('#audit-log details.hist-bucket')&&!$('#audit-log .history-block'),'블록·구간 묶음 없이 한 목록');
+ assert.equal(rowsOf().length,3,'자동 1 + 대시보드 1 + 외부 해결 1');
+ const chips=rowsOf().map(r=>[...r.querySelectorAll('.hist-chip')].map(c=>c.textContent).join('|'));
+ assert(chips.includes('자동|실행 성공'),'자동 실행 성공은 해결이 아니라 실행 성공일 뿐');
+ assert(chips.includes('대시보드|실행 성공'),'대시보드 조치도 실행 성공으로만 표시');
+ assert(chips.includes('외부 해결(추정)'),'외부 해결은 시도가 아니라 실행·재검증 칩이 없다');
+ assert(text.includes('외부에서 해결된 것으로 추정'),'외부 해결은 추정이라고 밝힌다');
+ assert($('#audit-log [title$="SSM 실행 exec-1"]'),'실행 ID 는 툴팁으로 남긴다');
  assert(text.includes('보안그룹 전체 공개 규칙 회수'),'판정 이유가 보인다');
- assert(text.includes('판정 이유 기록 없음'),'이유가 없는 옛 기록은 그렇게 표시한다');
  assert(text.includes('자동조치 이력이 많아 일부만 표시합니다.'),'warning must be visible');
- assert(!$('#audit-log .auto-state').textContent.includes('해결'),'실행 상태를 해결 완료로 표시하지 않는다');
+ assert(!text.includes('해결 확인 · 재검증 통과'),'재검증을 통과하지 못한 조치는 해결 확인이 아니다');
+ assert.match($('#audit-log .history-summary').textContent,/시도 2건\(이벤트 1개\) · 실행 성공 2 · 실행 실패 0/,'요약은 시도·이벤트 수 기준');
+ assert($('#audit-log .history-summary').textContent.includes('실행 성공이 해결은 아닙니다'));
+ assert(!$('#audit-log .hist-filters')&&!$('#audit-log [data-hist-who]'),'방식·결과는 필터 탭이 아니라 표시만 한다');
  // v20.5: 1주일을 받아 기간 트랙은 이력 수를 세고, 표에는 선택 기간(기본 1일)만 남긴다.
  const call=network.calls.find(c=>c.pathname==='/api/history');
  assert.equal(Date.parse(call.url.searchParams.get('to'))-Date.parse(call.url.searchParams.get('from')),7*86400000);
