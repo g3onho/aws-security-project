@@ -8,6 +8,9 @@ treat_missing_data = notBreaching 인 알람은 로그·지표가 전혀 안 들
 from ..integrations.aws.paging import to_ms
 
 NO_DATA_MARKERS = ("no datapoints were received", "treated as [nonbreaching]")
+# 계속 들어와야 하는 지표(EC2 CPU·Agent 메모리)만 데이터 없음을 '확인 필요'로 본다.
+# 공격·오류 같은 사건이 있어야 지표가 생기는 알람은 데이터 없음이 평소 상태다.
+CONTINUOUS_KINDS = ("cpu", "memory")
 
 
 def _kind(short):
@@ -47,8 +50,10 @@ def normalize(alarm, prefix, region, account_id, policy=None):
     dimensions = {d.get("Name"): d.get("Value") for d in alarm.get("Dimensions") or []}
     reason = str(alarm.get("StateReason") or "")
     state = alarm.get("StateValue") or "INSUFFICIENT_DATA"
+    no_data = state == "OK" and any(m in reason.lower() for m in NO_DATA_MARKERS)
+    needs_check = state == "INSUFFICIENT_DATA" or (no_data and kind in CONTINUOUS_KINDS)
     return {"name": name, "label": label, "kind": kind, "scenario": scenario, "host": host,
-            "state": state, "noData": state == "OK" and any(m in reason.lower() for m in NO_DATA_MARKERS),
+            "state": state, "noData": no_data, "needsCheck": needs_check,
             "reason": reason[:300] or None,
             "updatedAt": to_ms(alarm["StateUpdatedTimestamp"]) if alarm.get("StateUpdatedTimestamp") else None,
             "metric": alarm.get("MetricName"), "namespace": alarm.get("Namespace"),

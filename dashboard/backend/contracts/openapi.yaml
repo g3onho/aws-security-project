@@ -758,6 +758,7 @@ components:
         host: {type: [string, 'null']}
         state: {type: string, enum: [OK, ALARM, INSUFFICIENT_DATA]}
         noData: {type: boolean, description: OK 이지만 데이터가 없어 누락 데이터를 정상으로 처리한 상태(treat_missing_data=notBreaching)}
+        needsCheck: {type: boolean, description: 사람이 확인해야 하는 상태. INSUFFICIENT_DATA 이거나, 계속 들어와야 하는 지표(cpu·memory)의 noData. 사건이 있어야 지표가 생기는 알람의 noData 는 false}
         reason: {type: [string, 'null']}
         updatedAt: {type: [string, 'null'], format: date-time}
         metric: {type: [string, 'null']}
@@ -896,6 +897,7 @@ components:
                     alarm: {type: integer, minimum: 0}
                     insufficientData: {type: integer, minimum: 0}
                     noData: {type: integer, minimum: 0}
+                    needsCheck: {type: integer, minimum: 0}
                     firing:
                       type: array
                       items:

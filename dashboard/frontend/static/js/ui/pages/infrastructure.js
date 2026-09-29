@@ -77,25 +77,27 @@ function serverStatus(svc,hosts){
 const ALARM_TEXT={ALARM:'경보',OK:'정상',INSUFFICIENT_DATA:'데이터 부족'};
 export function alarmOverviewChart(alarms){
  if(!Array.isArray(alarms)||!alarms.length)return '';
- const groups=[
-  ['경보','alarm',a=>a.state==='ALARM'],
-  ['데이터 부족','insufficient',a=>a.state==='INSUFFICIENT_DATA'],
-  ['정상 판정 · 데이터 없음','nodata',a=>a.state==='OK'&&a.noData],
-  ['정상','ok',a=>a.state==='OK'&&!a.noData],
- ];
  const known=new Set(['ALARM','INSUFFICIENT_DATA','OK']);
- if(alarms.some(a=>!known.has(a.state)))groups.push(['기타 상태','other',a=>!known.has(a.state)]);
- const cards=groups.map(([label,key,matches])=>{
+ const isAlarm=a=>a.state==='ALARM';
+ const needsCheck=a=>!isAlarm(a)&&(a.needsCheck??(a.state==='INSUFFICIENT_DATA'||!known.has(a.state)));
+ // 정상은 화면에 올리지 않는다(DEC-035). 조건·상태 전체는 접힌 상세 표에서 확인한다.
+ const groups=[
+  ['경보','alarm',isAlarm,'지표가 기준을 넘었습니다.'],
+  ['확인 필요','check',needsCheck,'CPU·메모리처럼 계속 들어와야 하는 지표가 없거나 판정할 데이터가 부족합니다.'],
+ ];
+ const card=([label,key,matches,hint])=>{
   const items=alarms.filter(matches);
   return `<div class="alarm-status-group ${key}"><div class="alarm-status-head"><span>${label}</span><b>${items.length}개</b></div>
-   <ul>${items.length?items.map(a=>`<li><strong>${esc(a.label||a.name)}</strong><small>${esc(a.autoResponse?.label||(a.notifies?'SNS 알림':'대응 설정 없음'))}</small></li>`).join(''):'<li class="alarm-status-empty">해당 경보 없음</li>'}</ul></div>`;
- }).join('');
- return `<div class="alarm-status-board" role="group" aria-label="CloudWatch 경보별 현재 상태"><div class="alarm-status-intro"><strong>경보별 현재 상태</strong><span>전체 ${alarms.length}개 · 마지막 조회 기준</span></div>
-  <div class="alarm-status-grid">${cards}</div><p>데이터 없음은 지표가 없어 정상으로 처리된 경보입니다. 대응 표시는 설정이며 실제 실행 결과는 조치 이력에서 확인합니다.</p></div>`;
+   ${items.length?`<ul>${items.map(a=>`<li><strong>${esc(a.label||a.name)}</strong><small>${a.noData?'데이터 없음 · ':''}${esc(a.autoResponse?.label||(a.notifies?'SNS 알림':'대응 설정 없음'))}</small></li>`).join('')}</ul>
+   <p class="alarm-status-hint">${hint}</p>`:'<p class="alarm-status-empty">해당 경보 없음</p>'}</div>`;
+ };
+ return `<div class="alarm-status-board" role="group" aria-label="CloudWatch 경보별 현재 상태"><div class="alarm-status-intro"><strong>확인이 필요한 경보</strong><span>전체 ${alarms.length}개 중 정상이 아닌 것만 표시 · 마지막 조회 기준</span></div>
+  <div class="alarm-status-grid">${groups.map(card).join('')}</div><p>대응 표시는 설정이며 실제 실행 결과는 조치 이력에서 확인합니다.</p></div>`;
 }
 function alarmState(a){
- if(a.state==='OK'&&a.noData)return '<span class="alarm-state muted" title="treat_missing_data=notBreaching — 데이터가 없어 정상으로 처리">정상 판정 · 데이터 없음</span>';
- return `<span class="alarm-state ${a.state==='ALARM'?'bad':a.state==='OK'?'ok':'muted'}">${ALARM_TEXT[a.state]||esc(a.state)}</span>`;
+ if(a.state==='OK'&&a.noData&&a.needsCheck)return '<span class="alarm-state warn" title="treat_missing_data=notBreaching — 계속 들어와야 하는 지표인데 데이터가 없어 정상으로 처리됨">확인 필요 · 데이터 없음</span>';
+ if(a.state==='OK'&&a.noData)return '<span class="alarm-state ok" title="사건이 있어야 지표가 생기는 경보 — 사건이 없어 데이터가 없는 것이 평소 상태">정상 · 사건 없음</span>';
+ return `<span class="alarm-state ${a.state==='ALARM'?'bad':a.state==='OK'?'ok':'warn'}">${ALARM_TEXT[a.state]||esc(a.state)}</span>`;
 }
 const compareKo={GreaterThanThreshold:'>',GreaterThanOrEqualToThreshold:'≥',LessThanThreshold:'<',LessThanOrEqualToThreshold:'≤'};
 function alarmTable(svc){
@@ -121,10 +123,38 @@ export function infrastructure(){
  <div class="infrastructure-grid">
   <section class="panel">${header(`상세 · ${esc(h.name)}`,hostPicker(hosts,h))}<div class="metric-large">${canvas('metrics-chart',`CPU ${pct(h.stats.cpu.now)}, 메모리 ${pct(h.stats.memory.now)}, 임계치 ${h.threshold.cpu}%`)}</div>
    <div class="metric-stats"><div><span>CPU 최근 표본</span><b>${pct(h.stats.cpu.now)}</b></div><div><span>CPU 최대 / 평균</span><b>${pct(h.stats.cpu.max)} / ${pct(h.stats.cpu.avg)}</b></div><div><span>메모리 최근 표본</span><b>${pct(h.stats.memory.now)}</b></div><div><span>메모리 최대 / 평균</span><b>${pct(h.stats.memory.max)} / ${pct(h.stats.memory.avg)}</b></div></div>
-   <div class="context-note">${esc(h.resource)} — x축은 선택 기간 전체를 표시합니다. 최근 수치는 그 기간의 마지막 수집 표본입니다. 빈 구간에는 수집된 지표가 없습니다.${h.instanceIds.length>1?` 이전 인스턴스 ${h.instanceIds.length-1}개의 CloudWatch 기록을 연결했습니다. 세로 점선은 서버 교체 시점입니다.`:''}</div></section>
+   <div class="context-note">${esc(h.resource)} — x축은 선택 기간 전체를 표시합니다. 최근 수치는 그 기간의 마지막 수집 표본입니다. 빈 구간에는 수집된 지표가 없습니다.${h.instanceIds.length>1?` 이전 인스턴스 ${h.instanceIds.length-1}개의 CloudWatch 기록을 연결했습니다.`:''}</div></section>
   <section class="panel">${header('임계치 초과 구간',`CPU ${overCpu}회 / 메모리 ${overMem}회`)}${breachPanel(h,span)}
    <div class="context-note">CloudWatch 알람 조건은 5분 평균 2회 연속 초과입니다. 위 구간은 화면 표본 기준이라 알람 건수와 1:1이 아닙니다.</div></section>
  </div>${infraSections(svc,hosts)}`;
+}
+// x축 눈금(DEC-036). 표본은 5분 평균이라 모든 기간에서 전부 그리고, 눈금만 KST 정시에 맞춰 둔다.
+// 15분=5분 · 1시간=10분 · 1일=2시간 · 1주일=6시간 간격. 1시간 이상 간격은 자정에 날짜(M/D)를 쓴다.
+const KST_MS=9*3600000,MIN_MS=60000;
+export function tickStepMs(span){
+ if(span<=15*MIN_MS)return 5*MIN_MS;
+ if(span<=60*MIN_MS)return 10*MIN_MS;
+ if(span<=24*60*MIN_MS)return 2*60*MIN_MS;
+ return 6*60*MIN_MS;
+}
+export function alignedTicks(from,to,stepMs){
+ const out=[];
+ for(let t=Math.ceil((from+KST_MS)/stepMs)*stepMs-KST_MS;t<=to;t+=stepMs)out.push({value:t});
+ return out;
+}
+const kst=value=>new Date(value+KST_MS);
+const isKstMidnight=value=>kst(value).getUTCHours()===0&&kst(value).getUTCMinutes()===0;
+const two=n=>String(n).padStart(2,'0');
+const tickLabel=stepMs=>value=>{
+ const d=kst(value);
+ if(stepMs<60*MIN_MS)return `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
+ return isKstMidnight(value)?`${d.getUTCMonth()+1}/${d.getUTCDate()}`:`${two(d.getUTCHours())}시`;
+};
+export function xAxisOptions(from,to,span){
+ const step=tickStepMs(span);
+ return {type:'linear',min:from,max:to,afterBuildTicks:axis=>{axis.ticks=alignedTicks(axis.min,axis.max,step);},
+  grid:{color:ctx=>step>=60*MIN_MS&&isKstMidnight(ctx.tick?.value)?'rgba(120,140,160,.45)':'rgba(120,140,160,.14)'},
+  ticks:{color:'#62798c',autoSkip:false,maxRotation:0,font:{size:10},callback:tickLabel(step)}};
 }
 // 5분 표본(v20.5)은 1주일에 2,016개라 그대로 그린다. 그보다 많아지면(집계 간격을 줄일 때) 구간 최댓값으로
 // 묶어 그린다(임계치 초과가 평균에 묻히지 않게). 통계·초과 구간 계산은 원본 표본 그대로다.
@@ -155,8 +185,8 @@ export function drawInfrastructureChart(){
   {label:'메모리 %',data:xy(mem),borderColor:'#258474',tension:.3,borderWidth:2,spanGaps:false,
    pointRadius:mem.map(v=>v>t.memory?3.5:0),pointBackgroundColor:mem.map(v=>v>t.memory?'#b42332':'#258474')},
   {label:`${t.cpu}% 임계치`,data:[{x:from,y:t.cpu},{x:to,y:t.cpu}],borderColor:'#a76629',borderDash:[5,5],pointRadius:0,borderWidth:1},
-  ...h.switches.map((change,i)=>({label:i?'서버 교체 시점':'서버 교체',data:[{x:change.at,y:0},{x:change.at,y:100}],borderColor:'#788ca0',borderDash:[3,5],pointRadius:0,borderWidth:1}))]},
-  {plugins:{legend:{display:true,labels:{color:'#526e84',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#62798c'}},x:{type:'linear',min:from,max:to,ticks:{color:'#62798c',maxTicksLimit:8,callback:value=>formatAt(value,span)}}}});
+  ]},
+  {plugins:{legend:{display:true,labels:{color:'#526e84',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#62798c'}},x:xAxisOptions(from,to,span)}});
 }
 // 호스트 선택은 화면 안에서만(조회 범위를 바꾸지 않는다). 바뀌었으면 true.
 export function selectHost(id){if(infraHost===id)return false;infraHost=id;return true;}

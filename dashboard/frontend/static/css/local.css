@@ -249,7 +249,7 @@ html{scrollbar-gutter:stable}
 .auto-chip,.auto-state,.alarm-state{display:inline-flex;align-items:center;padding:1px 7px;border:1px solid currentColor;border-radius:3px;font-size:11px;line-height:1.5;white-space:nowrap;margin-left:6px}
 .auto-state,.alarm-state{margin-left:0}
 .auto-chip.ok,.auto-state.ok,.alarm-state.ok{color:#32d4be}.auto-chip.run,.auto-state.run{color:#8fb3c9}
-.auto-chip.warn,.auto-state.warn{color:#d8ca78}.auto-chip.bad,.auto-state.bad,.alarm-state.bad{color:#ef777f}
+.auto-chip.warn,.auto-state.warn,.alarm-state.warn{color:#d8ca78}.auto-chip.bad,.auto-state.bad,.alarm-state.bad{color:#ef777f}
 .auto-chip.muted,.auto-state.muted,.alarm-state.muted{color:#9baaa6}
 .event-link small .auto-chip{margin:0 6px 0 0}
 .overview-infra-body{padding:13px 16px}.overview-infra-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -673,9 +673,9 @@ body.view-events .timeline{margin-bottom:6px}
 .alarm-status-board{padding:13px 16px 15px;border-bottom:1px solid #3d4840}
 .alarm-status-intro{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:10px;color:#dbe7e0;font-size:12px}
 .alarm-status-intro span{color:#91a896;font-size:10px}
-.alarm-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.alarm-status-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;align-items:start}
 .alarm-status-group{min-width:0;border:1px solid #3d4840;border-top:3px solid #7f948a;border-radius:4px;background:#1d2521}
-.alarm-status-group.alarm{border-top-color:#ef777f}.alarm-status-group.insufficient,.alarm-status-group.nodata{border-top-color:#8fa295}.alarm-status-group.ok{border-top-color:#adc2b1}
+.alarm-status-group.alarm{border-top-color:#ef777f}.alarm-status-group.check{border-top-color:#d8ca78}.alarm-status-group.ok{border-top-color:#adc2b1}
 .alarm-status-head{display:flex;justify-content:space-between;gap:7px;align-items:baseline;padding:9px 10px;border-bottom:1px solid #334038;font-size:11px;color:#cbd9d0}
 .alarm-status-group.alarm .alarm-status-head b{color:#ef777f}.alarm-status-head b{flex:none;font-size:16px;color:#e7eeec;font-variant-numeric:tabular-nums}
 .alarm-status-group ul{list-style:none;display:grid;gap:0;margin:0;padding:0}
@@ -685,10 +685,13 @@ body.view-events .timeline{margin-bottom:6px}
 .alarm-status-group li small{font-size:10px;color:#a2b5a9}
 .alarm-status-group .alarm-status-empty{color:#82978a;font-size:10px}
 .alarm-status-board p{margin:10px 0 0;color:#91a896;font-size:10px;line-height:1.5}
+.alarm-status-group p.alarm-status-hint{margin:0;padding:8px 10px;border-top:1px solid #303c35;color:#82978a}
+.alarm-status-group p.alarm-status-empty{margin:0;padding:8px 10px;color:#82978a}
+.alarm-status-fold summary{cursor:pointer;padding:8px 10px;font-size:11px;color:#a2b5a9}
+.alarm-status-fold[open] summary{border-bottom:1px solid #303c35}
 .alarm-details summary{cursor:pointer;padding:11px 16px;color:#b9d6c4;font-size:12px}
 .alarm-details summary:focus-visible{outline:2px solid var(--mint);outline-offset:-2px}
 .alarm-details .table-scroll{margin:0 16px 14px;border:1px solid #3d4840}
-@media(max-width:1000px){.alarm-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.alarm-status-grid{grid-template-columns:1fr}.alarm-status-intro{align-items:flex-start;flex-direction:column;gap:3px}}
 
 /* 통합 관제 — 인프라 상태 요약 2x2(EC2·경보 / CPU·메모리)와 자동 대응 현황 행 배치 */

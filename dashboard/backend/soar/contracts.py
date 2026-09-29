@@ -439,6 +439,7 @@ class StandardService:
         return {"total": len(items), "alarm": len(firing),
                 "insufficientData": sum(alarm["state"] == "INSUFFICIENT_DATA" for alarm in items),
                 "noData": sum(bool(alarm.get("noData")) for alarm in items),
+                "needsCheck": sum(bool(alarm.get("needsCheck")) for alarm in items),
                 "firing": [{key: alarm.get(key) for key in ("name", "label", "scenario", "updatedAt", "autoResponse")}
                            for alarm in firing[:5]]}
 

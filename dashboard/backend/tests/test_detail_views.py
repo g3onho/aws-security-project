@@ -220,6 +220,13 @@ def test_alarm_names_map_to_scenarios_and_no_data_is_not_healthy():
     assert (cpu["kind"], cpu["scenario"], cpu["host"], cpu["resource"]) == ("cpu", "SEC-10", "docker-host", "i-0aaa")
     mysql = rows["soar-sec-dev-mysql-bruteforce"]
     assert mysql["noData"] is True and mysql["autoResponse"]["mode"] == "auto"
+    assert mysql["needsCheck"] is False  # 사건이 있어야 지표가 생기는 알람의 데이터 없음은 평소 상태
+    no_data_reason = "no datapoints were received for 1 period and 1 missing datapoint was treated as [NonBreaching]."
+    mem = alarm_repo.normalize(alarm("soar-sec-dev-db-mem-high", reason=no_data_reason), "soar-sec-dev", "r", "a", policy)
+    assert mem["noData"] is True and mem["needsCheck"] is True  # 계속 들어와야 하는 지표의 데이터 없음
+    insufficient = alarm_repo.normalize(alarm("soar-sec-dev-db-cpu-high", state="INSUFFICIENT_DATA"), "soar-sec-dev", "r", "a", policy)
+    assert insufficient["needsCheck"] is True
+    assert rows["soar-sec-dev-ssh-reject"]["needsCheck"] is False
     assert rows["soar-sec-dev-ssh-reject"]["autoResponse"]["mode"] == "manual"  # SEC-06B 가 목록에 없음
     assert rows["soar-sec-dev-waf-sqli"]["scenario"] == "SEC-08" and rows["soar-sec-dev-finding-sync-dlq"]["kind"] == "pipeline"
 

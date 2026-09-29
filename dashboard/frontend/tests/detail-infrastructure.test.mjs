@@ -28,10 +28,11 @@ test('infrastructure lists EC2 status and CloudWatch alarms while tiers stay sum
  assert(!text.includes('3계층 서비스'),'3계층 요약은 통합관제 화면에 둔다');
  assert.equal($('#content').querySelectorAll('.service-node').length,0,'인프라 화면에 중복 계층 흐름을 두지 않는다');
  assert(text.includes('경보')&&text.includes('공격 IP 자동 차단')&&text.includes('데이터 없음'));
- assert.equal($('#content').querySelectorAll('.alarm-status-group').length,4,'현재 경보 상태를 네 구역으로 나눈다');
+ assert.equal($('#content').querySelectorAll('.alarm-status-group').length,2,'경보와 확인 필요 두 구역만 둔다(정상은 표시하지 않음)');
  assert($('#content .alarm-status-group.alarm').textContent.includes('SSH(22) 접속 거부 급증'));
  assert($('#content .alarm-status-group.alarm').textContent.includes('공격 IP 자동 차단'));
- assert($('#content .alarm-status-group.nodata').textContent.includes('MySQL 로그인 실패 급증'));
+ assert(!$('#content .alarm-status-board').textContent.includes('MySQL 로그인 실패 급증'),'사건이 있어야 지표가 생기는 경보의 데이터 없음은 정상이라 보드에 올리지 않는다');
+ assert.equal($('#content .alarm-status-group.check').textContent.includes('해당 경보 없음'),true);
  assert.equal($('#content .alarm-details').open,false,'조건과 변경 시각은 펼쳐서 확인한다');
  assert(!text.includes('3계층 서비스1개 구성요소'),'EC2 목록을 3계층처럼 잇지 않는다');
  assert.deepEqual(errors,[]);

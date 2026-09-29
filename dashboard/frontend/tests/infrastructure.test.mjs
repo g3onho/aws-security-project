@@ -43,7 +43,21 @@ test('infrastructure uses standard metrics and component status fields',async t=
  assert(charts.at(-1).data.datasets[0].data.some(point=>point.x===Date.parse(twoHours)),'과거 CloudWatch 표본이 차트에 남아야 한다');
  assert(charts.at(-1).data.datasets[0].data.some(point=>point.x>Date.parse(twoHours)&&point.x<Date.parse(earlier)&&point.y===null),'수집되지 않은 시간은 선으로 이어 붙이지 않는다');
  assert($('#content').textContent.includes('이전 인스턴스 1개의 CloudWatch 기록을 연결했습니다'));
- assert(charts.at(-1).data.datasets.some(dataset=>dataset.label==='서버 교체'&&dataset.data[0].x===Date.parse(earlier)));
+ assert(!charts.at(-1).data.datasets.some(dataset=>/서버 교체/.test(dataset.label)),'서버 교체 세로선은 그리지 않는다');
+ assert(!$('#content').textContent.includes('서버 교체 시점'));
+ const weekX=charts.at(-1).options.scales.x,weekAxis={min:weekX.min,max:weekX.max,ticks:[]};
+ weekX.afterBuildTicks(weekAxis);
+ assert(weekAxis.ticks.length>=27&&weekAxis.ticks.length<=29,'1주일 x축은 6시간 간격 눈금(28개 안팎)');
+
+ // 기간별 눈금 간격(DEC-036): 15분=5분, 1시간=10분, 1일=2시간, 1주일=6시간, 모두 KST 정시 기준
+ const {tickStepMs,alignedTicks}=await import(pathToFileURL(path.join(ROOT,'static/js/ui/pages/infrastructure.js')).href);
+ assert.deepEqual([15*60000,3600000,86400000,7*86400000].map(tickStepMs),[300000,600000,7200000,21600000]);
+ const base=Date.parse('2026-09-29T05:03:00Z');// KST 14:03
+ assert.deepEqual(alignedTicks(base,base+3600000,600000).map(t=>new Date(t.value+9*3600000).getUTCMinutes()),[10,20,30,40,50,0]);
+ assert.equal(alignedTicks(base-86400000,base,7200000).length,12,'1일은 2시간 간격 12~13개');
+ assert(weekAxis.ticks.every((t,i)=>!i||t.value-weekAxis.ticks[i-1].value===6*3600000));
+ assert.match(weekX.ticks.callback(Date.parse('2026-09-28T15:00:00Z')),/^9\/29$/,'KST 자정에는 날짜를 표시한다');
+ assert.match(weekX.ticks.callback(Date.parse('2026-09-28T21:00:00Z')),/^06시$/);
  assert.deepEqual(errors,[]);
 });
 
