@@ -273,3 +273,10 @@ def test_default_app_has_the_assistant_disabled(tmp_path):
     client = login(app, "op")
     assert client.get("/api/assistant/status").json["data"]["enabled"] is False
     assert client.post("/api/assistant/chat", json={"messages": Q}).status_code == 503
+
+
+def test_thinking_tags_from_nova_are_not_shown():
+    """Nova 는 답 앞에 <thinking> 블록을 붙이는 경우가 있다 — 화면에는 최종 답만 낸다."""
+    svc = service([say("<thinking>도구가 필요 없다</thinking>\n허니팟 접속은 3건입니다.")])
+    answer = svc.chat(Q, "op")["answer"]
+    assert "thinking" not in answer and answer == "허니팟 접속은 3건입니다."

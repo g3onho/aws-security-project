@@ -354,7 +354,7 @@ variable "enable_honeypot_ai" {
 }
 
 variable "honeypot_ai_model_id" {
-  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
+  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Lite(서울 apac 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다."
   type        = string
   default     = "apac.amazon.nova-lite-v1:0"
 }
@@ -367,7 +367,7 @@ variable "enable_dashboard_assistant" {
 }
 
 variable "dashboard_assistant_model_id" {
-  description = "대시보드 도우미가 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
+  description = "대시보드 도우미가 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Lite(서울 apac 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다."
   type        = string
   default     = "apac.amazon.nova-lite-v1:0"
 }

@@ -6,9 +6,16 @@ import {badge} from './badges.js?v=ui-1';
 import {patchMarkup} from './rendering.js?v=ui-1';
 import {syncUrl} from '../router.js?v=ui-1';
 import {autoChip,automationState,changeList,DECISION_KO} from './remediation.js?v=ui-1';
+import {flowBlock,eventStages,FLOW_NOTE_EVENT} from '../pages/flow-map.js?v=ui-1';
 let detailSerial=0;
+let historyCache={id:null,data:null};
+function flowSection(e){
+ const history=historyCache.id===e.id?historyCache.data:null;
+ return `<section class="detail-section"><h3>경로 지도 <small class="source-note">이 탐지가 아키텍처 어디까지 갔는지</small></h3><div id="event-flow" class="event-flow" data-key="event-flow">${flowBlock(eventStages(e,history),FLOW_NOTE_EVENT)}</div></section>`;
+}
 export async function eventDialog(id,ask=false){
  notifications.close();
+ if(historyCache.id!==id)historyCache={id:null,data:null};
  const serial=++detailSerial;ui.activeId=id;ui.approval=ask;syncUrl(true);
  if(!$('#event-dialog').open)ui.lastTrigger=document.activeElement;
  $('#dialog-content').innerHTML='<div class="dialog-header"><h2 id="dialog-title">이벤트 상세</h2><button data-action="close" aria-label="상세 닫기">×</button></div><div class="dialog-body" role="status">상세 정보를 불러오는 중…</div>';
@@ -42,7 +49,7 @@ export function drawDetail(e){
  const related=(e.relatedCves||[]).length?`<section class="detail-section"><h3>같은 자원의 CVE (상관분석)</h3><p>${e.relatedCves.map(c=>`<span class="scenario-tag">${esc(c)}</span>`).join(' ')}</p></section>`:'';
  patchMarkup($('#dialog-content'),`<div class="dialog-header"><div><div class="eyebrow">${esc(e.controlId||e.id)} / ${esc(e.scenario||'분류 없음')}</div><h2 id="dialog-title">${esc(e.guidance?.title||e.title)}</h2>${e.guidance?`<p class="dialog-subtitle">${esc(e.title)}</p>`:''}</div><button class="dialog-close" data-action="close" aria-label="상세 닫기">×</button></div>
  <div class="dialog-body"><dl class="detail-meta"><div><dt>위험도</dt><dd>${badge(e)}</dd></div><div><dt>탐지 소스</dt><dd>${esc(e.source)}</dd></div><div><dt>대상 자원</dt><dd>${esc(e.resource)}</dd></div><div><dt>상태</dt><dd>${esc(e.status)}</dd></div><div><dt>발생 시각</dt><dd>${format(e.at)} KST</dd></div><div><dt>계정</dt><dd>${esc(e.accountId||'제공되지 않음')}</dd></div></dl>
- ${guidanceSection(e.guidance)}${awsSection(e)}${autoSection(e.autoRemediation)}${related}
+ ${flowSection(e)}${guidanceSection(e.guidance)}${awsSection(e)}${autoSection(e.autoRemediation)}${related}
  <section class="detail-section"><h3>조치 기록 <small class="source-note">최근 31일 · 자동 조치 판정</small></h3><div id="event-history" data-key="event-history"><p class="muted">조치 기록을 불러오는 중…</p></div></section>
  <p class="muted">팀 설명은 이 프로젝트 기준 해설이고 AWS 원문과 따로 표시합니다. 자동 조치 여부는 현재 설정으로 본 예상이며, 실제로 한 일은 조치 기록이 기준입니다.</p></div><div class="dialog-actions"><span>읽기 전용</span><button class="cancel-button" data-action="close">닫기</button></div>`);
 }
@@ -54,7 +61,7 @@ function historyMarkup(data){
 }
 async function loadEventHistory(e,serial){
  const box=()=>currentDetail(e.id,serial)?$('#event-history'):null;
- try{const data=await api.eventHistory(e.id);const target=box();if(target)patchMarkup(target,historyMarkup(data));}
+ try{const data=await api.eventHistory(e.id);const target=box();if(target){patchMarkup(target,historyMarkup(data));historyCache={id:e.id,data};const flow=currentDetail(e.id,serial)?$('#event-flow'):null;if(flow)patchMarkup(flow,flowBlock(eventStages(e,data),FLOW_NOTE_EVENT));}}
  catch(error){const target=box();if(target&&error.name!=='AbortError')patchMarkup(target,`<p class="panel-error" role="status">조치 기록을 불러오지 못했습니다: ${esc(error.message)}</p>`);}
 }
 

@@ -131,18 +131,8 @@ class HoneypotService:
             else:
                 cards["logs"] = {"state": "info", "text": "최근 24시간 관측 없음", "at": None,
                                  "detail": "접속이 없으면 로그도 없다 — 시험 접속으로 확인하세요"}
-            with_commands = [s for s in sessions.values() if s["commands"] and s["analysis"]]
-            applied = [s for s in with_commands if s["analysis"]["aiApplied"]]
-            if not with_commands:
-                cards["ai"] = {"state": "unknown", "text": "확인할 세션 없음", "at": None,
-                               "detail": "명령이 있고 분석이 끝난 세션이 없다"}
-            elif applied:
-                cards["ai"] = {"state": "ok", "text": f"{len(applied)}/{len(with_commands)}", "at": None,
-                               "detail": "AI 분석이 적용된 세션 / 분석된 세션(명령 있음)"}
-            else:
-                cards["ai"] = {"state": "warn", "text": f"0/{len(with_commands)}", "at": None,
-                               "detail": "AI 분석이 한 번도 적용되지 않음 — 모델 ID·Bedrock 모델 액세스 확인"}
-                reasons.append("AI 분석이 적용되지 않음")
+            cards["ai"], ai_reasons = self._ai_card(sessions)
+            reasons += ai_reasons
         # 탐지 알람
         try:
             alarm = self.sources.alarm()
@@ -171,6 +161,39 @@ class HoneypotService:
         return {"deployed": True, "verdict": {**verdict, "reasons": reasons}, "cards": cards,
                 "canWrite": principal["role"] in self.writer_roles and bool(self.writes_enabled),
                 "asOf": iso(now)}, warnings, bool(warnings)
+
+    @staticmethod
+    def _ai_card(sessions):
+        """'AI 응답' 카드: 허니팟이 남긴 Bedrock 호출 기록(ai_call)이 근거다. 기록이 없으면 정상으로 보지 않는다.
+
+        성공 기록이 있으면 정상, 실패 기록만 있으면 실패(오류 클래스 이름 표시), 둘 다 없으면 관측 부족.
+        ai_call 을 남기기 전 버전의 로그는 AI 분석이 적용된 세션(aiApplied)을 성공 관측으로 인정한다.
+        """
+        calls = [c for s in sessions.values() for c in s["aiCalls"]]
+        ok = [c for c in calls if c["ok"]]
+        bad = [c for c in calls if not c["ok"]]
+        if ok:
+            last = max(ok, key=lambda c: c["at"])
+            detail = f"{last['model'] or '모델 미기록'}" + (f" · {last['ms']}ms" if last["ms"] is not None else "")
+            if bad:
+                detail += " · 실패 " + ", ".join(sorted({c["error"] for c in bad}))
+            return {"state": "ok", "text": f"성공 {len(ok)} / 실패 {len(bad)}", "at": last["at"], "detail": detail}, []
+        if bad:
+            last = max(bad, key=lambda c: c["at"])
+            errors = ", ".join(sorted({c["error"] for c in bad}))
+            return {"state": "bad", "text": f"실패 {len(bad)}건", "at": last["at"],
+                    "detail": f"{errors} — 모델 ID·요청 형식·Bedrock 접근 권한 확인 (journalctl -u honeypot)"}, \
+                [f"AI 호출이 실패함({errors})"]
+        with_commands = [s for s in sessions.values() if s["commands"] and s["analysis"]]
+        applied = [s for s in with_commands if s["analysis"]["aiApplied"]]
+        if applied:
+            return {"state": "ok", "text": f"{len(applied)}/{len(with_commands)}", "at": None,
+                    "detail": "AI 분석이 적용된 세션 / 분석된 세션(명령 있음) — 호출 기록 이전 버전 로그"}, []
+        if with_commands:
+            return {"state": "warn", "text": f"0/{len(with_commands)}", "at": None,
+                    "detail": "AI 분석이 한 번도 적용되지 않음 — 모델 ID·Bedrock 접근 권한 확인"}, ["AI 분석이 적용되지 않음"]
+        return {"state": "unknown", "text": "기록 없음(동작 확인 중)", "at": None,
+                "detail": "최근 24시간에 AI 호출 기록이 없다 — 명령을 입력하는 시험 접속으로 확인하세요"}, []
 
     def _block_card(self, now):
         reasons = []

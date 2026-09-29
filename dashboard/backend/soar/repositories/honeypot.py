@@ -16,7 +16,8 @@ INTENTS = ("recon", "credential-access", "lateral-movement", "exfiltration", "im
 SEVERITIES = ("low", "medium", "high", "critical")
 SESSION_ID = re.compile(r"^[0-9a-f]{12}$")  # honeypot.py 가 uuid4().hex[:12] 로 만든다
 NOT_APPLIED = "AI 분석 미적용"                 # honeypot.py 의 규칙 기반 대체 요약에 들어가는 문구
-LIMITS = {"command": 4000, "response": 2000, "user": 128, "password": 256, "summary": 500, "ioc": 200}
+ERROR_CLASS = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{0,63}$")   # ValidationException, AccessDeniedException …
+LIMITS = {"model": 100, "command": 4000, "response": 2000, "user": 128, "password": 256, "summary": 500, "ioc": 200}
 MAX_IOCS = 20
 
 
@@ -71,7 +72,7 @@ def sessions(events):
         ip = _ip(body.get("src_ip"))
         s = out.setdefault(sid, {"sessionId": sid, "srcIp": None, "srcPort": None, "startedAt": event["at"],
                                  "hasConnect": False, "endedAt": None, "authAttempts": [], "commands": [],
-                                 "analysis": None, "pendingCommand": None})
+                                 "analysis": None, "aiCalls": [], "pendingCommand": None})
         if ip and not s["srcIp"]:
             s["srcIp"] = ip
         kind = event["kind"]
@@ -89,6 +90,15 @@ def sessions(events):
         elif kind == "response":
             if s["pendingCommand"] is not None and s["pendingCommand"]["response"] is None:
                 s["pendingCommand"]["response"] = _text(body.get("response"), LIMITS["response"])
+        elif kind == "ai_call":
+            # 허니팟이 Bedrock 을 부른 결과(성공/실패). 오류는 클래스 이름만 받고 나머지는 버린다.
+            ms = body.get("ms")
+            error = body.get("error")
+            s["aiCalls"].append({"at": event["at"], "ok": body.get("ok") is True,
+                                 "kind": body.get("kind") if body.get("kind") in ("shell", "analysis") else "unknown",
+                                 "model": _text(body.get("model"), LIMITS["model"]),
+                                 "ms": ms if isinstance(ms, int) and 0 <= ms <= 600000 else None,
+                                 "error": error if isinstance(error, str) and ERROR_CLASS.match(error) else ("" if body.get("ok") is True else "unknown")})
         elif kind == "session_end":
             s["endedAt"] = event["at"]
             s["analysis"] = _analysis(body.get("analysis"))

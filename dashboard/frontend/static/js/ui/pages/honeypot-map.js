@@ -49,6 +49,8 @@ const ICON={ // 24×24 안에서 그린 단순 아이콘. 외부 글꼴·이미�
  gear:'<circle cx="12" cy="12" r="3.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
  logs:'<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 7h3"/>',
  spark:'<path d="M12 2l2.2 6.3L21 10l-6.3 2.2L12 19l-2.2-6.8L3 10l6.8-1.7z"/>',
+ bug:'<path d="M8 8h8v8a4 4 0 0 1-8 0z"/><path d="M9 5l1.5 3M15 5l-1.5 3M4 11h4M16 11h4M4 17h4M16 17h4"/>',
+ hub:'<circle cx="12" cy="12" r="3"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 7l3 3M17 7l-3 3M7 17l3-3M17 17l-3-3"/>',
  bucket:'<path d="M4 8h16l-2 12H6z"/><ellipse cx="12" cy="8" rx="8" ry="2.6"/>',
 };
 const icon=(name,x,y,size,color)=>`<g transform="translate(${x-size/2} ${y-size/2}) scale(${size/24})" fill="none" stroke="${color}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</g>`;
@@ -140,7 +142,7 @@ export function mapSvg(steps){
   ${connected?`<circle class="hp-mp-pulse" cx="1070" cy="252" r="64" fill="url(#hp-pulse)"/>`:''}
   <g class="hp-mp-gate" data-gate="${blocked?'closed':'open'}"><circle cx="841" cy="238" r="17" fill="#101614" stroke="${gateColor}" stroke-width="${blocked?2.4:1.4}"${blocked?' filter="url(#hp-glow)"':''}/>${icon('shield',841,238,20,gateColor)}</g>
   ${cut}
-  ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Claude Haiku',ic:'spark',color:SOFT,active:done('analysis')})}
+  ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Nova Lite',ic:'spark',color:SOFT,active:done('analysis')})}
   ${node({id:'logs',x:262,y:500,w:100,h:58,title:'Logs',sub:'/honeypot/*',ic:'logs',color:SOFT,active:done('alarm')})}
   ${node({id:'alarm',x:414,y:500,w:96,h:58,title:'알람',sub:'HoneypotHit',ic:'bell',color:SOFT,active:done('alarm')})}
   ${node({id:'eb',x:554,y:500,w:100,h:58,title:'EventBridge',sub:'ALARM 이벤트',ic:'bolt',color:MINT,active:done('judge')})}
@@ -168,3 +170,6 @@ export function replayMap(root){
  const svg=root?.querySelector('.hp-map-svg');if(!svg)return;
  svg.classList.remove('play');void svg.getBoundingClientRect();svg.classList.add('play');
 }
+
+// 이벤트·시나리오 경로 지도(flow-map.js)가 같은 아이콘·노드 모양을 쓴다.
+export {icon,node,STATE};

@@ -215,7 +215,7 @@ class AssistantService:
             blocks = message.get("content") or []
             calls = [b["toolUse"] for b in blocks if "toolUse" in b]
             if response.get("stopReason") != "tool_use" or not calls:
-                text = "".join(b.get("text", "") for b in blocks if "text" in b).strip()
+                text = re.sub(r"<thinking>.*?</thinking>", "", "".join(b.get("text", "") for b in blocks if "text" in b), flags=re.S).strip()   # Nova 가 붙이는 사고 태그는 화면에 내지 않는다
                 return {"answer": text or "답을 만들지 못했습니다. 질문을 바꿔 다시 물어보세요.", "toolsUsed": used,
                         "usage": usage_total, "truncated": response.get("stopReason") == "max_tokens"}
             if len(used) >= MAX_TOOL_ROUNDS * 3:

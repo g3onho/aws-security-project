@@ -3,6 +3,7 @@
 import {$,api} from '../context.js?v=ui-1';
 import {esc,format,milliseconds} from '../components/format.js?v=ui-1';
 import {loadPanel,header} from '../components/panel.js?v=ui-1';
+import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=ui-1';
 
 const SUPPORT_COLOR={runnable:'#087a68','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#526e84'};
 // 백엔드 DrillService.start_all 이 한 번에 실행하는 시나리오(SEC-06B 는 SEC-08 지리 공격 실행에 함께 들어 있다).
@@ -46,12 +47,17 @@ function resultOf(id){
  const label=states.some(s=>s==='Failed'||s==='TimedOut')?'실패':states.some(s=>RUNNING.has(s))?'실행 중':states.every(s=>s==='Success')?'완료':states.some(s=>s==='Cancelled')?'취소':'알 수 없음';
  return `<strong>${label}</strong> <small class="muted">${mine.length}건</small>`;
 }
+const openMaps=new Set();   // 경로 지도를 펼친 시나리오 ID (화면 안 상태)
 function scenarioRow(s){
  const obs=s.observation==='connected'?'연결됨':'미연결';
- return `<tr><td class="drill-scenario-main"><strong>${esc(s.id)}</strong><span>${esc(s.purpose)}</span></td>
+ const open=openMaps.has(s.id);
+ const row=`<tr><td class="drill-scenario-main"><strong>${esc(s.id)}</strong><span>${esc(s.purpose)}</span>
+  <button type="button" class="flow-toggle" data-flow-toggle="${esc(s.id)}" aria-expanded="${open}" aria-controls="flow-${esc(s.id)}">${open?'경로 지도 닫기':'경로 지도 보기'}</button></td>
   <td class="drill-scenario-evidence"><span><b>관측</b> ${s.sources.map(esc).join(' · ')}</span><span><b>대응</b> ${esc(s.response)}</span></td>
   <td class="drill-scenario-status"><div>${supportPill(s.support,s.supportLabel)}</div><small>관측 ${obs}</small></td>
   <td class="drill-scenario-result">${resultOf(s.id)}</td></tr>`;
+ if(!open)return row;
+ return row+`<tr class="flow-row"><td colspan="4"><div id="flow-${esc(s.id)}" class="scenario-flow">${flowBlock(scenarioStages(s,run.items),FLOW_NOTE_SCENARIO)}</div></td></tr>`;
 }
 function scenarioTable(){
  return `<div class="table-scroll"><table class="drill-scenario-table"><caption class="sr-only">보안 시나리오 카탈로그</caption>
@@ -140,6 +146,8 @@ async function start(){
 }
 function onClick(e){
  if(e.target.closest('[data-run-all-start]')){start();return;}
+ const toggle=e.target.closest('[data-flow-toggle]');
+ if(toggle){const id=toggle.dataset.flowToggle;if(openMaps.has(id))openMaps.delete(id);else openMaps.add(id);rerender();const again=[...document.querySelectorAll('[data-flow-toggle]')].find(b=>b.dataset.flowToggle===id);if(again)again.focus();}
 }
 
 // 새로고침 직후 한 번만: 저장된 runId 가 있으면 새로 시작하지 않고 그 실행 상태를 이어 본다.
