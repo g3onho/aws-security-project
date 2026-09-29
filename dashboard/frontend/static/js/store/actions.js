@@ -101,40 +101,58 @@ export const actions={
    // 기간 트랙(v20.5)이 1주일 임계 초과 구간을 세므로 지표는 늘 1주일을 받고, 그래프·통계용은 선택 기간만 잘라 쓴다(요청 1회).
    const chartQuery=new URLSearchParams(metricQuery);chartQuery.set('periodSeconds','300');
    chartQuery.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());
-   const eventRequest=pages(endpoints.events,q,signal);
+   const eventQuery=new URLSearchParams(q);if(filters.view==='events')eventQuery.delete('severity');
+   const eventRequest=pages(endpoints.events,eventQuery,signal);
    const regionalRequest=q.has('region')?pages(endpoints.events,regionalQuery,signal):eventRequest;
    const calls=[eventRequest,regionalRequest,request(endpoints.summary+'?'+q,{signal}),request(endpoints.health,{signal})];
    if(filters.view==='infrastructure')calls.push(request(endpoints.metrics+'?'+chartQuery,{signal}),request(endpoints.infra+'?'+metricQuery,{signal}));
+   // 통합 관제의 인프라 요약은 선택 기간만 조회한다. 실패해도 탐지 목록은 계속 보여준다.
+   const overviewMetricQuery=new URLSearchParams(metricQuery);overviewMetricQuery.set('periodSeconds','300');
+   const overviewContext=filters.view==='overview'?Promise.allSettled([
+    request(endpoints.metrics+'?'+overviewMetricQuery,{signal}),
+    request(endpoints.infra+'?'+metricQuery,{signal}),
+   ]):Promise.resolve(null);
    // 기간 트랙(v20.5)은 지금부터 1주일 전까지 누적 탐지 수를 그린다 → 1주일 목록. 1주일을 보고 있으면 본 목록을 그대로 쓴다.
    const weekQuery=new URLSearchParams(q);weekQuery.set('from',new Date(Date.parse(q.get('to'))-7*86400000).toISOString());
+   if(filters.view==='events')weekQuery.delete('severity');
    // 인프라(임계 초과)·조치 이력(이력 수)은 트랙에 탐지를 쓰지 않는다.
    const weekRequest=['vulnerabilities','infrastructure','responses'].includes(filters.view)?Promise.resolve(null)
     :filters.hours===168?eventRequest:pages(endpoints.events,weekQuery,signal);
-   const [[events,all,summaryResponse,health,metricsResponse,infraResponse],week]=await Promise.all([Promise.all(calls),weekRequest]);
+   const [[events,all,summaryResponse,health,baseMetrics,baseInfra],week,overviewResults]=await Promise.all([Promise.all(calls),weekRequest,overviewContext]);
    if(current!==session.generation)return false;
+   const optionalWarnings=[];
+   const optionalData=(result,label)=>{
+    if(result.status==='rejected'){optionalWarnings.push(`${label} 정보를 불러오지 못했습니다.`);return null;}
+    try{const response=envelope(result.value);optionalWarnings.push(...warningsOf(result.value));return response.data;}
+    catch{optionalWarnings.push(`${label} 응답 형식을 확인할 수 없습니다.`);return null;}
+   };
    const standardSummary=envelope(summaryResponse).data,healthData=envelope(health).data;
    const adapted=adaptEvents(events.items),regionalAdapted=all===events?adapted:adaptEvents(all.items);
    let rows=adapted.rows,regional=regionalAdapted.rows;
    if(filters.source){rows=rows.filter(e=>e.source===filters.source);regional=regional.filter(e=>e.source===filters.source);}
    if(filters.search){const matches=searchMatches(filters.search.toLocaleLowerCase());rows=rows.filter(matches);regional=regional.filter(matches);}
+   const severityCounts=Object.fromEntries(['CRITICAL','HIGH','MEDIUM','LOW','INFORMATIONAL','UNKNOWN'].map(severity=>[severity,rows.filter(e=>e.severity.toUpperCase()===severity).length]));
+   if(filters.view==='events'&&filters.severity){const match=e=>e.severity.toUpperCase()===filters.severity.toUpperCase();rows=rows.filter(match);regional=regional.filter(match);}
    data.rows=rows;data.regional=regional;
    if(week){let weekRows=week===events?adapted.rows:adaptEvents(week.items).rows;
     if(filters.source)weekRows=weekRows.filter(e=>e.source===filters.source);
     if(filters.search)weekRows=weekRows.filter(searchMatches(filters.search.toLocaleLowerCase()));
+    if(filters.view==='events'&&filters.severity)weekRows=weekRows.filter(e=>e.severity.toUpperCase()===filters.severity.toUpperCase());
     data.week=weekRows;}else data.week=null;
-   const metricWeek=metricsResponse?envelope(metricsResponse).data:null;
-   data.metricWeek=metricWeek;data.metric=metricWeek?sliceMetrics(metricWeek,Date.parse(q.get('from')),Date.parse(q.get('to'))):null;
-   data.infra=infraResponse?envelope(infraResponse).data:null;
+   const metricData=overviewResults?optionalData(overviewResults[0],'CloudWatch 지표'):baseMetrics?envelope(baseMetrics).data:null;
+   data.metricWeek=filters.view==='infrastructure'?metricData:null;
+   data.metric=metricData?sliceMetrics(metricData,Date.parse(q.get('from')),Date.parse(q.get('to'))):null;
+   data.infra=overviewResults?optionalData(overviewResults[1],'인프라 상태'):baseInfra?envelope(baseInfra).data:null;
    const asOf=milliseconds(events.meta?.asOf)||Date.now();setAsOf(asOf);
    const resolved=rows.filter(e=>e.actionState==='VERIFIED').length;
-   Object.assign(summary,{total:filters.source||filters.search?rows.length:standardSummary.totalEvents,resolved,
+   Object.assign(summary,{total:filters.source||filters.search?rows.length:standardSummary.totalEvents,bySeverity:filters.view==='events'?severityCounts:(standardSummary.bySeverity??{}),resolved,
     openVulnerabilities:standardSummary.openVulnerabilities??null,
     // v23 통합 관제: 자동 대응 현황(조치 이력 기준)·CloudWatch 경보 요약. 서버가 못 읽으면 null.
     automation:standardSummary.automation??null,alarms:standardSummary.alarms??null,
     resolutionRate:rows.length?resolved/rows.length*100:null,asOf,queryTo:Date.parse(q.get('to')),collectedAt:asOf,snapshot:events.meta?.requestId,
     health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}},
     // 적재 지연·실패(v21, meta.warnings)와 형식 오류로 뺀 행 수(어댑터)를 숨기지 않는다.
-    warnings:unique([...events.warnings,...warningsOf(summaryResponse),...(metricsResponse?warningsOf(metricsResponse):[]),...adapted.warnings])});
+    warnings:unique([...events.warnings,...warningsOf(summaryResponse),...(baseMetrics?warningsOf(baseMetrics):[]),...optionalWarnings,...adapted.warnings])});
    setConfig({...config,dataSourceConnected:healthData.dataSourceConnected});
    details.clear();for(const event of [...rows,...regional])details.set(event.id,event);
    markRequest('events',{status:'success',lastUpdated:asOf,requestId:events.meta?.requestId||null,error:null});
@@ -155,15 +173,15 @@ export const actions={
   const result=await pages(endpoints.history,q);const adapted=adaptHistory(result.items,result.extra.jobs);
   return {items:adapted.rows,warnings:unique([...result.warnings,...adapted.warnings])};
  },
- async vulnerabilities({target='',fixableOnly=false}={}){
+ async vulnerabilities({target=''}={}){
   // 취약점은 현재 상태 — 화면의 기간과 무관하게 계약 최대 구간(최근 31일)으로 요청한다(v20.5, API 규칙은 그대로).
-  const q=query(),to=Date.now();q.delete('status');q.set('from',new Date(to-31*86400000).toISOString());q.set('to',new Date(to).toISOString());if(target)q.set('resource',target);
+  const q=query(),to=Date.now();q.delete('status');q.delete('severity');q.set('from',new Date(to-31*86400000).toISOString());q.set('to',new Date(to).toISOString());if(target)q.set('resource',target);
   if(filters.source&&!['Inspector','Trivy'].includes(filters.source))return {items:[],total:0,warnings:[]};
   if(filters.source)q.set('source',filters.source);
   markRequest('vulnerabilities',{status:'loading'});
   try{
    const result=await pages(endpoints.vulnerabilities,q);const adapted=adaptVulnerabilities(result.items);
-   let items=fixableOnly?adapted.rows.filter(item=>item.fixedVersion&&!/pending/i.test(item.fixedVersion)):adapted.rows; // '(pending)' 은 수정본 미배포
+   let items=adapted.rows;
    if(filters.search){const term=filters.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
    markRequest('vulnerabilities',{status:'success',lastUpdated:milliseconds(result.meta?.asOf),requestId:result.meta?.requestId||null,error:null});
    return {items,total:items.length,warnings:unique([...result.warnings,...adapted.warnings])};

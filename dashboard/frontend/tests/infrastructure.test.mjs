@@ -11,9 +11,9 @@ test('infrastructure uses standard metrics and component status fields',async t=
  network.respond('/api/infra/status',{data:{components:[{id:'one',name:'EC2',resource:'i-fixture',status:'healthy',source:'EC2',detail:'running',observedAt:iso}],dependencies:[]},meta:{schemaVersion:'1',asOf:iso}});
  const {dom,$,click,charts,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'));
+ await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="infrastructure"]');
- await until(()=>$('#content').textContent.includes('42%'),'metric value not rendered');
+ await until(()=>$('#content .service-table')&&$('#content').textContent.includes('42%'),'infrastructure details did not render');
  assert($('#content').textContent.includes('healthy'));
  // 되살린 v17 화면: 호스트 카드 이름, 임계치(80%) 초과 구간 1개, CPU 최대값
  assert($('#content').textContent.includes('docker-host'));
@@ -26,7 +26,7 @@ test('infrastructure uses standard metrics and component status fields',async t=
  assert(network.calls.filter(call=>call.pathname==='/api/infra/status').every(call=>!call.url.searchParams.has('periodSeconds')),'infra/status 는 periodSeconds 를 거절한다');
  assert.equal($('.timeline').hidden,false);
  // v20.5: 지표는 1주일을 받아 그래프는 선택 기간만, 기간 트랙은 임계 초과 구간 수를 센다.
- const metricCall=network.calls.find(call=>call.pathname==='/api/metrics');
+ const metricCall=network.calls.filter(call=>call.pathname==='/api/metrics').at(-1);
  assert.equal(Date.parse(metricCall.url.searchParams.get('to'))-Date.parse(metricCall.url.searchParams.get('from')),7*86400000);
  await until(()=>$('#time-label').textContent.includes('임계 초과'));
  assert.match($('#time-label').textContent,/임계 초과 1구간/);

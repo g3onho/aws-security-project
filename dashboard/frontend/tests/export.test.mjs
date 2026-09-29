@@ -13,7 +13,7 @@ test('event CSV button downloads through the screen helper with current filters'
  t.mock.method(URL,'createObjectURL',blob=>{blobs.push(blob);return 'blob:fixture';});t.mock.method(URL,'revokeObjectURL',()=>{});
  dom.window.HTMLAnchorElement.prototype.click=function(){clicked=this.download;};
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'overview did not render');
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
  click('nav [data-view="events"]');
  await until(()=>Boolean($('#export')),'export button is rendered');
  const before=network.count('/api/events');

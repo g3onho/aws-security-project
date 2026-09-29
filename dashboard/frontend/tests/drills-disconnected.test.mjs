@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import {ROOT, until, makeFetchMock, appDOM} from './dom-test-support.mjs';
 
 // 회귀 방지: DATA_PROVIDER=none 처럼 공용 데이터 로드(events·summary)가 실패해도
-// 공격·대응 실습은 카탈로그만으로 렌더되어야 한다(실데이터 공급자 불필요).
+// 보안 시나리오는 카탈로그만으로 렌더되어야 한다(실데이터 공급자 불필요).
 test('drills renders even when the shared data load fails (disconnected provider)',async t=>{
  const base=makeFetchMock(),iso=new Date().toISOString();
  const env=data=>({data,meta:{schemaVersion:'1',asOf:iso,requestId:'fixture',partial:false,warnings:[]}});
@@ -30,7 +30,8 @@ test('drills renders even when the shared data load fails (disconnected provider
  click('nav [data-view="drills"]');
  await until(()=>$('#drills')?.textContent.includes('SEC-08'),'drills did not render while the data provider is disconnected');
  const text=$('#drills').textContent;
- assert(text.includes('웹 보안 검사')&&text.includes('실행 설정 — 웹 보안 검사'),'선택 UI가 미연결에서도 렌더되어야 한다');
+ assert(text.includes('보안 시나리오')&&text.includes('전부 실행')&&text.includes('실행 결과'),'전부 실행 UI가 미연결에서도 렌더되어야 한다');
+ assert.equal($('#drills [data-run-all-start]'),null,'미연결이면 실행 버튼은 비활성이다');
  assert(text.includes('데이터 소스 미연결'),'미연결 안내가 보여야 한다');
  assert.equal($('#load-state').hidden,true,'drills 렌더 후 상단 오류 배너는 사라져야 한다');
  assert.deepEqual(errors,[]);

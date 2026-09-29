@@ -5,7 +5,7 @@ import {regions,severityColors} from '../constants.js?v=ui-1';
 import {$,state,summary,selectEvents,setFilters,hooks} from '../context.js?v=ui-1';
 import {esc} from '../components/format.js?v=ui-1';
 import {patchAnimated} from '../components/panel.js?v=ui-1';
-import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=ui-1';
+import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=ui-5';
 import {clearSelection} from '../pages/events.js?v=ui-1';
 let attackSelection='all';
 let mapReady=false,zoom=DEFAULT_ZOOM,rotation=[...DEFAULT_ROTATION],panelOpen=true;

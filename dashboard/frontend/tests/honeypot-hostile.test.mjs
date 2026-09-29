@@ -34,7 +34,7 @@ test('hostile session content is rendered as text only, and a double click sends
  loadD3Force(w);w.__pwned=0;
  const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=local-2');client.setTimers({sleep:async()=>{}});
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'));
+ await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');
  await until(()=>$('.hp-steps')&&$('[data-block]'),'honeypot did not render');
  click('[data-hp-session="a00000000001"]');

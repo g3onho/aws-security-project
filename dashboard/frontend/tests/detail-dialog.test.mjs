@@ -16,6 +16,8 @@ test('event detail explains the problem, links AWS docs, predicts automation and
   :envelope({items:[],jobs:[],nextCursor:null}));
  const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
+ click('nav [data-view="events"]');
  await until(()=>$('#content .event-link'),'event list did not render');
  assert($('#content .event-link .auto-chip').textContent.includes('조건부 자동'),'목록에서 자동 조치 대상을 구분한다');
  click('#content .event-link');

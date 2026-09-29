@@ -112,10 +112,12 @@ test('UI talks to the Store only through actions and selectors',()=>{
 test('screen shows valid rows, reports skipped rows and uses accurate labels',async t=>{
  const network=makeFetchMock();
  network.respond('/api/events',()=>{const payload=snapshot();payload.data.items.push({id:'broken'},{...payload.data.items[0],id:'EVT-ODD',title:'Odd severity',severity:'SEVERE'});return payload;});
- const {dom,$,errors}=appDOM(network);t.after(()=>dom.window.close());
+ const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'valid rows must still render');
+ await until(()=>$('#content .event-trend-widget'),'overview must render with valid rows');
  await until(()=>$('#worker-state').textContent.includes('1건이 형식 오류로 목록에서 제외'),'skipped row count must be visible');
+ click('nav [data-view="events"]');
+ await until(()=>$('#content .event-link'),'valid rows must appear in the event list');
  // v23: 고정 문구 '조치 실행 비활성 · 조회 전용'은 없다. 경고만 보인다.
  assert($('#worker-state').textContent.startsWith('⚠'));
  assert(!$('#worker-state').textContent.includes('조치 실행 비활성'));
@@ -123,4 +125,3 @@ test('screen shows valid rows, reports skipped rows and uses accurate labels',as
  assert.doesNotMatch($('.map-legend').textContent,/제공되지 않음/);
  assert.deepEqual(errors,[]);
 });
-

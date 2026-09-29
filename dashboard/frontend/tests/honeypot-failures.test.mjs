@@ -16,7 +16,7 @@ test('a failing source only marks its own section as unreadable and warnings sta
  loadD3Force(w);
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=local-2');client.setTimers({sleep:async()=>{}});
- await until(()=>$('#content').textContent.includes('Contract test event'));
+ await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');
  await until(()=>$('[data-block]')&&$('.hp-steps'),'honeypot did not render');
  const text=$('#honeypot').textContent;

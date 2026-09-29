@@ -9,7 +9,7 @@ export const PERIOD_STOPS=Object.freeze([{hours:0,label:'지금'},{hours:.25,lab
 // 지점 위치(0~1). 실제 시간 비율(15분:1주일 = 1:672)이 아니라, 뒤로 갈수록 간격이 조금씩 넓어져
 // '기간 차이가 있다'는 느낌만 준다. 구간 폭 비 = 1 : 1.5 : 2.3 : 3.2.
 export const STOP_X=Object.freeze([0,.125,.3125,.6,1]);
-const W=1000,H=56,TOP=22,BASE=H-4,SAMPLES=40;   // 위쪽 여백 = 지점별 건수 글자 자리
+const W=1000,H=56,TOP=22,BASE=H-4,SAMPLES=40;
 
 // ago(ms 전) → x. 지점 사이는 시간 선형(구간마다 길이가 다른 조각 선형 축).
 export function xOf(ago){
@@ -34,14 +34,15 @@ export function periodTrackMarkup(times,hours,now,{noun='탐지',unit='건'}={})
  }
  const line=points.map(([x,v],i)=>`${i?'L':'M'}${x.toFixed(1)},${v.toFixed(1)}`).join(''),area=`${line}L${W},${BASE}L0,${BASE}Z`;
  const selX=xOf(hours*HOUR),sel=PERIOD_STOPS.findIndex(s=>s.hours===hours);
- const SVG_PX=42;   // .pt-svg 높이(px) — 지점 점을 곡선 위에 올린다
+ const SVG_PX=42;   // .pt-svg 높이(px) — 숫자 사각형 중심을 곡선 위에 둔다
  const stops=PERIOD_STOPS.map((s,i)=>{
   const x=STOP_X[i]*100,count=s.hours?(times==null?null:cumulative(ages,s.hours*HOUR)):null,active=i===sel,inside=i<=sel;
   const py=(y(count||0)/H*SVG_PX).toFixed(1),style=`left:${x}%;--y:${py}px`;
   const edge=i===0?' first':i===PERIOD_STOPS.length-1?' last':'';
+  const marker=count??'…';
   return s.hours
-   ?`<button class="pt-stop${active?' active':''}${inside?' inside':''}${edge}" style="${style}" data-hours="${s.hours}" aria-pressed="${active}" title="최근 ${esc(s.label)} · ${esc(noun)} ${count??'…'}${esc(unit)}"><span class="pt-stem"></span><span class="pt-count">${count??'…'}</span><span class="pt-dot"></span><span class="pt-label">${esc(s.label)}</span></button>`
-   :`<div class="pt-stop now${edge}" style="${style}"><span class="pt-count"></span><span class="pt-dot"></span><span class="pt-label">지금</span></div>`;
+   ?`<button class="pt-stop${active?' active':''}${inside?' inside':''}${edge}" style="${style}" data-hours="${s.hours}" aria-label="최근 ${esc(s.label)} · ${esc(noun)} ${marker}${esc(unit)}" aria-pressed="${active}" title="최근 ${esc(s.label)} · ${esc(noun)} ${marker}${esc(unit)}"><span class="pt-stem"></span><span class="pt-marker" data-period-count="${s.hours}" aria-hidden="true">${marker}</span><span class="pt-label">${esc(s.label)}</span></button>`
+   :`<div class="pt-stop now${edge}" style="${style}" aria-label="지금 · ${esc(noun)} 0${esc(unit)}"><span class="pt-marker" data-period-count="0" aria-hidden="true">0</span><span class="pt-label">지금</span></div>`;
  }).join('');
  return `<div class="pt" role="group" aria-label="조회 기간: 지금부터 과거로. 곡선은 지금부터 쌓인 ${esc(noun)} 수">
  <svg class="pt-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">

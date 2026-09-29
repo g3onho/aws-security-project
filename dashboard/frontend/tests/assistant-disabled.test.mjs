@@ -11,7 +11,7 @@ test('assistant shows an explicit unavailable state when the server has it disab
  network.respond('/api/assistant/status',()=>ok({enabled:false,model:null,readOnly:true,limits:{},tools:[]}));
  const {dom,$,click}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'overview did not render');
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
  click('#assistant-fab');
  await until(()=>$('#assistant-panel .as-bad'),'unavailable state missing');
  assert(/AI 도우미를 쓸 수 없습니다/.test($('#assistant-panel').textContent));

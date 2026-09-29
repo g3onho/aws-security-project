@@ -73,7 +73,6 @@
 /* ── 취약점 점검 ── */
 .sev-chip{display:inline-block;padding:1px 7px;border:1px solid;border-radius:3px;font-size:10px;font-weight:600}
 .vuln-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px 0;flex-wrap:wrap}
-.vuln-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#b8cdbf}
 .vuln-groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr));gap:10px;padding:12px 16px}
 .vuln-group{display:flex;flex-direction:column;gap:6px;padding:12px;background:#18201e;border:1px solid #33433c;border-radius:5px}
 .vuln-group.selected{border-color:#32d4be}
@@ -139,30 +138,51 @@ html{scrollbar-gutter:stable}
 .scenario-tag{padding:1px 6px;border-radius:3px;background:#2f3736;color:#c4d7cb;font-size:11px}
 .resource-id{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#9baaa6}
 .source-tag{display:inline-block;padding:2px 7px;border:1px solid;border-radius:4px;font-size:11px;white-space:nowrap}
-/* 취약점 점검 — 요약 카드와 서버·패키지 묶음 */
-.vuln-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 0 14px}
-.vuln-summary div{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:#252929;border:1px solid #353c3b;border-radius:6px}
-.vuln-summary span{font-size:11px;color:#9baaa6}.vuln-summary b{font-size:20px;color:#e7eeec}
-.cve-groups{display:grid;gap:8px;padding:10px 16px}
-.cve-group{background:#1f2424;border:1px solid #353c3b;border-radius:6px}
+/* 보안 이벤트 — 선택 기간의 시간대별 위험도 */
+.event-trend-widget{margin-bottom:14px}.event-trend-body{padding:12px 16px 14px}.event-trend-empty{padding:18px 16px}
+.event-trend-head{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12px;color:#dbe7e0}
+.event-trend-head span{font-size:11px;color:#9baaa6}
+.event-trend-chart{display:grid;grid-template-columns:repeat(var(--bucket-count),minmax(0,1fr));gap:10px;height:138px;margin:11px 0 4px;padding-top:3px;border-bottom:1px solid #43504a;background:repeating-linear-gradient(to top,transparent 0,transparent 40px,#313c37 41px)}
+.event-trend-column{display:flex;flex-direction:column;align-items:center;min-width:0;height:100%;font-size:10px;color:#9baaa6}
+.event-trend-column>b{height:16px;color:#e7eeec;font-size:10px;font-weight:600}
+.event-trend-bar{display:flex;flex-direction:column-reverse;justify-content:flex-start;width:min(100%,42px);height:94px;background:#2c3532;border-radius:3px 3px 0 0;overflow:hidden}
+.event-trend-bar i{display:block;flex:none;width:100%;min-height:2px}
+.event-trend-column small{display:block;margin-top:5px;white-space:nowrap;font-size:10px}
+.event-trend-legend{display:flex;flex-wrap:wrap;gap:5px 13px;margin-top:10px;font-size:10px;color:#9baaa6}
+.event-trend-legend span{display:inline-flex;align-items:center;gap:5px}.event-trend-legend i{display:inline-block;width:7px;height:7px;border-radius:50%}
+/* 보안 이벤트: 소스별 총량과 위험도 구성을 한 막대에서 비교 */
+.event-source-widget{margin-bottom:14px}.event-source-body{padding:12px 16px 14px}.event-source-body>p{font-size:11px;margin-bottom:12px}
+.event-source-list{display:grid;gap:11px}.event-source-row{display:grid;grid-template-columns:minmax(125px,190px) minmax(0,1fr);gap:12px;align-items:center}
+.event-source-heading{display:flex;justify-content:space-between;gap:8px;min-width:0;font-size:11px;color:#cbd9d0}.event-source-heading span{overflow-wrap:anywhere}.event-source-heading b{flex-shrink:0;color:#e7eeec;font-weight:500}
+.event-source-track{display:flex;width:100%;height:14px;border-radius:4px;overflow:hidden;background:#303936}.event-source-track i{height:100%;flex:none;min-width:2px}
+.event-source-track i.critical,.event-source-legend i.critical{background:#ef777f}.event-source-track i.high,.event-source-legend i.high{background:#e7a064}.event-source-track i.medium,.event-source-legend i.medium{background:#d8ca78}.event-source-track i.low,.event-source-legend i.low{background:#32d4be}.event-source-track i.informational,.event-source-legend i.informational{background:#8fb3c9}.event-source-track i.unknown,.event-source-legend i.unknown{background:#8fa295}
+.event-source-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0 0 202px;color:#a8bdaa;font-size:10px}.event-source-legend span{display:inline-flex;align-items:center;gap:5px}.event-source-legend i{width:7px;height:7px;border-radius:50%}.event-source-empty{padding:12px 0}
+/* 취약점 점검 — 서버·패키지 묶음 */
+.vuln-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
+.vuln-summary-button{position:relative;display:flex;justify-content:space-between;align-items:baseline;gap:8px;min-width:0;min-height:57px;padding:11px 12px 13px;border:1px solid color-mix(in srgb,var(--sev-color) 55%,#303a35);border-radius:5px;background:color-mix(in srgb,var(--sev-color) 11%,#202825);color:var(--sev-color);font-size:12px;cursor:pointer;overflow:hidden}
+.vuln-summary-button::after{content:'';position:absolute;left:0;bottom:0;width:var(--sev-share);height:3px;background:var(--sev-color)}
+.vuln-summary-button b{color:#edf5ef;font-size:22px;font-weight:600;line-height:1}
+.vuln-summary-button:hover,.vuln-summary-button.active{border-color:var(--sev-color);background:color-mix(in srgb,var(--sev-color) 20%,#202825)}
+.vuln-summary-button:focus-visible{outline:2px solid #b9ffe8;outline-offset:2px}
+.event-severity-filters{margin:0;padding:12px 14px;border-bottom:1px solid #353c3b}
+@media(max-width:600px){.vuln-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.vuln-note{margin:0;padding:0 14px 12px;color:#9baaa6;font-size:11px}
+.cve-groups{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:10px 16px}
+.cve-group{min-width:0;background:#1f2424;border:1px solid #353c3b;border-radius:6px}
 .cve-group[open]{border-color:#4a5a55}
-.cve-group summary{display:grid;grid-template-columns:minmax(180px,1.4fr) 70px minmax(200px,2fr) minmax(150px,1fr);gap:14px;align-items:center;padding:12px 14px;cursor:pointer;list-style:none}
+.cve-group summary{display:grid;grid-template-columns:minmax(180px,1fr) 70px auto;gap:14px;align-items:center;padding:12px 14px;cursor:pointer;list-style:none}
 .cve-group summary::-webkit-details-marker{display:none}
 .vg-main{display:flex;flex-direction:column;gap:3px;min-width:0}.vg-main strong{color:#e7eeec;font-size:14px}.vg-main small{color:#9baaa6;font-size:11px}
 .vg-count{text-align:center}.vg-count b{display:block;font-size:20px;color:#e7eeec}.vg-count span{font-size:11px;color:#9baaa6}
-.vg-sev{display:flex;flex-direction:column;gap:6px;min-width:0}
-.sev-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#2f3736}.sev-bar i{display:block;height:100%}
-.vg-chips{display:flex;flex-wrap:wrap;gap:4px}
+.vg-sev{justify-self:end}
 .sev-chip{display:inline-flex;gap:4px;align-items:center;padding:1px 7px;border:1px solid;border-radius:999px;font-size:11px;white-space:nowrap}
-.vg-meta{display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:11px;color:#9baaa6}.vg-meta b{color:#e7eeec}
-.fix-state{padding:1px 7px;border-radius:3px;background:#3a3a2a;color:#d8ca78}.fix-state.ok{background:#1b302a;color:#32d4be}.fix-state.wait{background:#2f3736;color:#9baaa6}
 .cve-group .table-scroll{padding:0 14px 6px}.vg-more{padding:0 14px 12px;margin:0;font-size:11px}
-@media(max-width:720px){.cve-group summary{grid-template-columns:1fr auto}.vg-sev,.vg-meta{grid-column:1/-1;align-items:flex-start}}
+@media(max-width:720px){.cve-group summary{grid-template-columns:1fr auto}.vg-sev{grid-column:1/-1;justify-self:start}}
 /* 패키지 토글 안 — 영향받는 서버 목록 */
 .server-count{color:#e7eeec;font-weight:600}
 .vg-servers{padding:0 14px 10px}.vg-servers h3{margin:0 0 6px;font-size:12px;color:#9baaa6;font-weight:600}
 .vg-servers ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
-.vg-servers li{display:grid;grid-template-columns:minmax(160px,1.5fr) 1fr 90px auto;gap:10px;align-items:center;padding:6px 10px;background:#252929;border-radius:4px;font-size:12px;color:#c4d7cb}
+.vg-servers li{display:grid;grid-template-columns:minmax(160px,1.5fr) 1fr 90px;gap:10px;align-items:center;padding:6px 10px;background:#252929;border-radius:4px;font-size:12px;color:#c4d7cb}
 @media(max-width:720px){.vg-servers li{grid-template-columns:1fr auto}}
 .vg-servers li .link-button{justify-self:start;text-align:left}
 .cve-hosts{display:flex;flex-wrap:wrap;gap:4px}.cve-hosts span{padding:1px 6px;border-radius:3px;background:#2f3736;color:#c4d7cb;font-size:11px;white-space:nowrap}
@@ -193,15 +213,15 @@ html{scrollbar-gutter:stable}
 .rc-bar{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden}
 .rc-seg{min-width:3px}
 .rc-none{flex:1;background:#2f3d37}
-.rc-legend{list-style:none;display:flex;flex-wrap:wrap;gap:3px 10px;margin:7px 0 0;padding:0;font-size:10.5px;color:#b8cdbf}
-.rc-legend .rc-item{display:flex;align-items:center;gap:5px}
+.rc-legend{list-style:none;display:flex;flex-wrap:nowrap;justify-content:space-between;gap:3px;margin:7px 0 0;padding:0;font-size:10px;color:#b8cdbf}
+.rc-legend .rc-item{display:flex;align-items:center;gap:3px;white-space:nowrap}
 .rc-legend i{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .rc-legend b{color:#e7eeec;font-weight:500;font-variant-numeric:tabular-nums}
 .rc-legend .rc-empty{color:#7d8f84}
 /* 지역 패널 폭(v20.5): 탐지 이벤트 범례 긴급·높음·보통·낮음을 한 줄에 둔다 */
 @media(min-width:1151px){#region-panel{width:334px}.map-heading{right:334px}}
 @media(min-width:1700px){#region-panel{width:356px}.map-heading{right:356px}}
-.rc-legend.one-line{flex-wrap:nowrap;justify-content:space-between;gap:6px}
+.rc-legend.one-line{gap:6px}
 .rc-legend .zero{color:#7d8f84}.rc-legend .zero b{color:#7d8f84;font-weight:400}.rc-legend .zero i{opacity:.45}
 /* 기간 트랙(v20.5) — 왼쪽 '지금' → 15분·1시간·1일·1주일. 곡선 = 지금부터 쌓인 탐지 수, 지점 = 기간 버튼 */
 .period-track{flex:1;min-width:220px;padding:0 18px}
@@ -215,19 +235,11 @@ html{scrollbar-gutter:stable}
 .pt-stop.now{cursor:default}
 .pt-stop:hover{background:none}
 .pt-stop>span{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap}
-.pt-count{top:calc(var(--y) - 21px);font-size:11px;font-weight:600;color:#6f8479;font-variant-numeric:tabular-nums}
-.pt-stop.inside .pt-count{color:#c4d7cb}
-.pt-stop.active .pt-count{color:#e7eeec}
 .pt-stem{top:var(--y);height:calc(39px - var(--y));width:0;border-left:1px dashed #3f524a}
-.pt-dot{top:calc(var(--y) - 4.5px);width:9px;height:9px;border-radius:50%;background:#1d2422;border:1.5px solid #4d6259;box-shadow:0 0 0 3px #252b28;box-sizing:border-box}
-.pt-stop.inside .pt-dot{border-color:#32d4be;background:#1f3a33}
-.pt-stop.active .pt-dot{top:calc(var(--y) - 6.5px);width:13px;height:13px;background:#32d4be;border-color:#b9ffe8}
-.pt-stop.now .pt-dot{background:#32d4be;border-color:#32d4be}
-.pt-stop:hover .pt-dot{border-color:#71f6d8}
 .pt-label{top:47px;font-size:11px}
 .pt-stop:hover .pt-label{color:#e7eeec}
-.pt-stop.first .pt-label,.pt-stop.first .pt-count{left:calc(50% - 5px);transform:none}
-.pt-stop.last .pt-label,.pt-stop.last .pt-count{left:auto;right:calc(50% - 5px);transform:none}
+.pt-stop.first .pt-label{left:calc(50% - 5px);transform:none}
+.pt-stop.last .pt-label{left:auto;right:calc(50% - 5px);transform:none}
 .pt-stop.active .pt-label{color:#32d4be;font-weight:600}
 .pt-stop:focus-visible{outline:2px solid var(--mint);outline-offset:2px;border-radius:4px}
 .time-label strong{color:#e7eeec;font-weight:600}
@@ -240,10 +252,31 @@ html{scrollbar-gutter:stable}
 .auto-chip.warn,.auto-state.warn{color:#d8ca78}.auto-chip.bad,.auto-state.bad,.alarm-state.bad{color:#ef777f}
 .auto-chip.muted,.auto-state.muted,.alarm-state.muted{color:#9baaa6}
 .event-link small .auto-chip{margin:0 6px 0 0}
-.summary-body{padding:15px 18px}.summary-total{display:flex;align-items:baseline;gap:10px}.summary-total b{font-size:34px;font-weight:400;line-height:1.1}.summary-total span{font-size:12px;color:#a8bdaa}
-.summary-sev{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0 12px;font-size:12px}.summary-sev b{font-weight:500;margin-left:3px}
+.overview-infra-body{padding:13px 16px}.overview-infra-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.overview-infra-stat{display:flex;flex-direction:column;gap:3px;min-width:0;min-height:74px;padding:9px 10px;border:1px solid #3a4b40;border-radius:5px;background:#202b25}
+.overview-infra-viz{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto auto;align-content:start}
+.overview-infra-viz>span{grid-column:1;grid-row:1;align-self:baseline}
+.overview-infra-viz>b{grid-column:2;grid-row:1;justify-self:end;align-self:baseline;text-align:right}
+.overview-infra-viz>.overview-mini-bar{grid-column:1/-1;grid-row:2}
+.overview-infra-viz>small{grid-column:1/-1;grid-row:3}
+.overview-infra-stat span{color:#a8bdaa;font-size:11px}.overview-infra-stat b{color:#e7eeec;font-size:20px;font-weight:500;line-height:1.1}.overview-infra-stat.is-alert b{color:#ef777f}
+.overview-infra-stat small{color:#91a896;font-size:10px;overflow-wrap:anywhere}.overview-infra-footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;color:#a8bdaa;font-size:11px}
+.overview-tier-summary{margin-top:10px;padding:10px 11px;border:1px solid #3a4b40;border-radius:5px;background:#1c2521}.overview-tier-heading{display:flex;justify-content:space-between;gap:8px;align-items:baseline;font-size:11px}.overview-tier-heading strong{color:#cbd9d0;font-weight:500}.overview-tier-heading span{color:#91a896;text-align:right}.overview-tier-flow{display:flex;align-items:center;gap:7px;margin-top:9px}.overview-tier-node{display:flex;align-items:center;justify-content:space-between;gap:6px;flex:1;min-width:0;padding:6px 7px;border-radius:4px;background:#252f2a;font-size:10px}.overview-tier-node b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#cbd9d0;font-weight:500}.overview-tier-node span{white-space:nowrap}.overview-tier-node .ok{color:#32d4be}.overview-tier-node .warn{color:#d8ca78}.overview-tier-node .bad{color:#ef777f}.overview-tier-node .muted{color:#9baaa6}.overview-tier-arrow{color:#6f8479;font-size:12px}
+.alarm-visualization{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px;padding:15px 17px;border-bottom:1px solid #3d4840}
+.alarm-viz-group{min-width:0}.alarm-viz-heading{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#dbe7e0}.alarm-viz-heading span{color:#9baaa6;font-size:11px}
+.alarm-viz-track{display:flex;height:17px;overflow:hidden;margin:8px 0;border-radius:4px;background:#303936}.alarm-viz-track i{height:100%;flex:none}
+.alarm-viz-legend{display:flex;flex-wrap:wrap;gap:5px 12px;color:#a8bdaa;font-size:10px}.alarm-viz-legend span{display:inline-flex;align-items:center;gap:4px}.alarm-viz-legend i{display:inline-block;width:7px;height:7px;border-radius:50%}.alarm-viz-legend b{color:#e7eeec;font-weight:600}
+.alarm-viz-track i.alarm,.alarm-viz-legend i.alarm{background:#ef777f}.alarm-viz-track i.ok,.alarm-viz-legend i.ok{background:#32d4be}.alarm-viz-track i.insufficient,.alarm-viz-legend i.insufficient{background:#d8ca78}.alarm-viz-track i.nodata,.alarm-viz-legend i.nodata{background:#8fa295}
+.alarm-viz-track i.auto,.alarm-viz-legend i.auto{background:#32d4be}.alarm-viz-track i.dry-run,.alarm-viz-legend i.dry-run{background:#8fb3c9}.alarm-viz-track i.notify,.alarm-viz-legend i.notify{background:#e7a064}.alarm-viz-track i.none,.alarm-viz-legend i.none{background:#8fa295}
+.alarm-visualization p{grid-column:1/-1;margin:0;color:#91a896;font-size:11px}.alarm-viz-empty{align-self:center;color:#9baaa6;font-size:11px}
+@media(max-width:720px){.alarm-visualization{grid-template-columns:1fr}}
 .summary-facts{display:grid;gap:6px;margin:0;padding-top:10px;border-top:1px solid #3d4840}.summary-facts div{display:flex;justify-content:space-between;gap:12px;font-size:12px}.summary-facts dt{color:#a8bdaa}.summary-facts dd{margin:0;text-align:right}
 .response-summary small{display:block;font-size:10px;color:#91a896}.response-item .auto-state{flex-shrink:0}.response-empty{margin-top:12px}.response-more{margin-top:8px;padding-left:0}
+.response-graph{margin:14px 0 10px}.response-graph-heading{display:flex;justify-content:space-between;gap:8px;margin-bottom:7px;font-size:11px;color:#dbe7e0}.response-graph-heading span{color:#9baaa6}
+.response-graph-track{display:flex;height:14px;overflow:hidden;border-radius:4px;background:#303936}.response-graph-track i{height:100%;flex:none}
+.response-graph-legend{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:8px;font-size:10px;color:#a8bdaa}.response-graph-legend span{display:inline-flex;align-items:center;gap:4px}.response-graph-legend i{display:inline-block;width:7px;height:7px;border-radius:50%}.response-graph-legend b{color:#e7eeec;font-weight:600}.response-graph-empty{font-size:11px}
+.response-graph-track i.success,.response-graph-legend i.success{background:#32d4be}.response-graph-track i.failed,.response-graph-legend i.failed{background:#ef777f}.response-graph-track i.running,.response-graph-legend i.running{background:#8fb3c9}.response-graph-track i.manual,.response-graph-legend i.manual{background:#e7a064}.response-graph-track i.dryrun,.response-graph-legend i.dryrun{background:#85b1d5}.response-graph-track i.nochange,.response-graph-legend i.nochange{background:#d8ca78}.response-graph-track i.other,.response-graph-legend i.other{background:#8fa295}
+.chart-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.response-overview-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:center}.response-overview-grid .response-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0;border:0}.response-overview-grid .response-summary>div{min-width:0;padding:10px;border:1px solid #394840;border-radius:5px;background:#202825}.response-overview-grid .response-summary span{display:block;min-height:32px;color:#a8bdaa;font-size:11px}.response-overview-grid .response-summary b{font-size:22px;line-height:1.25}.response-overview-grid .response-summary small{font-size:10px;line-height:1.4}.response-overview-grid .response-graph{margin:0}.response-overview-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:13px;padding-top:10px;border-top:1px solid #3d4840}.response-overview-footer small{color:#91a896;font-size:11px}
 .source-note{font-size:11px;font-weight:400;color:#91a896;margin-left:4px}
 .dialog-subtitle{font-size:12px;color:#9fbaa8;margin-top:6px;overflow-wrap:anywhere}
 .guidance h3{margin-top:12px}.guidance h3:first-child{margin-top:0}
@@ -261,16 +294,16 @@ html{scrollbar-gutter:stable}
 .change-cell{min-width:260px;white-space:normal}.reason-cell{min-width:200px;max-width:360px;white-space:normal;font-size:12px;color:#b8cdbf}
 .history-title{margin:16px 0 6px;font-size:13px;color:#c3d9c9}.history-title small{font-size:11px;font-weight:400;color:#91a896;margin-left:6px}
 #audit-log{padding:0 16px 12px}#audit-log>.muted:first-child{padding-top:12px}#audit-log .table-scroll{max-height:none}
+.history-summary{padding:12px 0}.history-sections{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}.history-block{min-width:0;padding:12px;border:1px solid #394840;border-radius:5px;background:#1e2622}.history-block-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px}.history-block-head h3{font-size:13px;color:#c3d9c9}.history-block-head p{margin-top:3px;font-size:11px;color:#91a896}.history-block-head>b{flex-shrink:0;color:#dbe7e0;font-size:15px;font-weight:500}.history-block .table-scroll{border:1px solid #343d39;border-radius:4px}.history-empty{padding:18px 10px;border:1px dashed #3b4843;border-radius:4px;color:#91a896;text-align:center;font-size:12px}.history-job-state{display:inline-flex;padding:2px 7px;border:1px solid currentColor;border-radius:999px;font-size:11px;white-space:nowrap}.history-job-state.ok{color:#32d4be}.history-job-state.warn{color:#d8ca78}.history-job-state.bad{color:#ef777f}.history-job-state.muted{color:#9baaa6}
 .alarm-table td{white-space:normal}
 .vuln-fix{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:0 14px 10px}
 .vuln-fix>div{background:#252929;border:1px solid #353c3b;border-radius:4px;padding:10px 12px;min-width:0}
 .vuln-fix h3{margin:0 0 6px;font-size:12px;color:#9baaa6;font-weight:600}.vuln-fix p{font-size:12px;color:#c4d7cb;line-height:1.7;overflow-wrap:anywhere}
 .cmd{display:block;margin:6px 0 2px;padding:6px 8px;background:#141717;border:1px solid #353c3b;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#e7eeec;white-space:pre-wrap;overflow-wrap:anywhere}
 .reboot-note{margin-top:6px;color:#e7a064!important}
-.fix-state.reboot{background:#3a2f22;color:#e7a064}.fix-state.exploit{background:#3e292c;color:#ef777f}
 @media(max-width:720px){.vuln-fix{grid-template-columns:1fr}.change-cell,.reason-cell{min-width:0}}
 
-/* 공격·대응 실습(drills) — 1차 관측·구조 */
+/* 보안 시나리오: 한 시나리오의 준비와 관측 흐름을 함께 보여준다. */
 .drill-env{display:flex;flex-wrap:wrap;gap:10px 28px;padding:14px 16px}
 .drill-env>div{min-width:120px}
 .drill-env dt{font-size:11px;color:#94ad9b;margin-bottom:4px}
@@ -453,3 +486,235 @@ td small{display:block;font-size:11px;color:#91a896;margin-top:2px;white-space:n
 @media (max-width:560px){.as-fab{right:14px;bottom:14px}.as-panel{right:8px;bottom:8px;height:calc(100vh - 16px)}}
 @media (prefers-reduced-motion:reduce){.as-panel,.as-typing i{animation:none!important}}
 @media print{.as-fab,.as-panel{display:none!important}}
+.drill-detail{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px;padding:14px 16px}.drill-related{padding:0 16px 14px}.drill-related .panel-subhead{padding:10px 0;font-size:12px;color:#c3d9c9}.drill-scenario-table{white-space:normal;min-width:780px}.drill-scenario-table th{white-space:nowrap}.drill-scenario-table td{vertical-align:top;white-space:normal;line-height:1.5}.drill-scenario-main{min-width:210px}.drill-scenario-main strong{display:block;color:#32d4be;font-size:11px}.drill-scenario-main span{display:block;margin-top:3px;color:#d2ded6}.drill-scenario-evidence{min-width:360px}.drill-scenario-evidence>span{display:block;margin:2px 0;overflow-wrap:anywhere}.drill-scenario-evidence b{display:inline-block;width:38px;color:#91a896;font-size:10px;font-weight:500}.drill-scenario-status{min-width:175px}.drill-scenario-status small{display:block;margin-top:5px;color:#91a896}.drill-config .drill-derived p{margin:0;line-height:1.5}
+@media(max-width:1150px){.chart-grid{grid-template-columns:1fr}.chart-grid .panel:last-child{grid-column:auto}}
+@media(max-width:850px){.response-overview-grid{grid-template-columns:1fr;gap:16px}.drill-detail{grid-template-columns:1fr}}
+@media(max-width:600px){.overview-tier-flow{gap:4px}.overview-tier-node{align-items:flex-start;flex-direction:column}.overview-tier-arrow{font-size:10px}.event-source-row{grid-template-columns:1fr;gap:5px}.event-source-legend{margin-left:0}.response-overview-grid .response-summary{grid-template-columns:1fr}.response-overview-grid .response-summary span{min-height:0}.response-overview-footer{align-items:flex-start;flex-direction:column}.history-block{padding:9px}.history-block-head{gap:6px}}
+
+/* 통합관제 요약: 두 카드는 나란히, 이벤트 그래프는 다음 줄에 둔다. */
+.overview-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px}
+.overview-summary-grid>.panel{margin:0}
+.response-overview-panel .response-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0;border:0}
+.response-overview-panel .response-summary>div{min-width:0;padding:10px;border:1px solid #394840;border-radius:5px;background:#202825}
+.response-overview-panel .response-summary span{display:block;min-height:30px;color:#a8bdaa;font-size:11px;line-height:1.4}
+.response-overview-panel .response-summary b{font-size:22px;line-height:1.25}
+.response-overview-panel .response-summary small{font-size:10px;line-height:1.4}
+
+/* 보안 이벤트: 같은 길이의 100% 누적 막대와 분리된 건수 배지. */
+.event-source-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.event-source-row{grid-template-columns:minmax(0,1fr);gap:7px;padding:10px 12px;border:1px solid #35413b;border-radius:6px;background:#1b2420}
+.event-source-heading b{padding:3px 8px;border:1px solid #3e4c45;border-radius:999px;background:#222e29;font-variant-numeric:tabular-nums}
+.event-source-track{height:16px;border:1px solid #38443e;background:#202925}
+.event-source-track i{min-width:0}
+.event-source-track i+i{box-shadow:inset 1px 0 #202925}
+.event-source-legend{margin-left:0}
+.drill-field-hint{display:block;margin-top:5px;color:#91a896;font-size:10px;line-height:1.45}
+
+/* v27 통합 관제 표본·시간대 그래프, 보안 이벤트 소스별 위험도 도넛 */
+.overview-spark-card{display:flex;flex-direction:column;gap:4px;min-width:0;min-height:90px;padding:8px 10px;border:1px solid #3a4b40;border-radius:5px;background:#202b25}
+.overview-spark-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;color:#a8bdaa;font-size:11px}
+.overview-spark-heading b{color:#e7eeec;font-size:18px;font-weight:500;line-height:1.15;font-variant-numeric:tabular-nums}
+.overview-spark-card.is-alert .overview-spark-heading b{color:#ef777f}
+.overview-sparkline{display:block;width:100%;height:42px;overflow:visible}
+.overview-sample-base{stroke:#46534d;stroke-width:1;vector-effect:non-scaling-stroke}
+.overview-sample-threshold{stroke:#d8ca78;stroke-width:1;stroke-dasharray:3 3;opacity:.85;vector-effect:non-scaling-stroke}
+.overview-sample-line{fill:none;stroke:#32d4be;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.overview-spark-card[data-metric="memory"] .overview-sample-line{stroke:#85b1d5}
+.overview-sample-point{fill:#32d4be}.overview-spark-card[data-metric="memory"] .overview-sample-point{fill:#85b1d5}
+.overview-spark-card>small{color:#91a896;font-size:9px;line-height:1.25}.overview-spark-empty{display:grid;place-items:center;flex:1;min-height:38px;color:#91a896;font-size:10px;text-align:center}
+
+
+.response-overview-panel .response-summary{align-items:stretch}
+.response-overview-panel .response-summary-card{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:164px;padding:10px;border:1px solid #394840;border-radius:5px;background:#202825;text-align:center}
+.response-overview-panel .response-summary-card>span{display:block;min-height:30px;color:#a8bdaa;font-size:11px;line-height:1.4}
+.response-overview-panel .response-summary-card>b{font-size:22px;line-height:1.15;font-variant-numeric:tabular-nums}
+.response-overview-panel .response-summary-card.automatic{--ring-color:#32d4be}
+.response-overview-panel .response-summary-card.manual{--ring-color:#e7a064}
+.response-overview-panel .response-summary-card.dry-run{--ring-color:#85b1d5}
+.response-overview-panel .response-summary-card>b{color:var(--ring-color)}
+.response-share-ring{position:relative;display:grid;place-items:center;width:72px;height:72px;flex:none;margin:1px auto;border-radius:50%;background:conic-gradient(var(--ring-color) var(--share),#303936 0)}
+.response-share-ring:before{content:"";position:absolute;inset:9px;border-radius:50%;background:#202825}
+.response-share-ring b{position:relative;z-index:1;color:#e7eeec;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.response-overview-panel .response-summary-card>small{color:#91a896;font-size:10px;line-height:1.4}
+.response-summary-footnote{margin-top:10px;color:#8fa295;font-size:10px}
+
+/* 기간 건수는 곡선의 지점 위에 숫자 사각형으로 표시한다. */
+.pt{isolation:isolate;height:74px}
+.pt-stop{z-index:2}
+.pt-stop.active{z-index:3}
+.pt-stop{height:74px}
+.pt-stop .pt-marker{top:var(--y);z-index:2;display:grid;place-items:center;min-width:26px;height:24px;padding:0 3px;transform:translate(-50%,-50%);border:1px solid #788a80;border-radius:3px;background:#121a17;color:#f0f5f2;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;box-sizing:border-box;white-space:nowrap;box-shadow:0 1px 5px #000b;pointer-events:none}
+.pt-stop.inside .pt-marker{border-color:#8ab5a5;background:#1b3028;color:#f0f5f2}
+.pt-stop.active .pt-marker{border-color:#c1fff1;background:#32d4be;color:#10251f;box-shadow:0 0 0 2px #252b28,0 2px 7px #000b}
+.pt-stop.now .pt-marker{border-color:#8ab5a5;background:#1b3028;color:#f0f5f2}
+.pt-stop .pt-stem{z-index:0}
+.pt-stop .pt-label{top:55px}
+
+/* 소스마다 위험도 구성을 동일한 축·색으로 비교하는 네 개의 작은 원형 그래프. */
+.event-source-severity-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;padding:13px 16px 15px}
+.source-severity-card{display:grid;grid-template-rows:auto 1fr auto;justify-items:center;min-width:0;padding:12px 10px;border:1px solid #394840;border-radius:5px;background:#202825}
+.source-severity-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;width:100%;color:#dbe7e0;font-size:11px}
+.source-severity-heading strong{min-width:0;overflow-wrap:anywhere;font-weight:600}
+.source-severity-heading span{flex:none;color:#a8bdaa;font-size:10px;font-variant-numeric:tabular-nums}
+.source-severity-ring{position:relative;display:grid;place-items:center;width:126px;height:126px;margin:11px auto;border-radius:50%;box-shadow:0 0 0 1px #46534d}
+.source-severity-ring:before{content:"";position:absolute;inset:17px;border:1px solid #47534d;border-radius:50%;background:#202825}
+.source-severity-center{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;color:#e7eeec}
+.source-severity-center b{font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.05}
+.source-severity-center small{margin-top:2px;color:#a8bdaa;font-size:9px}
+.source-severity-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 7px;width:100%;color:#a8bdaa;font-size:9px}
+.source-severity-legend span{display:flex;align-items:center;gap:4px;min-width:0;white-space:nowrap}
+.source-severity-legend i{width:7px;height:7px;flex:none;border-radius:50%;background:var(--severity-color)}
+.source-severity-legend b{margin-left:auto;color:#e7eeec;font-size:10px;font-variant-numeric:tabular-nums;font-weight:600}
+.source-severity-legend .source-severity-empty{grid-column:1/-1;justify-content:center;color:#8fa295;padding:5px}
+.event-source-extra-note{padding:0 16px 12px;color:#91a896;font-size:10px}
+
+.sidebar{display:flex;flex-direction:column}
+.sidebar nav{display:flex;flex:1;min-height:0;flex-direction:column;padding-bottom:112px}
+.sidebar-nav-bottom{margin-top:auto}
+
+/* 실습 구성을 한 패널에 모으고 실행 환경은 상태 줄로 줄인다. */
+.drill-workspace .panel-heading{margin:0}
+.drill-context-strip{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 16px;border-bottom:1px solid #3d4840;background:#202825;color:#a8bdaa;font-size:11px}
+.drill-context-strip span{display:inline-flex;align-items:center;gap:6px}
+.drill-context-strip b{color:#dbe7e0;font-weight:500}
+.drill-context-strip .drill-context-warning{color:#e7a064}
+.drill-selector-label{display:block;padding:13px 16px 0;color:#a8bdaa;font-size:11px}
+.drill-types{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:8px 16px 0}
+.drill-type{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:64px;padding:8px 11px;text-align:left}
+.drill-type h4{font-size:12px;line-height:1.35}
+.drill-type h4 small{display:block;margin:3px 0 0;font-size:10px;letter-spacing:0}
+.drill-type>span{color:#91a896;font-size:10px}
+.drill-workspace .drill-detail{padding-top:13px}
+.drill-workspace .drill-config{padding:12px}
+.drill-workspace .drill-config>p.muted{font-size:10px;line-height:1.45}
+.drill-workspace .drill-related{padding-top:0}
+
+@media(max-width:720px){
+ .sidebar{display:block}
+ .sidebar nav{height:auto;flex:0;flex-direction:row;width:max-content;padding:0}
+ .sidebar-nav-main,.sidebar-nav-bottom{display:contents}
+ .sidebar-nav-bottom{margin:0}
+}
+@media(max-width:600px){
+ .overview-spark-card{min-height:86px}
+ .drill-types{gap:5px;padding-left:10px;padding-right:10px}
+ .drill-type{min-height:70px;padding:7px}
+ .drill-type h4{font-size:11px}
+ .drill-type h4 small{font-size:9px}
+ .pt-stop .pt-marker{min-width:24px;height:23px;font-size:11px}
+}
+@media(max-width:850px){.overview-summary-grid{grid-template-columns:1fr}}
+@media(max-width:1150px){.event-source-severity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.event-source-severity-grid{grid-template-columns:1fr;gap:8px;padding:10px}.source-severity-card{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;justify-items:stretch;align-items:center;padding:9px 11px}.source-severity-heading{grid-column:1/-1}.source-severity-ring{grid-column:1;grid-row:2;width:108px;height:108px;margin:8px auto 2px}.source-severity-ring:before{inset:15px}.source-severity-legend{grid-column:2;grid-row:2;align-self:center;min-width:130px}}
+@media(max-width:720px){.event-source-list{grid-template-columns:1fr}}
+@media(max-width:600px){.response-overview-panel .response-summary{grid-template-columns:1fr}.response-overview-panel .response-summary-card>span{min-height:0}}
+
+@media(max-width:600px){.response-overview-panel .response-summary-card{display:grid;grid-template-columns:60px minmax(0,1fr) auto;grid-template-rows:auto auto;gap:3px 10px;min-height:0;text-align:left}.response-overview-panel .response-summary-card>span{grid-column:2;grid-row:1}.response-share-ring{grid-column:1;grid-row:1/3;width:54px;height:54px;margin:0}.response-share-ring:before{inset:7px}.response-share-ring b{font-size:11px}.response-overview-panel .response-summary-card>b{grid-column:3;grid-row:1/3}.response-overview-panel .response-summary-card>small{grid-column:2;grid-row:2}}
+
+/* 짧은 가로 막대는 원 수치와 함께 표시해 색에만 의존하지 않는다. */
+.overview-infra-viz .overview-mini-bar{display:flex;height:7px;width:100%;margin:4px 0 2px;overflow:hidden;border-radius:3px;background:#303936}
+.overview-mini-bar i{height:100%;display:block;flex:none}
+.overview-mini-bar .running,.overview-mini-bar .ok{background:#32d4be}
+.overview-mini-bar .other,.overview-mini-bar .nodata{background:#8fa295}
+.overview-mini-bar .alarm{background:#ef777f}
+.overview-mini-bar .insufficient{background:#d8ca78}
+
+/* 최근 이벤트 한 패널 안에서 위험도 필터 다음에 소스 구성을 묶는다. */
+.event-source-donut-widget{border-bottom:1px solid #353c3b;background:#1d2521}
+.event-source-inline-heading{display:flex;justify-content:space-between;gap:8px;padding:11px 16px 0;color:#dbe7e0;font-size:11px}
+.event-source-inline-heading span{color:#91a896;font-size:10px}
+.event-source-severity-grid{gap:0;padding:7px 10px 11px}
+.source-severity-card{border:0;border-right:1px solid #394840;border-radius:0;background:transparent;padding:5px 12px}
+.source-severity-card:last-child{border-right:0}
+.source-severity-ring{width:86px;height:86px;margin:5px auto}
+.source-severity-ring:before{inset:12px;background:#1d2521}
+.source-severity-center b{font-size:18px}
+.source-severity-legend{gap:2px 6px}
+.event-source-extra-note{padding:0 16px 9px}
+@media(max-width:1150px){.source-severity-card:nth-child(2){border-right:0}.source-severity-card:nth-child(-n+2){border-bottom:1px solid #394840}}
+@media(max-width:600px){.source-severity-card{border-right:0;border-bottom:1px solid #394840}.source-severity-card:last-child{border-bottom:0}.source-severity-ring{width:82px;height:82px}.source-severity-ring:before{inset:11px}}
+
+/* 전체 경보를 동일한 0~전체 건수 축에서 가로 막대로 비교한다. */
+.alarm-viz-rows{display:grid;gap:7px;margin-top:11px}
+.alarm-viz-row{display:grid;grid-template-columns:minmax(82px,1fr) minmax(70px,1.5fr) 24px;align-items:center;gap:8px;color:#b8cdbf;font-size:10px}
+.alarm-viz-row .alarm-viz-track{height:10px;margin:0;border-radius:2px;background:#303936}
+.alarm-viz-row .alarm-viz-track i{display:block;height:100%}
+.alarm-viz-row b{color:#e7eeec;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+
+/* 패키지 행에서 CVE 종류별 위험도 구성을 작은 막대로 표시한다. */
+.vg-severity-meter{display:flex;width:min(240px,100%);height:5px;margin-top:6px;overflow:hidden;border-radius:2px;background:#303936}
+.vg-severity-meter i{display:block;height:100%;flex:none}
+
+/* 빈 안내줄은 공간을 차지하지 않으며 보안 이벤트는 기간 바로 아래에서 시작한다. */
+.local-context:empty{display:none}
+body.view-events .timeline{margin-bottom:6px}
+
+/* 실습 설정과 확인 정보를 한 작업면에 놓고, 그 아래에 과정 위젯을 둔다. */
+
+/* Inspector finding의 실제 관계만 표시한다: 발견된 EC2 → 설치 패키지 → CVE. */
+.cve-group summary{grid-template-columns:minmax(180px,1fr) 22px minmax(190px,1.25fr) 22px minmax(110px,.55fr);gap:11px;min-height:92px}
+.vg-asset-lane,.vg-main{min-width:0}
+.vg-asset-lane>small,.vg-main>small{display:block;margin-bottom:6px;color:#91a896;font-size:10px}
+.vg-ec2-nodes{display:flex;align-items:center;flex-wrap:wrap;gap:5px}
+.vg-ec2-node{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:5px 7px;border:1px solid #476258;border-radius:4px;background:#25332e;color:#d6e9df;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vg-ec2-node i{font-style:normal;color:#32d4be;font-size:13px}
+.vg-ec2-more{color:#9bb7a8;font-size:10px}
+.vg-flow-arrow{justify-self:center;color:#83a596;font-size:18px}
+.vg-result{display:grid;justify-items:end;align-content:center;gap:2px;min-width:0;text-align:right}
+.vg-result small{color:#91a896;font-size:10px;white-space:nowrap}
+.vg-result>b{color:#e7eeec;font-size:20px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.vg-result>span{margin-top:2px}
+.cve-group .vg-main strong{font-size:15px}
+.cve-group .vg-severity-meter{width:min(230px,100%);height:7px;margin-top:7px}
+@media(max-width:1100px){.cve-group summary{grid-template-columns:minmax(150px,1fr) 18px minmax(170px,1fr) 18px minmax(105px,.55fr);gap:7px}}
+@media(max-width:720px){.cve-group summary{grid-template-columns:minmax(0,1fr) auto;gap:7px 12px}.vg-asset-lane{grid-column:1/-1}.vg-flow-arrow{display:none}.cve-group .vg-main{grid-column:1}.vg-result{grid-column:2;grid-row:2}}
+
+/* CloudWatch의 경보 상태 격자처럼 개별 경보를 상태별로 스캔한다. */
+.alarm-status-board{padding:13px 16px 15px;border-bottom:1px solid #3d4840}
+.alarm-status-intro{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:10px;color:#dbe7e0;font-size:12px}
+.alarm-status-intro span{color:#91a896;font-size:10px}
+.alarm-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.alarm-status-group{min-width:0;border:1px solid #3d4840;border-top:3px solid #7f948a;border-radius:4px;background:#1d2521}
+.alarm-status-group.alarm{border-top-color:#ef777f}.alarm-status-group.insufficient,.alarm-status-group.nodata{border-top-color:#8fa295}.alarm-status-group.ok{border-top-color:#adc2b1}
+.alarm-status-head{display:flex;justify-content:space-between;gap:7px;align-items:baseline;padding:9px 10px;border-bottom:1px solid #334038;font-size:11px;color:#cbd9d0}
+.alarm-status-group.alarm .alarm-status-head b{color:#ef777f}.alarm-status-head b{flex:none;font-size:16px;color:#e7eeec;font-variant-numeric:tabular-nums}
+.alarm-status-group ul{list-style:none;display:grid;gap:0;margin:0;padding:0}
+.alarm-status-group li{display:grid;gap:2px;padding:8px 10px;border-top:1px solid #303c35}
+.alarm-status-group li:first-child{border-top:0}
+.alarm-status-group li strong{font-size:11px;color:#e1eee5;font-weight:500;overflow-wrap:anywhere}
+.alarm-status-group li small{font-size:10px;color:#a2b5a9}
+.alarm-status-group .alarm-status-empty{color:#82978a;font-size:10px}
+.alarm-status-board p{margin:10px 0 0;color:#91a896;font-size:10px;line-height:1.5}
+.alarm-details summary{cursor:pointer;padding:11px 16px;color:#b9d6c4;font-size:12px}
+.alarm-details summary:focus-visible{outline:2px solid var(--mint);outline-offset:-2px}
+.alarm-details .table-scroll{margin:0 16px 14px;border:1px solid #3d4840}
+@media(max-width:1000px){.alarm-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.alarm-status-grid{grid-template-columns:1fr}.alarm-status-intro{align-items:flex-start;flex-direction:column;gap:3px}}
+
+/* 통합 관제 — 인프라 상태 요약 2x2(EC2·경보 / CPU·메모리)와 자동 대응 현황 행 배치 */
+.overview-infra-stats{gap:12px}
+.overview-infra-stat,.overview-spark-card{padding:13px 15px}
+.overview-infra-stat{min-height:96px}
+.overview-spark-card{min-height:96px;gap:10px}
+.overview-infra-viz{row-gap:10px}
+.overview-infra-viz .overview-mini-bar{height:8px;margin:6px 0 2px}
+.overview-sparkline{height:44px;margin-top:2px}
+.overview-tier-summary{margin-top:14px}
+.response-overview-panel .response-summary{grid-template-columns:minmax(0,1fr);gap:10px}
+.response-overview-panel .response-summary-card{display:grid;grid-template-columns:72px minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;column-gap:16px;row-gap:4px;min-height:0;padding:12px 16px;text-align:left}
+.response-overview-panel .response-summary-card>span{grid-column:2;grid-row:1;align-self:end;min-height:0;font-size:12px;color:#cbd9d0}
+.response-overview-panel .response-summary-card>small{grid-column:2;grid-row:2;align-self:start;font-size:11px}
+.response-overview-panel .response-summary-card>b{grid-column:3;grid-row:1/3;font-size:26px;text-align:right}
+.response-overview-panel .response-share-ring{grid-column:1;grid-row:1/3;width:64px;height:64px;margin:0}
+.response-overview-panel .response-share-ring:before{inset:8px}
+.response-overview-panel .response-share-ring b{grid-column:auto;grid-row:auto;font-size:13px;color:#e7eeec;text-align:center}
+.response-summary-footnote{margin-top:12px}
+
+/* 보안 시나리오: 전부 실행 패널과 실행 결과 열 */
+.drill-workspace .drill-config{margin:12px 16px 4px;padding:14px 16px;background:#18231e;border:1px solid #3b5448;border-radius:6px}
+.drill-workspace .drill-config h3{margin:0 0 6px}
+.drill-workspace .drill-config>p.muted{max-width:860px}
+.drill-workspace .drill-actions .primary-button{min-width:132px}
+.drill-workspace .table-scroll{margin-top:8px}
+.drill-scenario-result{min-width:120px;white-space:nowrap}
+.drill-scenario-result small{margin-left:4px}

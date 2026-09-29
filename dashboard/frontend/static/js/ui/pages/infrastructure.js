@@ -2,14 +2,14 @@
 import {state,metricsFor,servicesOf} from '../context.js?v=ui-1';
 import {esc,format,formatAt,milliseconds} from '../components/format.js?v=ui-1';
 import {header,empty,canvas} from '../components/panel.js?v=ui-1';
-import {drawChart} from '../charts/charts.js?v=ui-1';
+import {drawChart} from '../charts/charts.js?v=ui-2';
 import {periodStops} from '../constants.js?v=ui-1';
 // ── 인프라 모니터링 ────────────────────────────────────────
 // 7934104(v17) 화면 — 호스트 카드 · CPU/메모리 차트 · 임계치 초과 구간 · 3계층 상태 — 을
 // 표준 API(/api/metrics 시계열, /api/infra/status 구성요소)에 맞춰 되살린 것.
 // 호스트 선택은 화면 안에서만 바꾼다. state.resource 를 쓰면 이벤트·지표 조회 범위까지 좁아진다.
 const SERVICE_TEXT={healthy:'정상',degraded:'저하',unhealthy:'장애',unknown:'확인 불가'};
-const SERVICE_COLOR={healthy:'#32d4be',degraded:'#d8ca78',unhealthy:'#ef777f',unknown:'#8fa295'};
+const SERVICE_COLOR={healthy:'#087a68',degraded:'#9d5b22',unhealthy:'#b42332',unknown:'#526e84'};
 const periodLabel=s=>s==null?'—':s>=3600?`${s/3600}시간`:`${s/60}분`;
 const pct=v=>v==null?'—':Math.round(v*10)/10+'%';
 const metricKo=m=>m==='cpu'?'CPU':'메모리';
@@ -74,15 +74,27 @@ function serverStatus(svc,hosts){
  return `<div class="table-scroll"><table class="service-table"><caption class="sr-only">서버 가동 상태</caption><thead><tr><th>서버</th><th>역할</th><th>가동 상태</th><th>근거</th><th>관측 시각</th></tr></thead><tbody>${items.map(c=>`<tr><td>${esc(nameOf(c))}<br><small class="muted">${esc(c.resource)}</small></td><td>${esc(c.role||'—')}</td><td>${servicePill(c.status)}</td><td>${esc(c.detail||'—')}<br><small class="muted">${esc(c.source||'')}</small></td><td>${format(milliseconds(c.observedAt))}</td></tr>`).join('')}</tbody></table></div>
  <div class="context-note">EC2 인스턴스 상태(running 등)입니다. 서버 안의 서비스가 응답하는지는 뜻하지 않습니다.</div>`;
 }
-function tierFlow(svc){
- const tiers=svc?.tiers||[];
- if(!tiers.length)return `<div class="context-note">3계층 상태 정보가 없습니다.</div>`;
- return `<div class="service-flow">${tiers.map((t,i)=>`${i?'<span class="service-arrow" aria-hidden="true">→</span>':''}<div class="service-node ${esc(t.status)}"><strong>${esc(t.name)}</strong>${servicePill(t.status)}<small>${esc(t.role||'')}</small></div>`).join('')}</div>
- <div class="context-note">보호 대상 docker-host 의 웹(Nginx) → 앱(Flask) → DB(MySQL)입니다. 대시보드는 컨테이너에 직접 접속하지 않고, 계층 점검 결과를 저장하는 작업이 아직 없어 '확인 불가'로 표시합니다(정상이라는 뜻이 아닙니다).</div>`;
-}
 const ALARM_TEXT={ALARM:'경보',OK:'정상',INSUFFICIENT_DATA:'데이터 부족'};
+export function alarmOverviewChart(alarms){
+ if(!Array.isArray(alarms)||!alarms.length)return '';
+ const groups=[
+  ['경보','alarm',a=>a.state==='ALARM'],
+  ['데이터 부족','insufficient',a=>a.state==='INSUFFICIENT_DATA'],
+  ['정상 판정 · 데이터 없음','nodata',a=>a.state==='OK'&&a.noData],
+  ['정상','ok',a=>a.state==='OK'&&!a.noData],
+ ];
+ const known=new Set(['ALARM','INSUFFICIENT_DATA','OK']);
+ if(alarms.some(a=>!known.has(a.state)))groups.push(['기타 상태','other',a=>!known.has(a.state)]);
+ const cards=groups.map(([label,key,matches])=>{
+  const items=alarms.filter(matches);
+  return `<div class="alarm-status-group ${key}"><div class="alarm-status-head"><span>${label}</span><b>${items.length}개</b></div>
+   <ul>${items.length?items.map(a=>`<li><strong>${esc(a.label||a.name)}</strong><small>${esc(a.autoResponse?.label||(a.notifies?'SNS 알림':'대응 설정 없음'))}</small></li>`).join(''):'<li class="alarm-status-empty">해당 경보 없음</li>'}</ul></div>`;
+ }).join('');
+ return `<div class="alarm-status-board" role="group" aria-label="CloudWatch 경보별 현재 상태"><div class="alarm-status-intro"><strong>경보별 현재 상태</strong><span>전체 ${alarms.length}개 · 마지막 조회 기준</span></div>
+  <div class="alarm-status-grid">${cards}</div><p>데이터 없음은 지표가 없어 정상으로 처리된 경보입니다. 대응 표시는 설정이며 실제 실행 결과는 조치 이력에서 확인합니다.</p></div>`;
+}
 function alarmState(a){
- if(a.state==='OK'&&a.noData)return '<span class="alarm-state muted" title="treat_missing_data=notBreaching — 데이터가 없어 정상으로 처리">데이터 없음</span>';
+ if(a.state==='OK'&&a.noData)return '<span class="alarm-state muted" title="treat_missing_data=notBreaching — 데이터가 없어 정상으로 처리">정상 판정 · 데이터 없음</span>';
  return `<span class="alarm-state ${a.state==='ALARM'?'bad':a.state==='OK'?'ok':'muted'}">${ALARM_TEXT[a.state]||esc(a.state)}</span>`;
 }
 const compareKo={GreaterThanThreshold:'>',GreaterThanOrEqualToThreshold:'≥',LessThanThreshold:'<',LessThanOrEqualToThreshold:'≤'};
@@ -90,14 +102,12 @@ function alarmTable(svc){
  const alarms=svc?.alarms;
  if(alarms==null)return `<div class="context-note">CloudWatch 경보 정보를 불러오지 못했거나 대시보드에 알람 이름 접두어(NAME_PREFIX)가 설정되지 않았습니다.</div>`;
  if(!alarms.length)return empty('조회 범위에 CloudWatch 경보가 없습니다.');
- return `<div class="table-scroll"><table class="alarm-table"><caption class="sr-only">CloudWatch 경보</caption><thead><tr><th>상태</th><th>경보</th><th>조건</th><th>자동 대응</th><th>마지막 변경 (KST)</th></tr></thead><tbody>${alarms.map(a=>`<tr><td>${alarmState(a)}</td><td>${esc(a.label||a.name)}${a.scenario?` <span class="scenario-tag">${esc(a.scenario)}</span>`:''}<br><small class="muted">${esc(a.name)}</small></td><td>${esc(a.metric||'')} ${esc(compareKo[a.comparison]||a.comparison||'')} ${esc(a.threshold??'')}<br><small class="muted">${a.periodSeconds?`${Math.round(a.periodSeconds/60)}분`:''}${a.evaluationPeriods?` × ${a.evaluationPeriods}회`:''}${a.notifies?' · SNS 알림':''}</small></td><td>${a.autoResponse?`<span class="auto-chip ${a.autoResponse.mode==='auto'?'ok':a.autoResponse.mode==='dry-run'?'muted':'warn'}" title="${esc(a.autoResponse.detail||'')}">${esc(a.autoResponse.label)}</span>`:'<span class="muted">알림</span>'}</td><td>${format(milliseconds(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div>
- <div class="context-note">'데이터 없음'은 지표·로그가 들어오지 않아 CloudWatch 가 정상으로 처리한 상태입니다. MySQL·Flow Logs 로그 전송 경로를 확인하세요.</div>`;
+ return `<details class="alarm-details"><summary>경보 조건·대응 설정 자세히 보기</summary><div class="table-scroll"><table class="alarm-table"><caption class="sr-only">CloudWatch 경보</caption><thead><tr><th>상태</th><th>경보</th><th>조건</th><th>자동 대응</th><th>마지막 변경 (KST)</th></tr></thead><tbody>${alarms.map(a=>`<tr><td>${alarmState(a)}</td><td>${esc(a.label||a.name)}${a.scenario?` <span class="scenario-tag">${esc(a.scenario)}</span>`:''}<br><small class="muted">${esc(a.name)}</small></td><td>${esc(a.metric||'')} ${esc(compareKo[a.comparison]||a.comparison||'')} ${esc(a.threshold??'')}<br><small class="muted">${a.periodSeconds?`${Math.round(a.periodSeconds/60)}분`:''}${a.evaluationPeriods?` × ${a.evaluationPeriods}회`:''}${a.notifies?' · SNS 알림':''}</small></td><td>${a.autoResponse?`<span class="auto-chip ${a.autoResponse.mode==='auto'?'ok':a.autoResponse.mode==='dry-run'?'muted':'warn'}" title="${esc(a.autoResponse.detail||'')}">${esc(a.autoResponse.label)}</span>`:`<span class="muted">${a.notifies?'SNS 알림':'대응 설정 없음'}</span>`}</td><td>${format(milliseconds(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div></details>`;
 }
 function infraSections(svc,hosts){
  const alarms=svc?.alarms,firing=(alarms||[]).filter(a=>a.state==='ALARM').length;
- return `<section class="panel full-panel">${header('CloudWatch 경보',alarms==null?'정보 없음':`${alarms.length}개 · 경보 ${firing}개`)}${alarmTable(svc)}</section>
- <section class="panel full-panel">${header('서버 가동 상태',svc?`EC2 ${(svc.components||[]).length}대`:'조회 실패')}${serverStatus(svc,hosts)}</section>
- <section class="panel full-panel">${header('3계층 서비스','Nginx → Flask → MySQL')}${tierFlow(svc)}</section>`;
+ return `<section class="panel full-panel">${header('CloudWatch 경보',alarms==null?'정보 없음':`${alarms.length}개 · 경보 ${firing}개`)}${alarmOverviewChart(alarms)}${alarmTable(svc)}</section>
+ <section class="panel full-panel">${header('서버 가동 상태',svc?`EC2 ${(svc.components||[]).length}대`:'조회 실패')}${serverStatus(svc,hosts)}</section>`;
 }
 export function infrastructure(){
  const m=metricsFor(),svc=servicesOf(),span=state.hours*3600000,hosts=hostViews(m);
@@ -140,13 +150,13 @@ export function drawInfrastructureChart(){
  const xy=values=>points.map((p,i)=>({x:p.at,y:values[i]}));
  const from=metric.rangeFrom??Date.now()-span,to=metric.rangeTo??from+span;
  drawChart('metrics-chart','line',{datasets:[
-  {label:'CPU %',data:xy(cpu),borderColor:'#32d4be',tension:.3,borderWidth:2,spanGaps:false,
-   pointRadius:cpu.map(v=>v>t.cpu?3.5:0),pointBackgroundColor:cpu.map(v=>v>t.cpu?'#e7a064':'#32d4be')},
-  {label:'메모리 %',data:xy(mem),borderColor:'#a3c7b7',tension:.3,borderWidth:2,spanGaps:false,
-   pointRadius:mem.map(v=>v>t.memory?3.5:0),pointBackgroundColor:mem.map(v=>v>t.memory?'#ef777f':'#a3c7b7')},
-  {label:`${t.cpu}% 임계치`,data:[{x:from,y:t.cpu},{x:to,y:t.cpu}],borderColor:'#e7a064',borderDash:[5,5],pointRadius:0,borderWidth:1},
-  ...h.switches.map((change,i)=>({label:i?'서버 교체 시점':'서버 교체',data:[{x:change.at,y:0},{x:change.at,y:100}],borderColor:'#8fa295',borderDash:[3,5],pointRadius:0,borderWidth:1}))]},
-  {plugins:{legend:{display:true,labels:{color:'#c4d7cb',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#8fa295'}},x:{type:'linear',min:from,max:to,ticks:{color:'#8fa295',maxTicksLimit:8,callback:value=>formatAt(value,span)}}}});
+  {label:'CPU %',data:xy(cpu),borderColor:'#00579e',tension:.3,borderWidth:2,spanGaps:false,
+   pointRadius:cpu.map(v=>v>t.cpu?3.5:0),pointBackgroundColor:cpu.map(v=>v>t.cpu?'#a76629':'#00579e')},
+  {label:'메모리 %',data:xy(mem),borderColor:'#258474',tension:.3,borderWidth:2,spanGaps:false,
+   pointRadius:mem.map(v=>v>t.memory?3.5:0),pointBackgroundColor:mem.map(v=>v>t.memory?'#b42332':'#258474')},
+  {label:`${t.cpu}% 임계치`,data:[{x:from,y:t.cpu},{x:to,y:t.cpu}],borderColor:'#a76629',borderDash:[5,5],pointRadius:0,borderWidth:1},
+  ...h.switches.map((change,i)=>({label:i?'서버 교체 시점':'서버 교체',data:[{x:change.at,y:0},{x:change.at,y:100}],borderColor:'#788ca0',borderDash:[3,5],pointRadius:0,borderWidth:1}))]},
+  {plugins:{legend:{display:true,labels:{color:'#526e84',boxWidth:12}}},scales:{y:{min:0,max:100,ticks:{color:'#62798c'}},x:{type:'linear',min:from,max:to,ticks:{color:'#62798c',maxTicksLimit:8,callback:value=>formatAt(value,span)}}}});
 }
 // 호스트 선택은 화면 안에서만(조회 범위를 바꾸지 않는다). 바뀌었으면 true.
 export function selectHost(id){if(infraHost===id)return false;infraHost=id;return true;}

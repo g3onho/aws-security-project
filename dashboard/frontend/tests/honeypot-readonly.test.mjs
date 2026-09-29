@@ -12,7 +12,7 @@ test('read-only accounts get no change buttons and no password reveal',async t=>
  const {dom,w,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  loadD3Force(w);
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'));
+ await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');
  await until(()=>$('[data-block]')&&$('.hp-steps'),'honeypot did not render');
  assert.equal($('#session-user').textContent,'leader · 승인 담당');

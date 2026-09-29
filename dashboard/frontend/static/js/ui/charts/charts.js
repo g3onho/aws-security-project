@@ -4,7 +4,7 @@ const charts=new Map();
 export function drawChart(id,type,data,options={}){
  const el=$(`#${id}`);if(!el)return;
  if(!window.Chart){el.replaceWith(Object.assign(document.createElement('p'),{className:'chart-fallback',textContent:'차트 라이브러리를 불러오지 못했습니다. 텍스트 수치를 확인해주세요.'}));return;}
- const chartOptions={responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#17251e',titleColor:'#e7eeec',bodyColor:'#c4d7cb',padding:10}},...options};
+ const chartOptions={responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#17334c',titleColor:'#fff',bodyColor:'#d9e9f5',padding:10}},...options};
  const existing=charts.get(id);
  if(existing?.canvas===el){existing.data=data;existing.options=chartOptions;existing.update('none');return;}
  existing?.destroy();

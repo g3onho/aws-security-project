@@ -6,7 +6,7 @@ import {ROOT, until, makeFetchMock, appDOM} from './dom-test-support.mjs';
 import {envelope, iso, detailedEvents, SUMMARY} from './detail-fixtures.mjs';
 
 // v23 화면 개편: 문제 → 왜 위험 → 고치는 법 → 고쳐졌나(조치 기록). 앱 모듈은 파일당 한 번만 뜨므로 화면마다 파일을 나눈다.
-test('infrastructure separates EC2 servers, marks the three tiers unknown and lists CloudWatch alarms',async t=>{
+test('infrastructure lists EC2 status and CloudWatch alarms while tiers stay summarized on overview',async t=>{
  const network=makeFetchMock();
  network.respond('/api/infra/status',envelope({components:[{id:'ap-northeast-2/i-1/i-1',name:'docker-host',resource:'i-1',region:'ap-northeast-2',
    status:'healthy',source:'EC2',detail:'running',observedAt:iso(),kind:'server',role:'service-3tier'}],dependencies:[],
@@ -20,14 +20,19 @@ test('infrastructure separates EC2 servers, marks the three tiers unknown and li
            metric:'MySQLAuthFailure',threshold:10,notifies:true,autoResponse:null,updatedAt:iso()}]}));
  const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'));
+ await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="infrastructure"]');
  await until(()=>$('#content').textContent.includes('서버 가동 상태'),'server status did not render');
  const text=$('#content').textContent;
  assert(text.includes('docker-host')&&text.includes('running')&&text.includes('service-3tier'));
- assert(text.includes('Nginx')&&text.includes('Flask')&&text.includes('MySQL')&&text.includes('확인 불가'));
- assert.equal($('#content').querySelectorAll('.service-node.unknown').length,3,'3계층은 확인 불가 — 정상으로 칠하지 않는다');
+ assert(!text.includes('3계층 서비스'),'3계층 요약은 통합관제 화면에 둔다');
+ assert.equal($('#content').querySelectorAll('.service-node').length,0,'인프라 화면에 중복 계층 흐름을 두지 않는다');
  assert(text.includes('경보')&&text.includes('공격 IP 자동 차단')&&text.includes('데이터 없음'));
+ assert.equal($('#content').querySelectorAll('.alarm-status-group').length,4,'현재 경보 상태를 네 구역으로 나눈다');
+ assert($('#content .alarm-status-group.alarm').textContent.includes('SSH(22) 접속 거부 급증'));
+ assert($('#content .alarm-status-group.alarm').textContent.includes('공격 IP 자동 차단'));
+ assert($('#content .alarm-status-group.nodata').textContent.includes('MySQL 로그인 실패 급증'));
+ assert.equal($('#content .alarm-details').open,false,'조건과 변경 시각은 펼쳐서 확인한다');
  assert(!text.includes('3계층 서비스1개 구성요소'),'EC2 목록을 3계층처럼 잇지 않는다');
  assert.deepEqual(errors,[]);
 });

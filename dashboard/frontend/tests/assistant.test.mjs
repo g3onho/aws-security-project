@@ -19,7 +19,7 @@ test('assistant panel asks, escapes hostile answers, keeps history, and recovers
  });
  const {dom,w,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'overview did not render');
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
 
  // 처음엔 닫혀 있고 상태 조회도 하지 않는다(자동 호출 없음).
  assert.equal($('#assistant-panel').hidden,true);

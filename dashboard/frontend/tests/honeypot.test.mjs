@@ -15,7 +15,7 @@ test('honeypot view shows status, timeline, charts, graph, sessions and the bloc
  w.URL.createObjectURL=blob=>{downloads.push(blob);return 'blob:fixture';};w.URL.revokeObjectURL=()=>{};
  globalThis.URL.createObjectURL=w.URL.createObjectURL;
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'overview did not render');
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
  click('nav [data-view="honeypot"]');
  await until(()=>$('#honeypot')?.textContent.includes('차단 IP 관리'),'honeypot did not render');
  await until(()=>$('.hp-steps'),'timeline did not render');

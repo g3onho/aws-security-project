@@ -9,7 +9,7 @@ test('an undeployed honeypot shows one notice and never asks for data it cannot 
  const network=makeFetchMock();install(network,{statusData:{deployed:false,verdict:{state:'not_deployed',label:'허니팟 미배포',reasons:[]},cards:{},canWrite:false}});
  const {dom,$,click,charts,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'));
+ await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');
  await until(()=>$('#honeypot')?.textContent.includes('허니팟 미배포'),'notice missing');
  assert(!$('#honeypot').textContent.includes('차단 IP 관리'));

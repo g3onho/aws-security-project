@@ -6,19 +6,47 @@ import {ROOT, until, makeFetchMock, appDOM} from './dom-test-support.mjs';
 import {envelope, iso, detailedEvents, SUMMARY} from './detail-fixtures.mjs';
 
 // v23 화면 개편: 문제 → 왜 위험 → 고치는 법 → 고쳐졌나(조치 기록). 앱 모듈은 파일당 한 번만 뜨므로 화면마다 파일을 나눈다.
-test('overview shows detection summary, only real sources and the automation card; shortcuts count real work',async t=>{
+test('overview visualizes CPU and memory samples, time-bucketed events, and review links',async t=>{
  const network=makeFetchMock();
  network.respond('/api/events',detailedEvents);network.respond('/api/summary',SUMMARY);
- const {dom,$,errors}=appDOM(network);t.after(()=>dom.window.close());
+ network.respond('/api/infra/status',envelope({components:[{resource:'i-fixture',status:'healthy'}],tiers:[{status:'unknown'}],alarms:[]}));
+ network.respond('/api/metrics',envelope({series:[{resource:'i-fixture',name:'fixture',metric:'cpu',points:[{timestamp:new Date(Date.now()-10*60000).toISOString(),value:48},{timestamp:iso(),value:72}]},
+  {resource:'i-fixture',name:'fixture',metric:'memory',points:[{timestamp:new Date(Date.now()-10*60000).toISOString(),value:44},{timestamp:iso(),value:58}]}],periodSeconds:300,thresholds:{cpu:80,memory:80}}));
+ const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content').textContent.includes('자동 대응 현황'),'automation card did not render');
  const text=$('#content').textContent;
  assert(!text.includes('재검증 완료율')&&!text.includes('CPU·메모리는 인프라 모니터링'),'늘 0 인 게이지·안내 문구는 없다');
  assert(!text.includes('승인 대기 상태'),'모든 탐지를 승인 대기로 세던 카드는 없다');
- assert(text.includes('자동 실행')&&text.includes('완료 1 · 실패 1')&&text.includes('VPC 기본 보안그룹에 규칙이 남아 있음'));
- assert(text.includes('열린 취약점(CVE)')&&text.includes('7건')&&text.includes('1건 발생'));
- assert(text.includes('Security Hub')&&!text.includes('Trivy'),'탐지가 없는 소스 막대는 그리지 않는다');
- assert.match(text,/자동 조치 대상\s*1건/,'조건부 자동도 자동 조치 대상으로 센다');
+ assert(text.includes('자동 실행')&&text.includes('완료 1 · 실패 1'));
+ assert(!text.includes('VPC 기본 보안그룹에 규칙이 남아 있음'),'통합관제에는 조치 이력 제목 목록을 두지 않는다');
+ assert(!text.includes('탐지 요약'));
+ assert(text.includes('인프라 상태 요약')&&text.includes('EC2 가동')&&text.includes('1/1 대'));
+ assert(text.includes('CPU 표본')&&text.includes('72%')&&text.includes('메모리 표본')&&text.includes('58%'));
+ const cpuSpark=$('#content .overview-sparkline[data-metric="cpu"]');
+ const memorySpark=$('#content .overview-sparkline[data-metric="memory"]');
+ assert(cpuSpark,'CPU 표본 그래프가 있다');assert(memorySpark,'메모리 표본 그래프가 있다');
+ assert.equal(cpuSpark.getElementsByTagName('polyline').length,1,'CPU 표본을 선으로 그린다');
+ assert.equal(memorySpark.getElementsByTagName('polyline').length,1,'메모리 표본을 선으로 그린다');
+ assert(text.includes('CloudWatch 경보')&&text.includes('데이터 없음 1'));
+ assert(!text.includes('3계층 서비스 확인 불가'),'3계층의 확인 불가 고정 문구를 되살리지 않는다');
+ const summaryGrid=$('#content .overview-summary-grid');
+ assert(summaryGrid,'인프라와 자동 대응은 한 행에 놓인다');
+ assert.equal(summaryGrid.children.length,2,'상단 요약은 두 패널로 제한한다');
+ assert(summaryGrid.children[0].textContent.includes('인프라 상태 요약'));
+ assert(summaryGrid.children[1].textContent.includes('자동 대응 현황'));
+ assert.equal(summaryGrid.nextElementSibling.classList.contains('event-trend-widget'),true,'시간대별 이벤트 추이는 두 요약 아래에 놓인다');
+ assert.equal($('#content .event-source-donut-widget'),null,'탐지 소스 원형 그래프는 보안 이벤트에 둔다');
+ assert.equal($('#content').querySelectorAll('.response-summary-card').length,3,'판정 유형은 세 그룹으로 정리한다');
+ assert.equal($('#content').querySelectorAll('.response-summary-card .response-share-ring').length,3,'판정 유형마다 원형 비율을 표시한다');
+ assert([...$('#content').querySelectorAll('.response-share-ring')].every(ring=>ring.textContent.includes('%')&&ring.getAttribute('role')==='img'),'원형 그래프 가운데 퍼센트가 읽힌다');
+ assert.equal($('#content .response-graph-track'),null,'판정 유형과 실행 상태를 섞은 막대는 제거한다');
+ assert.equal($('#content .response-list'),null,'통합관제에는 최근 조치 목록을 중복 표시하지 않는다');
+ assert.equal($('#content .event-source-widget'),null,'소스 위험도 그래프를 중복 표시하지 않는다');
+ assert.equal($('#content .action-review'),null,'요청과 맞지 않는 우선 검토 목록은 두지 않는다');
+ assert(!text.includes('조치 우선 확인'));
+ assert($('#content [data-view="responses"]'),'기존 조치 이력 진입은 유지한다');
+ assert.equal($('#content .event-link'),null,'최근 이벤트 목록은 보안 이벤트 화면에서만 제공한다');
  assert.equal($('#notification-count').textContent,'4','자동 조치 실패 1 + 수동 대응 2 + 경보 1');
  assert.equal($('#worker-state').textContent,'','고정 상태 문구가 없다');
  assert(!$('#notification-panel').textContent.includes('승인 대기'));

@@ -21,21 +21,26 @@ function pendingRow(r){
 }
 function manualRow(r){return `<tr><td>${at(r)}</td><td>${esc(r.eventId)}</td><td>${esc(DECISION_KO[r.decision]||r.decision)}</td><td>${esc(r.actionState)}</td><td>${esc(r.reason||'—')}</td></tr>`;}
 const table=(caption,heads,rows)=>`<div class="table-scroll"><table><caption class="sr-only">${caption}</caption><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+const JOB_STATE={QUEUED:['대기','muted'],RUNNING:['실행 중','warn'],SUCCEEDED:['완료','ok'],FAILED:['실패','bad']};
+function jobState(status){const [label,kind]=JOB_STATE[status]||[status||'상태 미상','muted'];return `<span class="history-job-state ${kind}">${esc(label)}</span>`;}
+function historyBlock(title,count,description,content,wide=false){return `<section class="history-block${wide?' history-block-wide':''}"><div class="history-block-head"><div><h3>${title}</h3><p>${description}</p></div><b>${count}건</b></div>${content}</section>`;}
 export function renderAudit(){
  return loadPanel($('#audit-log'),()=>api.history(),data=>{
+  const items=data.items||[],jobs=data.jobs||[];
   const warn=(data.warnings||[]).map(w=>`<p class="panel-error" role="status">${esc(w)}</p>`).join('');
-  const auto=data.items.filter(r=>r.source==='automatic'),manual=data.items.filter(r=>r.source!=='automatic');
+  const auto=items.filter(r=>r.source==='automatic'),manual=items.filter(r=>r.source!=='automatic');
   const executed=auto.filter(r=>['auto-executed','auto-skipped'].includes(r.decision)),pending=auto.filter(r=>!executed.includes(r));
   const failed=executed.filter(r=>['FAILED','TIMED_OUT','CANCELLED'].includes(r.automationStatus)).length;
-  const summary=`<p class="muted">자동 ${auto.length}건(실행 ${executed.length}건${failed?` · 실패 ${failed}건`:''}) · 수동 대응 필요·판단만 ${pending.length}건${manual.length?` · 대시보드 수동 기록 ${manual.length}건`:''} · 같은 탐지의 반복 판정은 한 줄로 합쳐 횟수로 표시합니다.</p>`;
-  const sections=data.items.length?summary
-   +`<h3 class="history-title">자동 조치 실행 <small>${executed.length}건 · '실행 완료'는 SSM 실행 성공이며 재검증 전입니다</small></h3>`
-   +(executed.length?table('자동 실행 기록',['마지막 시각 (KST)','대상','조치 · 상태','바뀐 내용 (조치 직후 SSM 보고값)','판정 이유'],executed.map(executedRow).join('')):'<p class="muted">선택 기간에 자동 실행 기록이 없습니다.</p>')
-   +`<h3 class="history-title">수동 대응 필요 · 판단만 <small>${pending.length}건 · 자동 조치 대상이 아니거나 조건이 맞지 않아 담당자에게 알린 기록</small></h3>`
-   +(pending.length?table('수동 대응 필요 기록',['마지막 시각 (KST)','대상','판정 · 상태','판정 이유','횟수'],pending.map(pendingRow).join('')):'<p class="muted">선택 기간에 수동 대응이 필요한 기록이 없습니다.</p>')
-   +(manual.length?`<h3 class="history-title">대시보드 수동 기록</h3>`+table('대시보드 수동 기록',['시각 (KST)','이벤트','작업','상태','사유'],manual.map(manualRow).join('')):'')
-   :'<p class="muted">조회 기간에 기록된 조치가 없습니다.</p>';
-  const jobs=data.jobs.length?`<h3>작업 상태</h3><div class="table-scroll"><table><thead><tr><th>작업 ID</th><th>이벤트</th><th>상태</th><th>오류</th></tr></thead><tbody>${data.jobs.map(job=>`<tr><td>${esc(job.jobId)}</td><td>${esc(job.eventId)}</td><td>${esc(job.status)}</td><td>${esc(job.error||'—')}</td></tr>`).join('')}</tbody></table></div>`:'';
-  return warn+sections+jobs+'<p class="muted">이력은 시간·리전·자원 범위로 조회합니다. 조치 기록은 30일 보존합니다.</p>';
+  const none='<p class="history-empty">선택 기간에 기록이 없습니다.</p>';
+  const autoContent=executed.length?table('자동 조치 실행 기록',['마지막 시각 (KST)','대상','조치 · 상태','바뀐 내용 (조치 직후 SSM 보고값)','판정 이유'],executed.map(executedRow).join('')):none;
+  const pendingContent=pending.length?table('수동 대응 필요 기록',['마지막 시각 (KST)','대상','판정 · 상태','판정 이유','횟수'],pending.map(pendingRow).join('')):none;
+  const manualContent=manual.length?table('대시보드 수동 기록',['시각 (KST)','이벤트','작업','상태','사유'],manual.map(manualRow).join('')):none;
+  const jobsContent=jobs.length?table('작업 상태 목록',['작업 ID','이벤트','상태','오류'],jobs.map(job=>`<tr><td>${esc(job.jobId)}</td><td>${esc(job.eventId)}</td><td>${jobState(job.status)}</td><td>${esc(job.error||'—')}</td></tr>`).join('')):none;
+  const sections=`<p class="muted history-summary">자동 조치 ${auto.length}건 · 수동 대응 판정 ${pending.length}건 · 대시보드 수동 기록 ${manual.length}건 · 작업 ${jobs.length}건${failed?` · 자동 실행 실패 ${failed}건`:''}. 반복 판정은 한 줄에 횟수로 표시합니다.</p>
+   <div class="history-sections">${historyBlock('자동 조치',executed.length,'SSM 실행 결과와 변경 전·후 보고값. 실행 성공은 보안 문제 해결을 뜻하지 않습니다.',autoContent)}
+   ${historyBlock('수동 대응 · 판단만',pending.length,'자동 조치 대상이 아니거나 조건이 맞지 않아 담당자에게 전달된 판정입니다.',pendingContent)}
+   ${historyBlock('대시보드 수동 기록',manual.length,'화면에서 사람이 남긴 조치와 사유입니다.',manualContent)}
+   ${historyBlock('작업 상태',jobs.length,'비동기 작업의 진행 상태와 오류를 표시합니다.',jobsContent,true)}</div>`;
+  return warn+sections+'<p class="muted">이력은 시간·리전·자원 범위로 조회합니다. 조치 기록은 30일 보존합니다.</p>';
  },'조치 이력');
 }

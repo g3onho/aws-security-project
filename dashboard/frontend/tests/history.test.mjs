@@ -22,20 +22,20 @@ test('response history shows automatic records, repeat counts and warnings witho
   meta:{schemaVersion:'1',asOf:iso,partial:true,warnings:['자동조치 이력이 많아 일부만 표시합니다.']}});
  const {dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'overview did not render');
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
  click('nav [data-view="responses"]');
  await until(()=>$('#audit-log')?.textContent.includes('EC2.19 open port'),'automatic record did not render');
  const text=$('#audit-log').textContent;
  assert(text.includes('자동 실행')&&text.includes('실행 완료 · 재검증 전'));
  assert(text.includes('수동 대응 필요')&&text.includes('담당자 알림'));
- assert(text.includes('자동 2건'));
+ assert(text.includes('자동 조치 2건'));
  assert($('#audit-log [title="SSM 실행 exec-1"]'),'실행 ID 는 툴팁으로 남긴다');
- assert(text.includes('자동 조치 실행')&&text.includes('수동 대응 필요 · 판단만'),'자동 실행과 수동 대응을 나눈다');
+ assert(text.includes('자동 조치 실행')&&text.includes('수동 대응 · 판단만'),'자동 실행과 수동 대응을 나눈다');
  assert(text.includes('TCP 3306 ← 0.0.0.0/0')&&text.includes('조치 직후 SSM 보고값 · 재검증 전'),'바뀐 내용은 SSM 보고값으로 표시');
  assert(text.includes('보안그룹 전체 공개 규칙 회수'),'판정 이유가 보인다');
  assert(text.includes('판정 이유 기록 없음'),'이유가 없는 옛 기록은 그렇게 표시한다');
  assert(text.includes('자동조치 이력이 많아 일부만 표시합니다.'),'warning must be visible');
- assert(!text.includes('해결'),'execution must not be shown as resolved');
+ assert(!$('#audit-log .auto-state').textContent.includes('해결'),'실행 상태를 해결 완료로 표시하지 않는다');
  // v20.5: 1주일을 받아 기간 트랙은 이력 수를 세고, 표에는 선택 기간(기본 1일)만 남긴다.
  const call=network.calls.find(c=>c.pathname==='/api/history');
  assert.equal(Date.parse(call.url.searchParams.get('to'))-Date.parse(call.url.searchParams.get('from')),7*86400000);

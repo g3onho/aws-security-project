@@ -13,7 +13,7 @@ test('attack path map turns the gate closed only when the NACL block is recorded
  const {dom,w,$,click}=appDOM(network);t.after(()=>dom.window.close());
  loadD3Force(w);
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- await until(()=>$('#content').textContent.includes('Contract test event'),'overview did not render');
+ await until(()=>$('#content .event-trend-widget'),'overview did not render');
  click('nav [data-view="honeypot"]');
  await until(()=>$('#honeypot .hp-map-list'),'map did not render');
  assert.equal($('.hp-mp-gate').dataset.gate,'closed');
