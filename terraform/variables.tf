@@ -356,7 +356,7 @@ variable "enable_honeypot_ai" {
 variable "honeypot_ai_model_id" {
   description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
   type        = string
-  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "apac.amazon.nova-lite-v1:0"
 }
 
 # --- 대시보드 도우미(챗봇, v27) ---
@@ -369,7 +369,7 @@ variable "enable_dashboard_assistant" {
 variable "dashboard_assistant_model_id" {
   description = "대시보드 도우미가 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
   type        = string
-  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+  default     = "apac.amazon.nova-lite-v1:0"
 }
 
 # --- IP 차단 기간·만료 (v25, DEC-021) ---

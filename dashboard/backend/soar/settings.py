@@ -57,7 +57,7 @@ def configure(overrides=None):
         "BLOCKLIST_WRITE_ROLES": os.getenv("BLOCKLIST_WRITE_ROLES", "operator"),
         # 대시보드 도우미(챗봇, v27): 조회 전용. 켜져 있어도 AWS 연결·IAM(bedrock:InvokeModel)이 없으면 "사용 불가"로 표시한다.
         "ASSISTANT_ENABLED": os.getenv("ASSISTANT_ENABLED", "false"),
-        "ASSISTANT_MODEL_ID": os.getenv("ASSISTANT_MODEL_ID", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+        "ASSISTANT_MODEL_ID": os.getenv("ASSISTANT_MODEL_ID", "apac.amazon.nova-lite-v1:0"),
         "ASSISTANT_REGION": os.getenv("ASSISTANT_REGION") or None,
         "ASSISTANT_DAILY_TOKEN_BUDGET": int(os.getenv("ASSISTANT_DAILY_TOKEN_BUDGET", "500000")),
         "ASSISTANT_RATE_PER_10MIN": int(os.getenv("ASSISTANT_RATE_PER_10MIN", "20")),
