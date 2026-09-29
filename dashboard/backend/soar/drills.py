@@ -113,6 +113,8 @@ class DrillService:
         self.runs = DrillRuns(store)
         self.provider = provider
         self.attack_config = attack_config or {}
+        # 서울 서비스 호스트(docker-host) 스캔·부하 대상 리전. 웹 공격(geo)과 별개.
+        self.home_region = self.attack_config.get("homeRegion") or getattr(provider, "region", None)
 
     def attack_ready(self):
         cfg = self.attack_config
@@ -154,6 +156,95 @@ class DrillService:
         return {"runId": run_id, "targetIp": run.get("targetIp"),
                 "startedAt": run.get("startedAt"), "regions": regions}
 
+    # --- 전부 실행(SEC-08/06B geo + SEC-02/07/10 서울 서비스 호스트) -----------------
+    def start_all(self, params, actor):
+        """[시작] 하나로 준비된 모든 실습을 실행한다. 대상이 없는 항목은 건너뛰고 사유를 남긴다.
+        - SEC-08/06B: 지리별 공격자 → DVWA (nmap·hydra ssh·hydra web)
+        - SEC-02: 서비스 HTTP·포트/헤더 점검(SCAN-PortAndWeb)
+        - SEC-07: 코드/설정 비밀값 점검(SCAN-Secrets)
+        - SEC-10: 서울 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증"""
+        cfg = self.attack_config
+        p = params or {}
+        launched, skipped = [], []
+
+        # 1) 지리별 웹 공격(SEC-08 + SEC-06B). 설정/공격자 없으면 건너뛴다.
+        if self.attack_ready():
+            attackers = self.provider.discover_attackers(cfg["regions"]) or []
+            if attackers:
+                atk_params = {
+                    "TargetHost": cfg["targetIp"],
+                    "ScanBucket": cfg.get("scanBucket", ""),
+                    "SshUser": p.get("sshUser", "victim"),
+                    "WebBaseUrl": cfg.get("webUrl") or "",
+                }
+                targets = [{**a, "documentName": cfg["documentName"]} for a in attackers]
+                for c in self.provider.run_web_attack(targets, atk_params):
+                    launched.append({**c, "sec": "SEC-08"})
+            else:
+                skipped.append("SEC-08/06B(공격자 노드 미탐색)")
+        else:
+            skipped.append("SEC-08/06B(지리 공격 미설정)")
+
+        # 2) 서울 로컬 실습(SEC-02/07/10). SSM 문서가 실행 시 도구(nmap·trivy·stress-ng)를 자가 설치한다.
+        region = self.home_region
+        bucket = cfg.get("scanBucket", "")
+        # SEC-02(서비스 헤더·포트)와 SEC-07(코드 비밀값)은 서비스와 코드(/opt/app)가 있는
+        # docker-host 에서 로컬로 돈다. SSM 문서가 실행 시 nmap·trivy 를 자가 설치한다.
+        svc = self.provider.discover_host_by_role(region, "service-3tier") if region else None
+        if svc:
+            launched.extend(self.provider.send_commands(svc, [
+                {"sec": "SEC-02", "documentName": "SCAN-PortAndWeb",
+                 "parameters": {"TargetHost": "127.0.0.1", "ScanBucket": bucket}},
+                {"sec": "SEC-04", "documentName": "SCAN-ContainerImage",
+                 "parameters": {"ServiceDir": "/opt/app", "ScanBucket": bucket}},
+                {"sec": "SEC-07", "documentName": "SCAN-Secrets",
+                 "parameters": {"ServiceDir": "/opt/app", "ScanBucket": bucket, "RegionLabel": "seoul"}}]))
+        else:
+            skipped.append("SEC-02/04/07(서비스 호스트 미탐색)")
+
+        # SEC-10: 부하. stress-ng 는 실행 노드 자신을 부하시키므로, 서울 EC2(대시보드 제외) 전부에 보낸다.
+        load = {"ScanBucket": bucket}
+        for k_out, k_in in (("DurationSeconds", "durationSeconds"),
+                            ("CpuTarget", "cpuTarget"), ("MemPercent", "memPercent")):
+            if p.get(k_in):
+                load[k_out] = p[k_in]
+        load_targets = self.provider.discover_load_targets(region) if region else []
+        if load_targets:
+            for t in load_targets:
+                launched.extend(self.provider.send_commands(
+                    t, [{"sec": "SEC-10", "documentName": "LOAD-Stress",
+                         "parameters": {**load, "RegionLabel": t["regionLabel"]}}]))
+        else:
+            skipped.append("SEC-10(부하 대상 미탐색)")
+
+        if not launched:
+            raise Problem(409, "실행 가능한 대상이 없습니다: " + ", ".join(skipped) +
+                          ". terraform 배포(enable_geo_attackers·docker-host)와 대시보드 env를 확인하세요.",
+                          "NOTHING_LAUNCHED")
+
+        import uuid
+        from .store import now_ms
+        secs = sorted({c["sec"] for c in launched})
+        run = {"runId": str(uuid.uuid4()), "type": "run-all", "title": "전부 실행",
+               "actor": actor, "startedAt": now_ms(), "createdAt": now_ms(),
+               "targetIp": cfg.get("targetIp", ""), "secs": secs, "skipped": skipped,
+               "state": "접수", "commands": launched}
+        self.runs.save(run)
+        return {"runId": run["runId"], "launched": launched, "skipped": skipped, "secs": secs}
+
+    def all_status(self, run_id):
+        run = self.runs.get(run_id)
+        if run is None:
+            raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
+        cmds = run.get("commands", [])
+        rows = self.provider.attack_command_status(cmds) or []
+        # attack_command_status 는 입력 순서를 보존한다 → sec/label 을 되붙인다.
+        for cmd, row in zip(cmds, rows):
+            row["sec"] = cmd.get("sec")
+            row["label"] = _step_label(cmd)
+        return {"runId": run_id, "startedAt": run.get("startedAt"),
+                "targetIp": run.get("targetIp"), "skipped": run.get("skipped", []), "items": rows}
+
     def environment(self):
         status = self.provider.status()
         # 데이터 연결 상태는 하나로 합치지 않는다. 격리 VPC는 여기서 증명할 수 없으므로 unknown.
@@ -191,3 +282,18 @@ class DrillService:
 def _label(support):
     return {"runnable": "실행 가능", "prep-needed": "준비 필요",
             "observe-only": "조회 전용", "design-needed": "설계 필요"}.get(support, support)
+
+
+_REGION_KO = {"seoul": "서울", "tokyo": "도쿄", "singapore": "싱가포르",
+              "sydney": "시드니", "mumbai": "뭄바이", "us-virginia": "미국(버지니아)"}
+
+
+def _step_label(cmd):
+    """진행·이력 표기는 리전이 아니라 SEC 항목을 앞세운다(예: 'SEC-10 · docker-host', 'SEC-08 · 도쿄')."""
+    sec = cmd.get("sec") or "실행"
+    region = cmd.get("regionLabel")
+    if sec == "SEC-08" and region and region != "seoul":
+        return f"{sec} · {_REGION_KO.get(region, region)}"  # geo: 출발 지역
+    if sec == "SEC-10" and region:
+        return f"{sec} · {_REGION_KO.get(region, region)}"  # 부하: 대상 EC2 이름
+    return sec

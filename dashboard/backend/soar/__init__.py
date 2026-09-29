@@ -27,6 +27,8 @@ def _attack_config(settings):
         "webUrl": settings.get("DVWA_WEB_URL"),
         "scanBucket": settings.get("SCAN_RESULTS_BUCKET"),
         "regions": regions,
+        # 서울 로컬 실습(SEC-02/07/10)이 도는 홈 리전. geo 공격 리전과 별개.
+        "homeRegion": settings.get("AWS_REGION"),
     }
 
 

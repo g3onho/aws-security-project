@@ -27,7 +27,7 @@ mkdir -p /opt/attacker/wordlists
 cat >/opt/attacker/Dockerfile <<'EOF'
 FROM debian:stable-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends hydra nmap ca-certificates \
+ && apt-get install -y --no-install-recommends hydra nmap sqlmap ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 EOF
 

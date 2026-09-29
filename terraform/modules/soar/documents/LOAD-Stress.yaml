@@ -1,0 +1,46 @@
+schemaVersion: '2.2'
+description: |
+  서울 리전 대상 EC2 에 CPU·메모리 부하를 주어 운영 경보(SEC-10)를 검증한다.
+  stress-ng 로 지정 시간 동안만 부하를 걸고 자동 종료한다. 자동 조치는 없다.
+  CloudWatch CPU/메모리 알람 → SNS 전이를 확인하기 위한 팀 소유 실습이다.
+parameters:
+  DurationSeconds:
+    type: String
+    description: |
+      부하 지속(초). CPU/메모리 알람은 5분 평균 × 2회이므로 전이를 보려면
+      최소 600초 이상이어야 한다. 기본 900초(15분).
+    default: '900'
+    allowedPattern: '^[0-9]{2,5}$'
+  CpuTarget:
+    type: String
+    description: CPU 부하 목표(%) — stress-ng --cpu-load
+    default: '85'
+    allowedPattern: '^[0-9]{1,3}$'
+  MemPercent:
+    type: String
+    description: 메모리 점유 비율(%) — stress-ng --vm-bytes
+    default: '75'
+    allowedPattern: '^[0-9]{1,3}$'
+  ScanBucket:
+    type: String
+    description: 실행 마커를 올릴 S3 버킷
+  RegionLabel:
+    type: String
+    default: seoul
+mainSteps:
+  - action: 'aws:runShellScript'
+    name: stressLoad
+    inputs:
+      runCommand:
+        - '#!/bin/bash'
+        - set -uo pipefail
+        - command -v stress-ng >/dev/null || (sudo apt-get update -y && sudo apt-get install -y stress-ng)
+        - TS=$(date +%Y%m%dT%H%M%SZ)
+        - OUT="/tmp/load-$TS.txt"
+        - CPUS=$(nproc)
+        - 'echo "== load {{ RegionLabel }} cpu={{ CpuTarget }}% mem={{ MemPercent }}% for {{ DurationSeconds }}s (cores=$CPUS) @ $TS ==" | tee "$OUT"'
+        - '# --timeout 으로 지정 시간 뒤 stress-ng 가 스스로 종료한다(무한 부하 방지).'
+        - 'stress-ng --cpu "$CPUS" --cpu-load "{{ CpuTarget }}" --vm 1 --vm-bytes "{{ MemPercent }}%" --timeout "{{ DurationSeconds }}s" --metrics-brief 2>&1 | tee -a "$OUT" || true'
+        - 'echo "load finished" | tee -a "$OUT"'
+        - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/load/$TS.txt"'
+        - 'echo "uploaded to s3://{{ ScanBucket }}/load/$TS.txt"'

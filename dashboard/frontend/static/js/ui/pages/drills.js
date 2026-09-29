@@ -23,7 +23,7 @@ const TYPE_INFO={
 let catalog=null,runs=null;
 const sel={typeId:null,target:null,scenario:null};
 // 웹보안검사 실행 상태(클라이언트). runId 로 상태를 폴링한다.
-const webRun={runId:null,regions:[],busy:false,error:null,timer:null,done:false};
+const webRun={runId:null,items:[],skipped:[],busy:false,error:null,timer:null,done:false};
 
 function supportPill(support,label){
  const c=SUPPORT_COLOR[support]||SUPPORT_COLOR['design-needed'];
@@ -85,18 +85,20 @@ function configPanel(){
  }
  // 웹보안검사만 실제 실행 경로가 연결돼 있다(지리별 공격자 → SSM). 준비되면 [시작] 활성화.
  if(type.id==='web-scan'){
-  const ready=catalog?.environment?.webScanReady===true;
+  const geoReady=catalog?.environment?.webScanReady===true;
+  const ready=catalog?.environment?.dataSourceConnected===true;  // 서울 SEC-02/07/10 은 geo 없이도 실행
   picker+=`<label class="drill-field"><span>SSH 계정</span><input type="text" data-web-ssh-user value="victim" ${webRun.busy?'disabled':''}></label>`;
-  // DVWA 웹 공격은 스크립트가 ALB 로 자동 로그인해 세션을 얻는다(PHPSESSID 수동 입력 제거).
-  const startAttr=ready&&!webRun.busy?'data-web-scan-start':'disabled';
-  const label=webRun.busy?'실행 중…':'시작';
-  const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#32d4be"></span>실행 가능 · 지리별 공격자(미국·싱가포르·시드니·뭄바이·도쿄)</div>`
-                  :`<div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · 지리별 공격자 미배포(terraform enable_geo_attackers)</div>`;
-  return `<div class="drill-config"><h3>실행 설정 — ${esc(type.name)}</h3>${picker}${elig}
+  const startAttr=ready&&!webRun.busy?'data-run-all-start':'disabled';
+  const label=webRun.busy?'실행 중…':'전부 실행';
+  const geoLine=geoReady?'지리별 웹 공격(SEC-08/06B) 포함 · 미국·싱가포르·시드니·뭄바이·도쿄'
+                        :'지리별 공격자 미배포 — SEC-08/06B 는 건너뜁니다(terraform enable_geo_attackers)';
+  const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#32d4be"></span>실행 가능 · ${esc(geoLine)}</div>`
+                  :`<div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · 데이터 소스 미연결</div>`;
+  return `<div class="drill-config"><h3>실행 설정 — 전부 실행</h3>${picker}${elig}
    <div class="drill-actions">
     <button type="button" class="primary-button" ${startAttr}>${esc(label)}</button></div>
    ${webRun.error?`<p class="panel-error" role="alert">${esc(webRun.error)}</p>`:''}
-   <p class="muted">DVWA 대상으로 각 리전에서 nmap·hydra(SSH·웹)를 실행합니다. 결과는 아래 지역별 진행에 표시되고, 국가별 탐지는 이벤트/지도에 GuardDuty로 나타납니다.</p></div>`;
+   <p class="muted">한 번에 실행: SEC-02(서비스 포트·헤더), SEC-04(Trivy 이미지 CVE), SEC-07(비밀값 스캔), SEC-08/06B(DVWA·SSH 지리 공격: nmap·hydra·ZAP·sqlmap), SEC-10(서울 EC2 부하·대시보드 제외). 아래 진행에 항목별 상태가 표시됩니다.</p></div>`;
  }
  return `<div class="drill-config"><h3>실행 설정 — ${esc(type.name)}</h3>${picker}
   <div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · ${esc(reason)}</div>
@@ -108,19 +110,20 @@ function configPanel(){
 
 const WEB_STATUS_KO={Pending:'대기',InProgress:'실행 중',Delayed:'지연',Success:'완료',Cancelled:'취소',
  TimedOut:'시간초과',Failed:'실패',Cancelling:'취소 중',Unknown:'알 수 없음'};
-// 지역별 공격 진행 패널(웹보안검사 실행 후 표시).
+// 실행 진행 패널: 리전이 아니라 SEC 항목(예: 'SEC-10 · docker-host')으로 표기한다.
 function webRunSection(){
- if(!webRun.runId&&!webRun.regions.length)return '';
- const rows=webRun.regions.map(r=>{
+ if(!webRun.runId&&!webRun.items.length)return '';
+ const rows=webRun.items.map(r=>{
   const st=WEB_STATUS_KO[r.status]||esc(r.status||'—');
   const out=r.output?`<details><summary>출력 보기</summary><pre class="drill-attack-output">${esc(r.output)}</pre></details>`:(r.detail?`<small class="muted">${esc(r.detail)}</small>`:'');
-  return `<tr><td>${esc(r.regionLabel||'—')}</td><td>${st}</td><td>${out}</td></tr>`;
+  return `<tr><td>${esc(r.label||r.sec||'—')}</td><td>${st}</td><td>${out}</td></tr>`;
  }).join('');
- return `<section class="panel full-panel">${header('지리별 공격 진행','GEO ATTACK RUN')}
-  ${webRun.runId?`<p class="muted">실행 ID: ${esc(webRun.runId)}${webRun.done?' · 모든 리전 종료':' · 진행 중(자동 갱신)'}</p>`:''}
-  <div class="table-scroll"><table><caption class="sr-only">지역별 공격 진행</caption>
-  <thead><tr><th>출발 지역</th><th>상태</th><th>결과</th></tr></thead>
-  <tbody>${rows||'<tr><td colspan="3" class="muted">시작을 누르면 지역별 진행이 표시됩니다.</td></tr>'}</tbody></table></div></section>`;
+ const skip=webRun.skipped&&webRun.skipped.length?`<p class="muted">건너뜀: ${webRun.skipped.map(esc).join(', ')}</p>`:'';
+ return `<section class="panel full-panel">${header('실행 진행','DRILL RUN')}
+  ${webRun.runId?`<p class="muted">실행 ID: ${esc(webRun.runId)}${webRun.done?' · 모든 항목 종료':' · 진행 중(자동 갱신)'}</p>`:''}${skip}
+  <div class="table-scroll"><table><caption class="sr-only">실행 진행</caption>
+  <thead><tr><th>항목</th><th>상태</th><th>결과</th></tr></thead>
+  <tbody>${rows||'<tr><td colspan="3" class="muted">전부 실행을 누르면 항목별 진행이 표시됩니다.</td></tr>'}</tbody></table></div></section>`;
 }
 
 // 오른쪽: 유형 전용 정보를 라벨/값 2열로 정리(가독성).
@@ -171,10 +174,13 @@ function runsSection(){
   return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
    <p class="muted">기록된 실습 실행이 없습니다. 실제 실행·부하·웹 검사 경로는 후속 단계에서 연결됩니다(1차 범위: 관측·구조).</p></section>`;
  }
- const rows=runs.items.map(r=>`<tr><td>${esc(r.runId||'—')}</td><td>${esc(r.type||'—')}</td><td>${esc(r.target||'—')}</td><td>${esc(r.state||'—')}</td><td>${format(milliseconds(r.createdAt))}</td></tr>`).join('');
+ const rows=runs.items.map(r=>{
+   const secs=(r.secs&&r.secs.length)?r.secs.join(' · '):(r.type||'—');  // 리전 대신 SEC 항목으로 표기
+   return `<tr><td>${esc(r.runId||'—')}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td>${esc(r.state||'—')}</td><td>${format(milliseconds(r.createdAt))}</td></tr>`;
+  }).join('');
  return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
   <div class="table-scroll"><table><caption class="sr-only">실습 실행 이력</caption>
-  <thead><tr><th>실행 ID</th><th>유형</th><th>대상</th><th>상태</th><th>접수 시각 (KST)</th></tr></thead>
+  <thead><tr><th>실행 ID</th><th>유형</th><th>SEC 항목</th><th>상태</th><th>접수 시각 (KST)</th></tr></thead>
   <tbody>${rows}</tbody></table></div></section>`;
 }
 
@@ -196,33 +202,35 @@ function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();}
 function pickType(id){if(!catalog?.types.some(t=>t.id===id))return;sel.typeId=id;sel.target=null;sel.scenario=null;rerender();}
 
 const TERMINAL=new Set(['Success','Cancelled','TimedOut','Failed']);
-async function pollWebScan(){
+async function pollRunAll(){
  if(!webRun.runId)return;
  try{
-  const status=await api.webScanStatus(webRun.runId);
-  webRun.regions=status.regions||[];
-  webRun.done=webRun.regions.length>0&&webRun.regions.every(r=>TERMINAL.has(r.status));
+  const status=await api.runAllStatus(webRun.runId);
+  webRun.items=status.items||[];
+  webRun.skipped=status.skipped||webRun.skipped;
+  webRun.done=webRun.items.length>0&&webRun.items.every(r=>TERMINAL.has(r.status));
  }catch(error){webRun.error=error.message;}
  rerender();
  if(webRun.done){webRun.busy=false;webRun.timer=null;rerender();return;}
- webRun.timer=setTimeout(pollWebScan,5000);
+ webRun.timer=setTimeout(pollRunAll,5000);
 }
-async function startWebScan(){
+async function startRunAll(){
  if(webRun.busy)return;
  const user=($('[data-web-ssh-user]')?.value||'victim').trim();
- webRun.busy=true;webRun.error=null;webRun.done=false;webRun.regions=[];webRun.runId=null;rerender();
+ webRun.busy=true;webRun.error=null;webRun.done=false;webRun.items=[];webRun.skipped=[];webRun.runId=null;rerender();
  try{
-  const result=await api.startWebScan({sshUser:user});
+  const result=await api.startRunAll({sshUser:user});
   webRun.runId=result.runId;
-  webRun.regions=(result.launched||[]).map(l=>({regionLabel:l.regionLabel,status:'Pending'}));
+  webRun.skipped=result.skipped||[];
+  webRun.items=(result.launched||[]).map(l=>({sec:l.sec,label:null,status:'Pending'}));
   rerender();
-  webRun.timer=setTimeout(pollWebScan,3000);
+  webRun.timer=setTimeout(pollRunAll,3000);
  }catch(error){webRun.busy=false;webRun.error=error.message;rerender();}
 }
 function onClick(e){
  const type=e.target.closest('[data-drill-type]');if(type){pickType(type.dataset.drillType);return;}
  const target=e.target.closest('[data-drill-target]');if(target){sel.target=target.dataset.drillTarget;rerender();return;}
- if(e.target.closest('[data-web-scan-start]')){startWebScan();return;}
+ if(e.target.closest('[data-run-all-start]')){startRunAll();return;}
 }
 function onKeydown(e){
  const type=e.target.closest('[data-drill-type]');

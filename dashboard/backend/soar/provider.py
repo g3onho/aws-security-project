@@ -54,6 +54,15 @@ class UnconfiguredProvider:
     def attack_command_status(self, commands):
         self.require_ready()
 
+    def discover_service_host(self, region):
+        self.require_ready()
+
+    def discover_load_targets(self, region):
+        self.require_ready()
+
+    def send_commands(self, target, steps):
+        self.require_ready()
+
     def status(self):
         return {"connected": False, "state": "not_configured", "detail": "DATA_PROVIDER is not configured"}
 
@@ -232,3 +241,76 @@ class AwsProvider:
                 out.append({"regionLabel": c["regionLabel"], "status": "Pending",
                             "detail": type(error).__name__})
         return out
+
+    # --- 서울 서비스 호스트 대상 스캔·부하 실행(전부 실행의 SEC-02/07/10) ------------
+    # 웹 공격(geo)과 달리 이들은 서비스 3-tier 호스트(docker-host)에서 로컬로 돈다.
+    # 인스턴스는 태그 Role=service-3tier 로 홈 리전에서 런타임 탐색한다(IP·ID 하드코딩 회피).
+
+    def discover_host_by_role(self, region, role, region_label="seoul"):
+        """홈 리전에서 태그 Role=<role> 인 running 인스턴스 하나를 찾는다.
+        -> {regionLabel, regionCode, instanceId} 또는 None."""
+        self.require_ready()
+        ec2 = self._aws.regional_client("ec2", region)
+        try:
+            reservations = ec2.describe_instances(Filters=[
+                {"Name": "tag:Role", "Values": [role]},
+                {"Name": "instance-state-name", "Values": ["running"]},
+            ]).get("Reservations", [])
+        except Exception:
+            return None
+        for res in reservations:
+            for inst in res.get("Instances", []):
+                return {"regionLabel": region_label, "regionCode": region, "instanceId": inst["InstanceId"]}
+        return None
+
+    def discover_service_host(self, region):
+        """서비스 3-tier 호스트(docker-host). SEC-07 비밀값 스캔 대상 코드가 여기 있다."""
+        return self.discover_host_by_role(region, "service-3tier")
+
+    def discover_load_targets(self, region):
+        """부하(SEC-10) 대상: 홈 리전의 running EC2 중 대시보드(Role=soar-dashboard)를 뺀 전부.
+        stress-ng 는 실행 노드 자신을 부하시키므로, 부하를 줄 각 인스턴스에 직접 보낸다.
+        -> [{regionLabel:<이름 접미어>, regionCode, instanceId}]. 대시보드를 부하시키면 UI 가 죽으므로 제외."""
+        self.require_ready()
+        ec2 = self._aws.regional_client("ec2", region)
+        try:
+            reservations = ec2.describe_instances(Filters=[
+                {"Name": "tag:Role", "Values": ["*"]},
+                {"Name": "instance-state-name", "Values": ["running"]},
+            ]).get("Reservations", [])
+        except Exception:
+            return []
+        targets = []
+        for res in reservations:
+            for inst in res.get("Instances", []):
+                tags = {t["Key"]: t["Value"] for t in inst.get("Tags", [])}
+                if tags.get("Role") == "soar-dashboard":
+                    continue  # 대시보드 자신은 부하 제외
+                name = tags.get("Name", inst["InstanceId"])
+                label = name.rsplit("-", 1)[-1] if "-" in name else name  # 접두어 제거 → docker-host 등
+                targets.append({"regionLabel": label, "regionCode": region, "instanceId": inst["InstanceId"]})
+        return targets
+
+    def send_commands(self, target, steps):
+        """target: {regionCode, instanceId}. steps: [{sec, documentName, parameters}].
+        각 step 을 그 문서 전용 파라미터로 SendCommand 한다 -> launched(각 sec 포함)."""
+        self.require_ready()
+        ssm = self._aws.regional_client("ssm", target["regionCode"])
+        launched = []
+        for step in steps:
+            params = {k: [str(v)] for k, v in (step.get("parameters") or {}).items()
+                      if v is not None and v != ""}
+            try:
+                resp = ssm.send_command(DocumentName=step["documentName"],
+                                        InstanceIds=[target["instanceId"]],
+                                        Parameters=params, TimeoutSeconds=600)
+            except Exception as error:
+                name = type(error).__name__
+                code = getattr(getattr(error, "response", None), "get", lambda *_: {})("Error", {}).get("Code", name)                     if hasattr(error, "response") else name
+                raise Problem(502, f"{step['sec']} 실행 실패: {code}. "
+                              "대시보드 롤의 ssm:SendCommand 권한과 대상 문서를 확인하세요.",
+                              "SCAN_SEND_FAILED")
+            launched.append({"sec": step["sec"], "regionLabel": target.get("regionLabel", "seoul"),
+                             "regionCode": target["regionCode"], "instanceId": target["instanceId"],
+                             "commandId": resp["Command"]["CommandId"]})
+        return launched

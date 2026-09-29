@@ -286,6 +286,33 @@ data "aws_iam_policy_document" "dashboard_execute" {
     resources = ["*"]
   }
 
+  # 공격·대응 실습([전부 실행]) — 팀 소유 격리 랩의 지정 문서만, 대상 EC2 에 한해 SendCommand.
+  statement {
+    sid     = "RunDrillCommands"
+    actions = ["ssm:SendCommand"]
+    resources = [
+      # 지리별 웹 공격 문서(SEC-08/06B) — 공격자 리전마다 등록되므로 리전 와일드카드.
+      "arn:${var.partition}:ssm:*:${var.account_id}:document/${var.name_prefix}-ATK-WebAttack",
+      # 서울 로컬 실습 문서(SEC-02/07/10).
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-PortAndWeb",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-ContainerImage",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-Secrets",
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/LOAD-Stress",
+      # 대상 인스턴스(공격자·서울 실습 대상). 실행 시 태그로 탐색하므로 계정 내 인스턴스로 한정.
+      "arn:${var.partition}:ec2:*:${var.account_id}:instance/*",
+    ]
+  }
+
+  statement {
+    sid = "TrackDrillCommands"
+    actions = [
+      "ssm:GetCommandInvocation",
+      "ssm:ListCommands",
+      "ssm:ListCommandInvocations",
+    ]
+    resources = ["*"]
+  }
+
   statement {
     sid       = "PassAutomationRole"
     actions   = ["iam:PassRole"]

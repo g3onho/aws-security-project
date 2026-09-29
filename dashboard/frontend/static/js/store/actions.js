@@ -182,6 +182,19 @@ export const actions={
   const result=envelope(await request(endpoints.drillWebScanStatus(runId))).data;
   return result;
  },
+ // 전부 실행(SEC-02/07/08/06B/10) 실행/상태. 실제 실행(SSM)이라 WRITE_ENABLED 로 막힐 수 있다(403).
+ async startRunAll(params={}){
+  markRequest('startRunAll',{status:'loading'});
+  try{
+   const result=envelope(await request(endpoints.drillRunAllStart,{method:'POST',body:JSON.stringify(params||{})})).data;
+   markRequest('startRunAll',{status:'success',lastUpdated:Date.now(),error:null});
+   return result;
+  }catch(error){markRequest('startRunAll',{status:'error',error:error.message});throw error;}
+ },
+ async runAllStatus(runId){
+  const result=envelope(await request(endpoints.drillRunAllStatus(runId))).data;
+  return result;
+ },
  async logout(){session.controller?.abort();session.generation++;await request(endpoints.logout,{method:'POST',body:'{}'});reset();location.assign('/login');},
  // CSV 내보내기용 이벤트 전체(현재 기간·리전·위험도·상태 필터). 파일 만들기·내려받기는 화면(downloads.js) 몫이다.
  async exportEvents(){const {items}=await pages(endpoints.events,query());return {items};},

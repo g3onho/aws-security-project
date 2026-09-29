@@ -43,7 +43,7 @@ resource "aws_cloudwatch_log_group" "honeypot" {
 # --- 격리 보안그룹: 내부(VPC)에서 미끼 포트로 들어오는 것만 허용, 나머지 리소스와 공유하지 않음 ---
 resource "aws_security_group" "honeypot" {
   name        = "${var.name_prefix}-honeypot"
-  description = "AI honeypot decoy — any inbound is a signal"
+  description = "AI honeypot decoy - any inbound is a signal"
   vpc_id      = var.vpc_id
   tags        = merge(var.tags, { Name = "${var.name_prefix}-honeypot", Scenario = "HONEYPOT" })
 

