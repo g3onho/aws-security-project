@@ -17,6 +17,7 @@ for k in ("ACCOUNT_ID", "REMEDIATION_ACTIONS_TABLE", "SNS_TOPIC_ARN",
     os.environ.setdefault(k, "test")
 
 sys.path.insert(0, str(Path(__file__).parent / "asr_trigger"))
+sys.modules.pop("handler", None)
 import handler  # noqa: E402
 
 

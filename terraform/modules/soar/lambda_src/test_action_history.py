@@ -17,6 +17,7 @@ os.environ["AUTO_REMEDIABLE_PATTERNS"] = "EC2.19,MaliciousIPCaller"
 os.environ["ENABLE_AUTO_REMEDIATION"] = "true"
 
 sys.path.insert(0, str(Path(__file__).parent / "asr_trigger"))
+sys.modules.pop("handler", None)
 import handler  # noqa: E402
 
 

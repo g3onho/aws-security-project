@@ -15,6 +15,7 @@ for k in ("ACCOUNT_ID", "WEB_ACL_ARN"):
     os.environ.setdefault(k, "test")
 
 sys.path.insert(0, str(Path(__file__).parent / "waf_finding"))
+sys.modules.pop("handler", None)
 import handler  # noqa: E402
 
 ACL = "arn:aws:wafv2:ap-northeast-2:111122223333:regional/webacl/soar-sec-dev-web-acl/abc"
