@@ -131,6 +131,12 @@ resource "aws_instance" "honeypot" {
   }))
   user_data_replace_on_change = true
 
+  # v36.1: 팀원 PC마다 줄바꿈(CRLF/LF)이 달라 user_data 가 바뀐 것처럼 보여 인스턴스가 교체되는 것을 막는다.
+  # 부팅 스크립트를 실제로 바꿨다면 terraform apply -replace=<이 리소스 주소> 로 직접 교체한다.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   metadata_options {
     http_tokens = "required" # IMDSv2 강제
   }

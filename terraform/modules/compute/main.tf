@@ -53,6 +53,12 @@ resource "aws_instance" "docker_host" {
 
   user_data_replace_on_change = true
 
+  # v36.1: 팀원 PC마다 줄바꿈(CRLF/LF)이 달라 user_data 가 바뀐 것처럼 보여 인스턴스가 교체되는 것을 막는다.
+  # 부팅 스크립트를 실제로 바꿨다면 terraform apply -replace=<이 리소스 주소> 로 직접 교체한다.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-docker-host"
     Role     = "service-3tier"
@@ -93,6 +99,12 @@ resource "aws_instance" "db" {
   })
 
   user_data_replace_on_change = true
+
+  # v36.1: 팀원 PC마다 줄바꿈(CRLF/LF)이 달라 user_data 가 바뀐 것처럼 보여 인스턴스가 교체되는 것을 막는다.
+  # 부팅 스크립트를 실제로 바꿨다면 terraform apply -replace=<이 리소스 주소> 로 직접 교체한다.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-db"
@@ -194,6 +206,12 @@ resource "aws_instance" "web_dvwa" {
 
   user_data_replace_on_change = true
 
+  # v36.1: 팀원 PC마다 줄바꿈(CRLF/LF)이 달라 user_data 가 바뀐 것처럼 보여 인스턴스가 교체되는 것을 막는다.
+  # 부팅 스크립트를 실제로 바꿨다면 terraform apply -replace=<이 리소스 주소> 로 직접 교체한다.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
+
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-web-dvwa"
     Role     = "vulnerable-web"
@@ -230,6 +248,12 @@ resource "aws_instance" "attacker" {
   })
 
   user_data_replace_on_change = true
+
+  # v36.1: 팀원 PC마다 줄바꿈(CRLF/LF)이 달라 user_data 가 바뀐 것처럼 보여 인스턴스가 교체되는 것을 막는다.
+  # 부팅 스크립트를 실제로 바꿨다면 terraform apply -replace=<이 리소스 주소> 로 직접 교체한다.
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 
   tags = merge(var.tags, {
     Name = "${var.name_prefix}-attacker"
