@@ -226,8 +226,10 @@ class AwsProvider:
             params = {k: [str(v)] for k, v in parameters.items() if v is not None and v != ""}
             params["RegionLabel"] = [a["regionLabel"]]
             try:
+                # nmap 전체 포트(-p-) + ZAP 이미지 최초 pull + sqlmap 까지 순차 실행하면
+                # 600초로는 빠듯하다(ZAP 이미지 pull만 수분 걸릴 수 있음) → 1200초로 여유.
                 resp = ssm.send_command(DocumentName=a["documentName"], InstanceIds=[a["instanceId"]],
-                                        Parameters=params, TimeoutSeconds=600)
+                                        Parameters=params, TimeoutSeconds=1200)
             except Exception as error:  # AccessDenied(IAM 미부여)·InvalidDocument(문서 미등록) 등을 명확히 전달
                 name = type(error).__name__
                 code = getattr(getattr(error, "response", None), "get", lambda *_: {})("Error", {}).get("Code", name) \
@@ -305,17 +307,22 @@ class AwsProvider:
 
     def send_commands(self, target, steps):
         """target: {regionCode, instanceId}. steps: [{sec, documentName, parameters}].
-        각 step 을 그 문서 전용 파라미터로 SendCommand 한다 -> launched(각 sec 포함)."""
+        각 step 을 그 문서 전용 파라미터로 SendCommand 한다 -> launched(각 sec 포함).
+        SSM TimeoutSeconds 는 문서 자체보다 짧으면 안 된다 — LOAD-Stress 는 DurationSeconds
+        (기본 900초) 만큼 돌아야 하는데 여기서 600초로 자르면 stress-ng 가 끝나기 전에
+        SSM 이 강제 종료해 CloudWatch 알람 전이(5분×2회=10분 지속)를 못 볼 수 있다."""
         self.require_ready()
         ssm = self._aws.regional_client("ssm", target["regionCode"])
         launched = []
         for step in steps:
             params = {k: [str(v)] for k, v in (step.get("parameters") or {}).items()
                       if v is not None and v != ""}
+            duration = int(params.get("DurationSeconds", ["0"])[0] or 0)  # LOAD-Stress 전용
+            timeout = max(600, duration + 180)  # 부하 지속 + 설치·업로드 여유
             try:
                 resp = ssm.send_command(DocumentName=step["documentName"],
                                         InstanceIds=[target["instanceId"]],
-                                        Parameters=params, TimeoutSeconds=600)
+                                        Parameters=params, TimeoutSeconds=timeout)
             except Exception as error:
                 name = type(error).__name__
                 code = getattr(getattr(error, "response", None), "get", lambda *_: {})("Error", {}).get("Code", name)                     if hasattr(error, "response") else name

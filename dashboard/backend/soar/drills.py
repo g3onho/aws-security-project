@@ -223,10 +223,13 @@ class DrillService:
                           "NOTHING_LAUNCHED")
 
         import uuid
+        from .contracts import iso
         from .store import now_ms
         secs = sorted({c["sec"] for c in launched})
+        # createdAt 은 프런트 milliseconds()가 Date.parse 로 읽으므로 ms 정수가 아니라 ISO 문자열이어야 한다
+        # (contracts.iso 관례). 정수를 그대로 넣으면 Date.parse(숫자)→NaN→"Invalid time value"로 갱신이 깨진다.
         run = {"runId": str(uuid.uuid4()), "type": "run-all", "title": "전부 실행",
-               "actor": actor, "startedAt": now_ms(), "createdAt": now_ms(),
+               "actor": actor, "startedAt": now_ms(), "createdAt": iso(now_ms()),
                "targetIp": cfg.get("targetIp", ""), "secs": secs, "skipped": skipped,
                "state": "접수", "commands": launched}
         self.runs.save(run)
