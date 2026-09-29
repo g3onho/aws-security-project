@@ -162,7 +162,8 @@ class DrillService:
         - SEC-08/06B: 지리별 공격자 → DVWA (nmap·hydra ssh·hydra web)
         - SEC-02: 서비스 HTTP·포트/헤더 점검(SCAN-PortAndWeb)
         - SEC-07: 코드/설정 비밀값 점검(SCAN-Secrets)
-        - SEC-10: 서울 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증"""
+        - SEC-10: 서울 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증
+        - HONEYPOT: 서울 VPC 안 공격자 EC2 → 미끼서버 SSH 접속(ATK-HoneypotProbe) → 탐지·자동 차단"""
         cfg = self.attack_config
         p = params or {}
         launched, skipped = [], []
@@ -216,6 +217,18 @@ class DrillService:
                          "parameters": {**load, "RegionLabel": t["regionLabel"]}}]))
         else:
             skipped.append("SEC-10(부하 대상 미탐색)")
+
+        # HONEYPOT: 내부 침투 시연. 서울 VPC 안 공격자 EC2(Role=attack-simulation)가 미끼서버(Role=honeypot-decoy)
+        # 사설 IP 로 SSH 접속한다. 인터넷 경유 공격(SEC-08)과 달리 "이미 안으로 들어온" 출발지라야 미끼에 닿는다.
+        # 두 인스턴스 중 하나라도 없으면 건너뛴다(enable_attacker_instance·enable_honeypot).
+        inner = self.provider.discover_host_by_role(region, "attack-simulation") if region else None
+        decoy = self.provider.discover_host_by_role(region, "honeypot-decoy") if region else None
+        if inner and decoy and decoy.get("privateIp"):
+            launched.extend(self.provider.send_commands(inner, [
+                {"sec": "HONEYPOT", "documentName": "ATK-HoneypotProbe",
+                 "parameters": {"HoneypotHost": decoy["privateIp"], "RegionLabel": "seoul"}}]))
+        else:
+            skipped.append("HONEYPOT(공격자 EC2 또는 미끼서버 미탐색)")
 
         if not launched:
             raise Problem(409, "실행 가능한 대상이 없습니다: " + ", ".join(skipped) +
@@ -297,6 +310,8 @@ def _step_label(cmd):
     region = cmd.get("regionLabel")
     if sec == "SEC-08" and region and region != "seoul":
         return f"{sec} · {_REGION_KO.get(region, region)}"  # geo: 출발 지역
+    if sec == "HONEYPOT":
+        return "HONEYPOT · 내부 침투"  # 출발은 서울 VPC 안 공격자 EC2
     if sec == "SEC-10" and region:
         return f"{sec} · {_REGION_KO.get(region, region)}"  # 부하: 대상 EC2 이름
     return sec

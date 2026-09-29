@@ -8,6 +8,7 @@ import {header,canvas,toast} from '../components/panel.js?v=ui-1';
 import {drawChart} from '../charts/charts.js?v=ui-1';
 import {severityColors} from '../constants.js?v=ui-1';
 import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=ui-1';
+import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=ui-1';
 
 const MINT='#32d4be',SOFT='#85b1d5',AMBER='#d8ca78',RED='#ef777f',GRAY='#8fa295';
 const VERDICT={ok:['정상 동작',MINT],waiting:['동작 확인 중',AMBER],partial:['일부 동작',AMBER],unknown:['확인 불가',GRAY],not_deployed:['허니팟 미배포',GRAY]};
@@ -69,9 +70,23 @@ function ipChoices(){
  if(S.blocklist?.ok)S.blocklist.data.items.forEach(i=>set.add(i.ip));
  return [...set];
 }
+function pickerHtml(){
+ const ips=ipChoices();
+ return ips.length?`<label class="drill-field"><span>공격 IP</span><select data-hp-select>${ips.map(ip=>`<option value="${esc(ip)}"${ip===S.ip?' selected':''}>${esc(ip)}</option>`).join('')}</select></label>`:'';
+}
+// 공격 경로 지도: 타임라인 API 의 steps 를 아키텍처 위에 그린다(새 데이터 원천 없음).
+function mapSection(){
+ const ips=ipChoices(),tl=S.timeline;
+ let body,steps=null;
+ if(!ips.length)body=`${mapSvg(null)}<p class="muted hp-note">선택한 기간에 미끼 접속·차단 IP 가 없어 구조만 보여 줍니다. 공격자 EC2 에서 미끼(10.x)에 SSH 접속하면 경로가 켜집니다.</p>`;
+ else if(!tl)body=`${mapSvg(null)}<p class="panel-loading">불러오는 중…</p>`;
+ else if(!tl.ok)body=`${mapSvg(null)}${failed('공격 경로',tl)}`;
+ else{steps=tl.data.steps;body=`${warnLines(tl)}${mapSvg(steps)}${stageList(steps)}<p class="muted hp-note">선·번호는 실제 기록으로만 켜집니다. ✓ 완료 · – 기록 없음 · ✕ 실패 · … 진행 중 · ? 읽지 못함. 기록이 없는 단계를 성공으로 그리지 않습니다.</p>`;}
+ return `<section class="panel full-panel" id="hp-map">${header('공격 경로 지도 · 아키텍처 위에서 본 한 공격','ATTACK PATH')}<div class="hp-pad hp-tools">${pickerHtml()}${ips.length?'<button type="button" class="subtle-button" data-hp-replay>▶ 다시 재생</button>':''}</div><div class="hp-map">${body}</div></section>`;
+}
 function timelineSection(){
  const ips=ipChoices();
- const picker=ips.length?`<label class="drill-field"><span>공격 IP</span><select data-hp-select>${ips.map(ip=>`<option value="${esc(ip)}"${ip===S.ip?' selected':''}>${esc(ip)}</option>`).join('')}</select></label>`:'';
+ const picker='';
  let body;
  if(!ips.length)body='<p class="muted hp-pad">선택한 기간에 미끼 접속·차단 IP 가 없어 보여줄 공격이 없습니다.</p>';
  else if(!S.timeline)body='<p class="panel-loading">불러오는 중…</p>';
@@ -293,7 +308,7 @@ function paint(){
  const intro=`<div class="view-intro"><span>미끼서버(허니팟)가 잘 동작하는지 확인하고, 차단된 IP 를 보고·해제·기간 관리합니다. 기간은 위의 기간 버튼을 따릅니다.</span></div>`;
  const msg=S.message?`<p class="hp-message" role="status" data-kind="${esc(S.message.kind)}">${esc(S.message.text)}</p>`:'';
  if(!S.status.ok||!S.status.data.deployed)return intro+statusSection();
- return intro+msg+statusSection()+timelineSection()+statsSection()+graphSection()+sessionsSection()+blocklistSection();
+ return intro+msg+statusSection()+mapSection()+timelineSection()+statsSection()+graphSection()+sessionsSection()+blocklistSection();
 }
 function repaint(){
  const box=$('#honeypot');if(!box)return;
@@ -314,6 +329,7 @@ async function loadTimeline(){
  const part=await section(api.honeypotTimeline(ip));
  if(ip!==S.ip)return;                       // 그 사이 다른 IP 를 골랐다
  S.timeline=part;repaint();
+ if(part.ok)replayMap($('#hp-map'));   // 지도는 IP 를 고르거나 처음 그릴 때 한 번 재생한다(자동 새로고침마다 깜박이지 않게)
 }
 async function loadAll(){
  S.status=await section(api.honeypotStatus());
@@ -423,6 +439,7 @@ function onClick(e){
  if(t.closest('[data-hp-submit]')){submitAction();return;}
  const exp=t.closest('[data-hp-export]');if(exp){exportBlocklist(exp.dataset.hpExport);return;}
  if(t.closest('[data-hp-print]')){printReport();return;}
+ if(t.closest('[data-hp-replay]')){replayMap($('#hp-map'));return;}
 }
 function onChange(e){
  const pick=e.target.closest('[data-hp-select]');if(pick)selectIp(pick.value);

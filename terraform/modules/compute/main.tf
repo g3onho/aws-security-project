@@ -127,6 +127,8 @@ resource "aws_instance" "dashboard" {
     automation_role_arn       = local.ssm_automation_role_arn
     remediation_actions_table = var.remediation_actions_table
     ip_blocklist_table        = var.ip_blocklist_table
+    assistant_enabled         = var.enable_assistant
+    assistant_model           = var.assistant_model
     honeypot_log_group        = var.honeypot_log_group
     honeypot_alarm_name       = var.honeypot_alarm_name
     private_nacl_id           = var.private_nacl_id

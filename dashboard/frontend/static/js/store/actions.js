@@ -237,6 +237,16 @@ export const actions={
  async honeypotStats(){return honeypotRead('honeypotStats',endpoints.honeypotStats);},
  async honeypotTimeline(ip){return honeypotRead('honeypotTimeline',endpoints.honeypotTimeline,{extra:{ip}});},
  async blocklist(){return honeypotRead('blocklist',endpoints.blocklist);},
+ // 대시보드 도우미: 읽기 전용 대화. 서버가 CSRF·로그인·상한을 검사하고, 변경 도구는 없다.
+ async assistantStatus(){return honeypotRead('assistantStatus',endpoints.assistantStatus,{window:false});},
+ async assistantChat(messages){
+  markRequest('assistantChat',{status:'loading'});
+  try{
+   const response=envelope(await request(endpoints.assistantChat,{method:'POST',body:JSON.stringify({messages})}));
+   markRequest('assistantChat',{status:'success',lastUpdated:Date.now(),error:null});
+   return response.data;
+  }catch(error){markRequest('assistantChat',{status:'error',error:error.message});throw error;}
+ },
  // 변경 요청은 자동 재시도하지 않는다(client.js). 같은 화면 조작 한 번 = Idempotency-Key 하나.
  async blocklistRelease(ip,body){return blocklistWrite('blocklistRelease',endpoints.blocklistRelease(ip),'POST',body);},
  async blocklistPatch(ip,body){return blocklistWrite('blocklistPatch',endpoints.blocklistPatch(ip),'PATCH',body);},

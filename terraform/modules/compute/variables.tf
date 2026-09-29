@@ -112,6 +112,16 @@ variable "enable_dashboard_deploy" {
   default = true
 }
 
+# --- 대시보드 도우미(챗봇, v27) ---
+variable "enable_assistant" {
+  type    = bool
+  default = false
+}
+variable "assistant_model" {
+  type    = string
+  default = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
 # --- 허니팟 화면·차단 IP 관리 (v25) ---
 variable "ip_blocklist_table" {
   type    = string

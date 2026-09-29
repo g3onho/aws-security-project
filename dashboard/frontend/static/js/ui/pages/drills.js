@@ -105,7 +105,7 @@ function configPanel(){
    <div class="drill-actions">
     <button type="button" class="primary-button" ${startAttr}>${esc(label)}</button></div>
    ${webRun.error?`<p class="panel-error" role="alert">${esc(webRun.error)}</p>`:''}
-   <p class="muted">한 번에 실행: SEC-02(서비스 포트·헤더), SEC-04(Trivy 이미지 CVE), SEC-07(비밀값 스캔), SEC-08/06B(DVWA·SSH 지리 공격: nmap·hydra·ZAP·sqlmap), SEC-10(서울 EC2 부하·대시보드 제외). 아래 진행에 항목별 상태가 표시됩니다.</p></div>`;
+   <p class="muted">한 번에 실행: SEC-02(서비스 포트·헤더), SEC-04(Trivy 이미지 CVE), SEC-07(비밀값 스캔), SEC-08/06B(DVWA·SSH 지리 공격: nmap·hydra·ZAP·sqlmap), SEC-10(서울 EC2 부하·대시보드 제외), HONEYPOT(내부 침투: 서울 공격자 EC2 → 미끼서버 SSH, 자동 차단 시연). 아래 진행에 항목별 상태가 표시됩니다.</p></div>`;
  }
  return `<div class="drill-config"><h3>실행 설정 — ${esc(type.name)}</h3>${picker}
   <div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · ${esc(reason)}</div>

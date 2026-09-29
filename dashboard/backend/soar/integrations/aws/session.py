@@ -43,6 +43,11 @@ class AwsSession:
             self._clients[name] = self._session.client(name, region_name=self.region)
         return self._clients[name]
 
+    def client_with(self, name, region=None, config=None):
+        """호출 제한 시간이 기본값과 다른 클라이언트(Bedrock 등). 캐시하지 않으니 호출부가 보관한다."""
+        self.require_ready()
+        return self._session.client(name, region_name=region or self.region, config=config)
+
     def regional_client(self, name, region):
         """홈 리전이 아닌 리전의 클라이언트(지리별 공격자 SSM 호출용)."""
         self.require_ready()

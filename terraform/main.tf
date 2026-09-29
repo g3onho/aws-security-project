@@ -196,6 +196,10 @@ module "compute" {
   private_nacl_id     = module.network.private_nacl_id
   vpc_cidr            = var.vpc_cidr
 
+  # 대시보드 도우미(챗봇, v27, 조회 전용)
+  enable_assistant = var.enable_dashboard_assistant
+  assistant_model  = var.dashboard_assistant_model_id
+
   ssm_automation_role_name = local.ssm_automation_role_name
   sns_topic_arn            = local.sns_topic_arn
 

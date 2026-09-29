@@ -302,6 +302,8 @@ data "aws_iam_policy_document" "dashboard_execute" {
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-ContainerImage",
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-Secrets",
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/LOAD-Stress",
+      # 내부 침투 시연(공격자 EC2 → 미끼서버 SSH, HONEYPOT).
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ATK-HoneypotProbe",
       # 대상 인스턴스(공격자·서울 실습 대상). 실행 시 태그로 탐색하므로 계정 내 인스턴스로 한정.
       "arn:${var.partition}:ec2:*:${var.account_id}:instance/*",
     ]
@@ -333,6 +335,16 @@ data "aws_iam_policy_document" "dashboard_execute" {
     sid       = "RecordActionHistory"
     actions   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
     resources = ["arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.remediation_actions_table}"]
+  }
+
+  # 대시보드 도우미(v27): Bedrock 호출만. 모델·추론 프로파일 ARN 은 리전·계정마다 달라 * 로 둔다(호출만 허용, 모델 관리 권한 없음).
+  dynamic "statement" {
+    for_each = var.enable_assistant ? [1] : []
+    content {
+      sid       = "AssistantBedrockInvoke"
+      actions   = ["bedrock:InvokeModel"]
+      resources = ["*"]
+    }
   }
 
   # 오탐 해제·차단 기간 변경(v25): 차단 IP 목록 행만 조건부로 갱신한다. 삭제·전체 쓰기는 주지 않는다.

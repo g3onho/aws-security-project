@@ -22,8 +22,10 @@ class FakeProvider:
                  "instanceId": t["instanceId"], "commandId": "c-geo"} for t in targets]
 
     def discover_host_by_role(self, region, role, region_label="seoul"):
-        return {"regionLabel": "seoul", "regionCode": region, "instanceId": "i-docker"} \
-            if role == "service-3tier" else None
+        found = {"service-3tier": {"instanceId": "i-docker"},
+                 "attack-simulation": {"instanceId": "i-atk-local"},
+                 "honeypot-decoy": {"instanceId": "i-decoy", "privateIp": "10.0.1.115"}}.get(role)
+        return {"regionLabel": "seoul", "regionCode": region, **found} if found else None
 
     def discover_load_targets(self, region):
         # 대시보드는 이미 제외된 채로 온다(provider 가 Role=soar-dashboard 를 거른다).
@@ -33,7 +35,7 @@ class FakeProvider:
     def send_commands(self, target, steps):
         out = []
         for s in steps:
-            self.sent.append((target["instanceId"], s["documentName"], s["sec"]))
+            self.sent.append((target["instanceId"], s["documentName"], s["sec"], s.get("parameters")))
             out.append({"sec": s["sec"], "regionLabel": target["regionLabel"],
                         "regionCode": target["regionCode"], "instanceId": target["instanceId"],
                         "commandId": f"c-{s['sec']}"})
@@ -55,7 +57,7 @@ def test_start_all_fans_out_all_secs():
         svc = _service(Store(os.path.join(d, "t.sqlite3")))
         result = svc.start_all({}, actor="tester")
         secs = {c["sec"] for c in result["launched"]}
-        assert secs == {"SEC-02", "SEC-04", "SEC-07", "SEC-08", "SEC-10"}, secs
+        assert secs == {"SEC-02", "SEC-04", "SEC-07", "SEC-08", "SEC-10", "HONEYPOT"}, secs
         # SEC-10 은 서울 EC2(대시보드 제외) 전부로 팬아웃 → 2건.
         sec10 = [c for c in result["launched"] if c["sec"] == "SEC-10"]
         assert len(sec10) == 2, sec10
@@ -87,3 +89,29 @@ def test_step_label():
     assert _step_label({"sec": "SEC-07"}) == "SEC-07"
     assert _step_label({"sec": "SEC-08", "regionLabel": "singapore"}) == "SEC-08 · 싱가포르"
     assert _step_label({"sec": "SEC-10", "regionLabel": "db"}) == "SEC-10 · db"
+
+
+def test_honeypot_probe_runs_from_inner_attacker_to_decoy_private_ip():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        svc.start_all({}, actor="tester")
+        probes = [s for s in svc.provider.sent if s[2] == "HONEYPOT"]
+        assert len(probes) == 1
+        instance, document, _, params = probes[0]
+        assert instance == "i-atk-local" and document == "ATK-HoneypotProbe"  # 서울 VPC 안 공격자에서 실행
+        assert params["HoneypotHost"] == "10.0.1.115"                          # 미끼 사설 IP 를 런타임 탐색
+
+
+def test_honeypot_probe_skipped_without_decoy():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        orig = svc.provider.discover_host_by_role
+        svc.provider.discover_host_by_role = lambda r, role, region_label="seoul": \
+            None if role == "honeypot-decoy" else orig(r, role, region_label)
+        result = svc.start_all({}, actor="tester")
+        assert all(c["sec"] != "HONEYPOT" for c in result["launched"])
+        assert any("HONEYPOT" in s for s in result["skipped"])
+
+
+def test_honeypot_label():
+    assert _step_label({"sec": "HONEYPOT", "regionLabel": "seoul"}) == "HONEYPOT · 내부 침투"

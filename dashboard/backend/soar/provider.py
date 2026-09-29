@@ -183,6 +183,13 @@ class AwsProvider:
         resources = self._resources.list(query or {})
         return infra.services(resources, self.as_of, self.region)
 
+    def assistant_model(self, model_id, region=None):
+        """대시보드 도우미(Bedrock). 연결이 안 되면 None."""
+        if not self.connected:
+            return None
+        from .integrations.aws.bedrock import BedrockChat
+        return BedrockChat(self._aws, model_id, region or self.region)
+
     def warm(self):
         """앱 기동 직후 취약점 목록을 미리 받아 둔다. 첫 사용자가 11초를 기다리지 않게."""
         self._inspector.warm()
@@ -274,7 +281,8 @@ class AwsProvider:
             return None
         for res in reservations:
             for inst in res.get("Instances", []):
-                return {"regionLabel": region_label, "regionCode": region, "instanceId": inst["InstanceId"]}
+                return {"regionLabel": region_label, "regionCode": region, "instanceId": inst["InstanceId"],
+                        "privateIp": inst.get("PrivateIpAddress", "")}
         return None
 
     def discover_service_host(self, region):

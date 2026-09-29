@@ -235,3 +235,25 @@ CloudWatch Logs, DynamoDB 업무 테이블, S3 증거 bucket은 역할이 다르
 | 해제 마무리 | 해제 접수(RELEASING)의 마무리(RELEASED·EXPIRED)는 `block_expiry`와 대시보드 조회가 같은 규칙으로 한다. 실행 ID 없이 5분 넘게 멈춘 해제는 차단 상태로 되돌린다 |
 
 AI 분석(요약·의도·위험도)은 화면에 "참고용"으로만 보이며 차단·해제·예외 판단에 쓰지 않는다. 실제 차단 상태의 기준은 NACL이다.
+
+## 공격 경로 지도 (v26)
+
+허니팟 화면의 "공격 경로 지도"는 아키텍처(인터넷·WAF·ALB·VPC 3개 서브넷·Private NACL·탐지/SOAR 밴드) 위에
+선택한 공격 IP 의 진행 단계 8개(접속·로그인·명령·AI 분석·알람·asr_trigger 판정·SSM 실행·NACL 차단)를 번호 배지와 선으로 그린다.
+
+- 새 API·저장소가 없다. 기존 `GET /api/honeypot/timeline` 의 `steps` 를 그대로 옮긴다(`ui/pages/honeypot-map.js`).
+- AI 가 그림을 만들지 않는다. 기록이 없는 단계는 회색 "기록 없음", 실패는 ✕, 읽지 못함은 ?로 표기하고 성공으로 그리지 않는다.
+  상태는 색뿐 아니라 배지 글자와 지도 아래 글자 목록으로도 나온다.
+- NACL 차단(8단계)이 기록돼 있을 때만 공격 선 위의 문(gate)이 닫히고 차단 표시가 뜬다.
+- 애니메이션은 IP 를 고르거나 [다시 재생]을 누를 때만 돈다. `prefers-reduced-motion` 에서는 꺼진다.
+- 단계 detail 등 공격자가 조종할 수 있는 문자열은 esc() 를 거쳐 텍스트·툴팁으로만 들어간다(`honeypot-map.test.mjs`).
+
+## 대시보드 도우미 (v27, DEC-022)
+
+대시보드 오른쪽 아래 `AI` 버튼으로 여는 조회 전용 챗봇. 허니팟뿐 아니라 이벤트·취약점·조치 이력·인프라를 묻는다.
+
+- 서버: `assistant_service.py`(도구 실행·상한·프롬프트), `assistant_api.py`(`GET /api/assistant/status`, `POST /api/assistant/chat`), `integrations/aws/bedrock.py`(Converse 호출).
+- 안전: 읽기 도구 11개뿐(변경 도구 없음) · 사용자 본인 권한으로 기존 서비스 호출 · 도구 결과는 "신뢰할 수 없는 데이터" 봉투 · 비밀 필드 제거 · 화면은 esc() 텍스트 렌더링.
+- 상한: 질문당 도구 호출 4회·출력 700토큰 / 사용자당 10분 20회 / 하루 토큰 예산 `ASSISTANT_DAILY_TOKEN_BUDGET`.
+- 켜기: terraform `enable_dashboard_assistant`(기본 true) → dashboard.env `ASSISTANT_ENABLED=true`, 대시보드 IAM `bedrock:InvokeModel`. 꺼져 있거나 권한이 없으면 화면이 "사용할 수 없음"과 이유를 보여 준다.
+- 한계: 답변은 참고용이다. 프롬프트 주입을 완전히 막지는 못하지만 도구가 읽기뿐이라 최악의 결과는 "잘못된 설명"이다. 차단·해제 판단에 쓰지 않는다.

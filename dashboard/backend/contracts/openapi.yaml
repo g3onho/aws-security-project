@@ -266,6 +266,43 @@ paths:
               schema: {$ref: '#/components/schemas/Envelope'}
         '404': {$ref: '#/components/responses/Error'}
         default: {$ref: '#/components/responses/Error'}
+  /api/assistant/status:
+    get:
+      operationId: getAssistantStatus
+      x-permission: dashboard:read
+      description: >-
+        대시보드 도우미(챗봇)의 사용 가능 여부와 상한. 꺼져 있거나 AWS 연결·IAM 이 없으면 enabled=false 이며 오류로 위장하지 않는다.
+        도우미는 조회 전용이다(readOnly=true, tools 는 읽기 도구 이름 목록).
+      responses:
+        '200':
+          description: enabled·model·readOnly·limits·tools
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AssistantStatusEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/assistant/chat:
+    post:
+      operationId: assistantChat
+      x-permission: dashboard:read
+      parameters:
+        - {$ref: '#/components/parameters/CsrfToken'}
+      description: >-
+        조회 전용 대화. 본문의 messages 는 user/assistant 가 번갈아 오고 user 로 시작·끝나야 한다(최대 12개·각 2000자).
+        서버가 읽기 도구만 사용자 본인 권한으로 호출해 답한다. 변경 도구는 없다. POST 이지만 CSRF 만 요구하고 viewer 도 쓸 수 있다.
+        질문·답변 원문은 감사 기록에 남기지 않고 도구 이름과 토큰 수만 남긴다. 사용자당 10분 20회·하루 토큰 예산을 넘으면 429,
+        꺼져 있으면 503 ASSISTANT_DISABLED.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AssistantChatRequest'}
+      responses:
+        '200':
+          description: 답변과 사용한 도구·토큰
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AssistantChatEnvelope'}
+        default: {$ref: '#/components/responses/Error'}
   /api/honeypot/status:
     get:
       operationId: getHoneypotStatus
@@ -454,6 +491,58 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/ErrorEnvelope'}
   schemas:
+    AssistantStatusEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [enabled, readOnly, limits, tools]
+          properties:
+            enabled: {type: boolean}
+            model: {type: [string, 'null']}
+            readOnly: {type: boolean, const: true}
+            limits: {type: object, additionalProperties: {type: integer}}
+            tools: {type: array, items: {type: string}}
+        meta: {$ref: '#/components/schemas/Meta'}
+    AssistantChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: {type: string, enum: [user, assistant]}
+              content: {type: string, minLength: 1, maxLength: 2000}
+    AssistantChatEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [answer, toolsUsed, usage, truncated]
+          properties:
+            answer: {type: string}
+            toolsUsed:
+              type: array
+              items:
+                type: object
+                required: [name, args]
+                properties:
+                  name: {type: string}
+                  args: {type: object}
+            usage:
+              type: object
+              properties:
+                inputTokens: {type: integer}
+                outputTokens: {type: integer}
+            truncated: {type: boolean}
+        meta: {$ref: '#/components/schemas/Meta'}
     Meta:
       type: object
       required: [requestId, schemaVersion, asOf, partial, warnings]

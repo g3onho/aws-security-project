@@ -17,6 +17,7 @@ import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/
 import {renderAudit} from './ui/pages/history.js?v=ui-1';
 import {renderDrills} from './ui/pages/drills.js?v=ui-1';
 import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=ui-1';
+import {initAssistant} from './ui/components/assistant.js?v=ui-1';
 import {renderVulnerabilities,selectVulnTarget,stepVulnPage,setVulnSize,setVulnFixable,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=ui-1';
 function render({loadPanels=false}={}){
  const pending=[];
@@ -233,3 +234,5 @@ syncControls();
 refresh().then(()=>{if(bootEvent&&ui.activeId===bootEvent)eventDialog(bootEvent);});
 // 화면 모듈이 부르는 render·refresh 를 연결한다(순환 import 방지).
 hooks.render=options=>render(options);hooks.refresh=options=>refresh(options);
+// 대시보드 도우미(v27): 조회 전용 채팅. 처음 열 때만 상태를 조회한다(자동 호출·비용 없음).
+initAssistant();

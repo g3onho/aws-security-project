@@ -162,6 +162,7 @@ locals {
     "SCAN-ContainerImage" = "${path.module}/documents/SCAN-ContainerImage.yaml"
     "SCAN-Secrets"        = "${path.module}/documents/SCAN-Secrets.yaml"
     "LOAD-Stress"         = "${path.module}/documents/LOAD-Stress.yaml"
+    "ATK-HoneypotProbe"   = "${path.module}/documents/ATK-HoneypotProbe.yaml"
   }
   # 주: ATK-WebAttack 문서는 공격자 노드가 있는 각 리전에 등록해야 한다
   #     (SSM Command 문서는 리전별 리소스). → modules/attacker 에서 등록한다.

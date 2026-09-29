@@ -55,6 +55,12 @@ def configure(overrides=None):
         "IP_BLOCK_TTL_HOURS": int(os.getenv("IP_BLOCK_TTL_HOURS", "24")),
         # 허니팟 화면에서 차단 해제·기간 변경·예외 등록·비밀번호 원문 보기가 가능한 역할(쉼표). viewer 는 넣을 수 없다.
         "BLOCKLIST_WRITE_ROLES": os.getenv("BLOCKLIST_WRITE_ROLES", "operator"),
+        # 대시보드 도우미(챗봇, v27): 조회 전용. 켜져 있어도 AWS 연결·IAM(bedrock:InvokeModel)이 없으면 "사용 불가"로 표시한다.
+        "ASSISTANT_ENABLED": os.getenv("ASSISTANT_ENABLED", "false"),
+        "ASSISTANT_MODEL_ID": os.getenv("ASSISTANT_MODEL_ID", "global.anthropic.claude-haiku-4-5-20251001-v1:0"),
+        "ASSISTANT_REGION": os.getenv("ASSISTANT_REGION") or None,
+        "ASSISTANT_DAILY_TOKEN_BUDGET": int(os.getenv("ASSISTANT_DAILY_TOKEN_BUDGET", "500000")),
+        "ASSISTANT_RATE_PER_10MIN": int(os.getenv("ASSISTANT_RATE_PER_10MIN", "20")),
         "HOST": os.getenv("DASHBOARD_HOST", "127.0.0.1"),
         "PORT": int(os.getenv("DASHBOARD_PORT", "5051")),
         "WRITE_ENABLED": os.getenv("WRITE_ENABLED", "false"),
@@ -87,6 +93,9 @@ def configure(overrides=None):
     if not roles or not roles <= {"operator", "approver"}:
         raise ValueError("BLOCKLIST_WRITE_ROLES must list operator and/or approver")
     config["BLOCKLIST_WRITE_ROLES"] = frozenset(roles)
+    config["ASSISTANT_ENABLED"] = boolean(config["ASSISTANT_ENABLED"], "ASSISTANT_ENABLED")
+    if config["ASSISTANT_DAILY_TOKEN_BUDGET"] < 0 or config["ASSISTANT_RATE_PER_10MIN"] < 1:
+        raise ValueError("ASSISTANT_DAILY_TOKEN_BUDGET must be >= 0 and ASSISTANT_RATE_PER_10MIN >= 1")
     config["WRITE_ENABLED"] = boolean(config["WRITE_ENABLED"], "WRITE_ENABLED")
     config["SESSION_COOKIE_SECURE"] = boolean(config["SESSION_COOKIE_SECURE"], "SESSION_COOKIE_SECURE")
     if not 1 <= config["PORT"] <= 65535:

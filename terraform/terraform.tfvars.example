@@ -55,8 +55,9 @@ alert_email             = ""     # 예: "team2-secops@example.com"
 # enable_honeypot_ai = true   # Bedrock 가짜 셸·세션 분석. 모델 액세스 허용 필요
 # honeypot_ai_model_id = "global.anthropic.claude-haiku-4-5-20251001-v1:0"  # 서울은 global 만(apac 없음)
 #
-# 미끼 접속 → NACL 자동 차단까지 켜기. 목록 전체를 그대로 써야 한다.
-# ["HONEYPOT"] 만 쓰면 기존 자동 조치 9개가 전부 꺼진다. (대시보드 인스턴스 재생성 — 위 주의 참고)
+# 미끼 접속 → NACL 자동 차단: v26 부터 기본값에 HONEYPOT 이 들어 있어 enable_honeypot = true 만 하면 켜진다.
+# 위 auto_remediable_controls 를 tfvars 에서 직접 지정했다면 그 목록에 "HONEYPOT" 을 직접 넣어야 한다.
+# 목록은 기본값을 대체한다 — ["HONEYPOT"] 만 쓰면 기존 자동 조치 9개가 전부 꺼진다. (대시보드 인스턴스 재생성 — 위 주의 참고)
 # auto_remediable_controls = ["EC2.2", "EC2.7", "EC2.182", "S3.1", "IAM.7", "SSM.6", "SSM.7", "SEC-06A", "SEC-06B", "HONEYPOT"]
 #
 # 자동 차단(NACL 1~99 Deny)의 기본 차단 기간과 자동 해제(v25). 대시보드 허니팟 화면에서 행마다 바꿀 수 있다.

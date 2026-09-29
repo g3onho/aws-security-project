@@ -223,11 +223,12 @@ variable "auto_remediable_controls" {
     계정·리전 설정만 넣는다. "SEC-06A" 는 MySQL 무차별 대입 알람 → 공격 IP NACL 자동 차단,
     "SEC-06B" 는 VPC 내부 출발지의 SSH(22) 거부 급증(Flow Logs) → 같은 NACL 자동 차단이다(DEC-019).
     "HONEYPOT" 은 미끼서버 접속 알람 → 같은 NACL 자동 차단이다(DEC-020, enable_honeypot = true 일 때만 의미).
-    기본값에는 넣지 않았다. 켤 때는 tfvars 에 목록 전체를 쓴다(["HONEYPOT"] 만 쓰면 나머지 9개가 꺼진다).
+    v26 부터 기본값에 들어 있다(enable_honeypot = false 면 알람이 없어 아무 일도 일어나지 않는다).
+    tfvars 에서 이 변수를 직접 지정하면 기본값을 대체하므로 목록 전체를 쓴다(["HONEYPOT"] 만 쓰면 나머지 9개가 꺼진다).
     항목을 빼면 그 finding 은 기존 패턴 화이트리스트 규칙대로 판정된다(대부분 수동 알림).
   EOT
   type        = list(string)
-  default     = ["EC2.2", "EC2.7", "EC2.182", "S3.1", "IAM.7", "SSM.6", "SSM.7", "SEC-06A", "SEC-06B"]
+  default     = ["EC2.2", "EC2.7", "EC2.182", "S3.1", "IAM.7", "SSM.6", "SSM.7", "SEC-06A", "SEC-06B", "HONEYPOT"]
 }
 
 variable "alert_email" {
@@ -354,6 +355,19 @@ variable "enable_honeypot_ai" {
 
 variable "honeypot_ai_model_id" {
   description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
+  type        = string
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+}
+
+# --- 대시보드 도우미(챗봇, v27) ---
+variable "enable_dashboard_assistant" {
+  description = "대시보드 AI 도우미(챗봇, 조회 전용)를 켠다. 대시보드 역할에 bedrock:InvokeModel 을 주고 ASSISTANT_ENABLED=true 로 배포한다. 질문·조회 결과가 Bedrock 으로 전송된다."
+  type        = bool
+  default     = true
+}
+
+variable "dashboard_assistant_model_id" {
+  description = "대시보드 도우미가 쓸 Bedrock 모델 ID. 서울에서 Haiku 4.5 는 global 추론 프로파일만 지원(apac 없음). 계정에서 모델 액세스 허용 필요."
   type        = string
   default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }

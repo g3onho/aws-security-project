@@ -9,6 +9,8 @@ from .auth import current_user, install_auth
 from .contracts import StandardService, envelope
 from .blocklist_service import BlocklistService
 from .drills import DrillService
+from .assistant_api import bp as assistant_api
+from .assistant_service import AssistantService, Tools
 from .honeypot_api import bp as honeypot_api
 from .honeypot_service import HoneypotService
 from .guidance import AutoPolicy
@@ -65,11 +67,17 @@ def create_app(overrides=None):
     workflow = Workflow(store, provider, settings["APPROVAL_TTL_SECONDS"])
     worker = Worker(store, provider, settings["WORKER_LEASE_SECONDS"])
     honeypot_service = HoneypotService(provider, workflow, settings)
+    blocklist_service = BlocklistService(provider, workflow, store, honeypot_service, settings)
+    standard_service = StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"])
+    # 대시보드 도우미(v27): 조회 전용 도구만 준다. 꺼져 있거나 AWS 연결이 없으면 model=None → "사용 불가".
+    assistant_model = (provider.assistant_model(settings["ASSISTANT_MODEL_ID"], settings["ASSISTANT_REGION"])
+                       if settings["ASSISTANT_ENABLED"] and hasattr(provider, "assistant_model") else None)
     app.extensions.update(store=store, provider=provider, workflow=workflow,
                           honeypot_service=honeypot_service,
-                          blocklist_service=BlocklistService(provider, workflow, store, honeypot_service, settings),
+                          blocklist_service=blocklist_service,
                           worker=worker,
-                          standard_service=StandardService(store, workflow, provider, settings["SECRET_KEY"], settings["WRITE_ENABLED"]),
+                          standard_service=standard_service,
+                          assistant_service=AssistantService(assistant_model, Tools(standard_service, honeypot_service, blocklist_service), settings),
                           drill_service=DrillService(store, provider, attack_config=_attack_config(settings)))
 
     @app.before_request
@@ -80,6 +88,7 @@ def create_app(overrides=None):
     install_auth(app)
     app.register_blueprint(standard_api)
     app.register_blueprint(honeypot_api)
+    app.register_blueprint(assistant_api)
 
     @app.get("/")
     def index():
