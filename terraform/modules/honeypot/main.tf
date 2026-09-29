@@ -123,9 +123,12 @@ resource "aws_instance" "honeypot" {
   # 미끼는 공인 IP 를 두지 않는다(내부 정찰 유인). 관리 접속은 SSM Session Manager.
   associate_public_ip_address = false
 
-  user_data = templatefile("${path.module}/templates/user_data.sh.tftpl", {
+  # honeypot.py 를 base64 로 한 번 더 인코딩해 넣다 보니 원본(12KB대)이 인플레이션(+33%)으로
+  # EC2 user_data 16KB 한도를 넘었다. gzip 압축으로 우회한다 — cloud-init 은 gzip user-data 를
+  # 자동 압축 해제하므로 부트스트랩 스크립트 자체는 그대로 두고 전달 방식만 바꾼다.
+  user_data_base64 = base64gzip(templatefile("${path.module}/templates/user_data.sh.tftpl", {
     honeypot_py_b64 = base64encode(local.honeypot_py)
-  })
+  }))
   user_data_replace_on_change = true
 
   metadata_options {
