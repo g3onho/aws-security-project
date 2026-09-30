@@ -19,6 +19,7 @@ from .guidance import control_title
 from .history_repository import HistoryRepository
 from .remediation_plans import resolve as resolve_plan
 from .repositories.correlations import apply as apply_correlations
+from .repositories.tiers import evaluate as evaluate_tier
 from .scope import matches as scope_matches
 from .store import encode, now_ms
 
@@ -48,7 +49,8 @@ AUTOMATIC_STATES = {"NOTIFIED": "PENDING_APPROVAL", "DRY_RUN": "PENDING_APPROVAL
 # 한 요청에서 새로 읽을 SSM 실행 결과 수. 나머지는 캐시만 보고 다음 새로고침에서 채운다(조회 지연 제한).
 EXECUTION_FETCH_LIMIT = 20
 # 3계층(보호 대상 docker-host 의 Nginx → Flask → MySQL). 대시보드는 컨테이너에 직접 접속하지 않고(설계:
-# /api/infra/status 는 저장된 증거만 조회), 계층 점검 결과를 저장하는 작업이 아직 없어 확인 불가로 둔다.
+# /api/infra/status 는 저장된 증거만 조회), tier_check Lambda 가 저장한 점검 결과(TIER_STATUS_TABLE)를 읽는다.
+# 결과가 없거나 오래됐거나 읽지 못하면 정상으로 보이지 않고 확인 불가(unknown)로 둔다.
 TIERS = ({"id": "tier/web", "name": "Nginx", "role": "웹"},
          {"id": "tier/app", "name": "Flask", "role": "애플리케이션"},
          {"id": "tier/db", "name": "MySQL", "role": "데이터베이스"})
@@ -444,12 +446,35 @@ class StandardService:
                                "status": status_map.get(component["status"], "unknown"),
                                "observedAt": iso(raw.get("checkedAt")), "source": component.get("source"),
                                "detail": component.get("detail"), "kind": "server", "role": component.get("tier")})
-        tiers = [{**tier, "status": "unknown", "observedAt": None, "source": None,
-                  "detail": "점검 결과 없음"} for tier in TIERS]
+        tiers = self._tiers(notes)
         result = {"components": components, "dependencies": raw.get("dependencies", []), "tiers": tiers,
                   "alarms": self._alarms(principal, notes), "dataMode": "live"}
         if notes["warnings"]:
             result["_warnings"] = notes["warnings"]
+        return result
+
+    def _tiers(self, notes):
+        """3계층 상태 = tier_check 가 저장한 점검 결과. 표 설정이 없거나 읽지 못하면 전부 확인 불가(이유는 detail·경고)."""
+        def unknown(detail):
+            return [{**tier, "status": "unknown", "observedAt": None, "source": None, "detail": detail}
+                    for tier in TIERS]
+        if not hasattr(self.provider, "tiers"):
+            return unknown("점검 결과 없음")
+        try:
+            data = self.provider.tiers()
+        except Exception:  # noqa: BLE001 — 내부 원인은 로그로만(설계 2.3 원칙 7)
+            logging.getLogger(__name__).exception("tier status read failed")
+            notes["warnings"].append("3계층 점검 결과를 불러오지 못했습니다.")
+            return unknown("점검 결과 조회 실패")
+        if not data.get("configured"):
+            return unknown("점검 결과 저장소(TIER_STATUS_TABLE) 설정 없음")
+        rows = {row.get("tier_id"): row for row in data.get("items", [])}
+        now = now_ms()
+        result = []
+        for tier in TIERS:
+            item = evaluate_tier(tier, rows.get(tier["id"]), now)
+            item["observedAt"] = iso(item["observedAt"]) if item["observedAt"] else None
+            result.append(item)
         return result
 
     def _alarms(self, principal, notes):

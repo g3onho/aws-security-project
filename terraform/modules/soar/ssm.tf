@@ -162,6 +162,7 @@ locals {
     "SCAN-ContainerImage" = "${path.module}/documents/SCAN-ContainerImage.yaml"
     "SCAN-Secrets"        = "${path.module}/documents/SCAN-Secrets.yaml"
     "LOAD-Stress"         = "${path.module}/documents/LOAD-Stress.yaml"
+    "TIER-Check"          = "${path.module}/documents/TIER-Check.yaml"
     "ATK-HoneypotProbe"   = "${path.module}/documents/ATK-HoneypotProbe.yaml"
     "ATK-HoneypotAiDemo"  = "${path.module}/documents/ATK-HoneypotAiDemo.yaml"
   }

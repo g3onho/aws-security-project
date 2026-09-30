@@ -94,7 +94,8 @@ def create_app(overrides=None):
                             blocklist_table=settings["IP_BLOCKLIST_TABLE"],
                             private_nacl_id=settings["PRIVATE_NACL_ID"],
                             unblock_document=settings["DOC_UNBLOCK_IP"],
-                            automation_role_arn=settings["AUTOMATION_ROLE_ARN"])
+                            automation_role_arn=settings["AUTOMATION_ROLE_ARN"],
+                            tier_status_table=settings["TIER_STATUS_TABLE"])
                 if settings["DATA_PROVIDER"] == "aws" else _demo_provider(settings) if settings["DATA_PROVIDER"] == "demo"
                 else UnconfiguredProvider())
     if provider.connected and not settings.get("TESTING"):

@@ -34,3 +34,5 @@ output "manual_scan_document" {
 output "cloudwatch_dashboard_name" { value = aws_cloudwatch_dashboard.main.dashboard_name }
 output "ip_blocklist_table_name" { value = aws_dynamodb_table.ip_blocklist.name }
 output "unblock_document_name" { value = aws_ssm_document.automation["ASR-UnblockIpWithNacl"].name }
+output "tier_status_table_name" { value = aws_dynamodb_table.tier_status.name }
+output "tier_check_function_name" { value = one(aws_lambda_function.tier_check[*].function_name) }

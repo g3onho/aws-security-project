@@ -49,6 +49,8 @@ def configure(overrides=None):
         "HONEYPOT_LOG_GROUP": os.getenv("HONEYPOT_LOG_GROUP") or None,
         "HONEYPOT_ALARM_NAME": os.getenv("HONEYPOT_ALARM_NAME") or None,
         "IP_BLOCKLIST_TABLE": os.getenv("IP_BLOCKLIST_TABLE") or None,
+        # 3계층 점검 결과 표(tier_check Lambda 가 저장). 없으면 3계층은 확인 불가로 표시한다.
+        "TIER_STATUS_TABLE": os.getenv("TIER_STATUS_TABLE") or None,
         "PRIVATE_NACL_ID": os.getenv("PRIVATE_NACL_ID") or None,
         "DOC_UNBLOCK_IP": os.getenv("DOC_UNBLOCK_IP") or None,
         "AUTOMATION_ROLE_ARN": os.getenv("AUTOMATION_ROLE_ARN") or None,

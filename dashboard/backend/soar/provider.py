@@ -114,7 +114,7 @@ class AwsProvider:
                  findings_table=None, vulnerabilities_table=None, event_source="securityhub",
                  vulnerability_source="inspector", auto_policy=None, name_prefix=None, honeypot_log_group=None,
                  honeypot_alarm_name=None, blocklist_table=None, private_nacl_id=None, unblock_document=None,
-                 automation_role_arn=None):
+                 automation_role_arn=None, tier_status_table=None):
         self.region = region
         self.regions = (region,)
         self._aws = AwsSession(region, session_factory)
@@ -144,6 +144,8 @@ class AwsProvider:
         self._alarms = (AlarmRepository(Alarms(self._aws, name_prefix), region, self.account_id, auto_policy)
                         if name_prefix else None)
         self._executions = AutomationExecutions(self._aws)
+        # 3계층(Nginx·Flask·MySQL) 점검 결과 표. tier_check Lambda 가 쓰고 여기서는 읽기만 한다. 설정이 없으면 None.
+        self._tiers = DynamoTable(self._aws, tier_status_table) if tier_status_table else None
         # 허니팟 세션 로그·미끼·알람(읽기 전용)과 차단 IP 목록(표·NACL·해제 SSM). 설정이 없으면 None → 화면에 미배포/미설정 표시.
         self.honeypot = (HoneypotSources(self._aws, honeypot_log_group, honeypot_alarm_name)
                          if honeypot_log_group else None)
@@ -196,6 +198,13 @@ class AwsProvider:
             return {"configured": False, "items": [], "truncated": False}
         found = self._actions.for_finding(finding_id) if finding_id else self._actions.list()
         return {"configured": True, **found}
+
+    def tiers(self):
+        """3계층 점검 결과 행(저장된 증거). 표 설정이 없으면 configured=False(빈 목록으로 위장하지 않는다)."""
+        if self._tiers is None:
+            return {"configured": False, "items": []}
+        rows, truncated = self._tiers.scan()
+        return {"configured": True, "items": rows, "truncated": truncated}
 
     def correlations(self):
         return self._correlations.by_guardduty_id() if self._correlations else {}

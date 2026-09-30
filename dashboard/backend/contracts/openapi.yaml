@@ -118,7 +118,7 @@ paths:
         '200':
           description: >-
             저장된 상태 증거 조회. 새 점검을 실행하지 않는다. components 는 EC2 서버 가동 상태, tiers 는 3계층
-            (Nginx·Flask·MySQL)으로 점검 결과를 저장하는 작업이 없으면 unknown, alarms 는 CloudWatch 지표 알람 상태다.
+            (Nginx·Flask·MySQL)으로 tier_check 가 저장한 점검 결과를 읽고(없음·오래됨·읽기 실패는 unknown), alarms 는 CloudWatch 지표 알람 상태다.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/InfrastructureEnvelope'}
@@ -1130,7 +1130,7 @@ components:
                       role: {type: [string, 'null'], description: EC2 Role 태그}
                 tiers:
                   type: array
-                  description: 3계층(Nginx·Flask·MySQL). 점검 결과를 저장하는 작업이 없으면 status=unknown, observedAt=null.
+                  description: 3계층(Nginx·Flask·MySQL). tier_check 가 저장한 마지막 점검 결과. 결과가 없거나 오래됐거나 읽지 못하면 status=unknown(오래된 경우 observedAt 은 마지막 점검 시각, 이유는 detail).
                   items:
                     type: object
                     required: [id, name, status, observedAt]
