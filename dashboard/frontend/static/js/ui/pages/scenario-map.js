@@ -2,9 +2,9 @@
 // 새 API·AI 가 없다 — 시나리오 카탈로그(sources·response)와 [전부 실행] 항목 상태만 쓴다.
 // 관측한 것은 ① 실행 단계뿐이다. 탐지→통합→저장→판정→조치→재검증은 '설계 경로'(점선·파랑)로만 그리고 성공으로 칠하지 않는다.
 // 상태 문구·기록 없음 처리는 flow-map.js 의 scenarioStages 를 그대로 쓴다(이벤트 상세 지도와 같은 규칙).
-import {esc} from '../components/format.js?v=v44';
-import {icon,node,setFont} from './honeypot-map.js?v=v44';
-import {FLOW_STATE,FLOW_STAGES,scenarioStages} from './flow-map.js?v=v44';
+import {esc} from '../components/format.js?v=v45';
+import {icon,node,setFont} from './honeypot-map.js?v=v45';
+import {FLOW_STATE,FLOW_STAGES,scenarioStages,eventStages,detectorOf} from './flow-map.js?v=v45';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const ROLE={attack:RED,observe:SOFT,respond:MINT};
@@ -60,9 +60,31 @@ function elbow(a,b){
  return {d:`M${A.x} ${A.y} H${mx} V${B.y} H${B.x}`,bx:mx,by:Math.round((A.y+B.y)/2)};
 }
 
-// 모델: 7단계(origin~verify)마다 그릴 선들과 배지 위치.
-export function scenarioRoute(s,items=null){
- const base=scenarioStages(s,items),cfg=routeOf(s.id),T=cfg.t;
+// 이번 실행 이후(since) 시나리오의 탐지 원천과 같은 출처로 들어온 보안 이벤트를 찾아 ②~⑦ 단계를 채운다.
+// 시나리오 ID 를 이벤트가 들고 있지 않아 '시간 + 탐지 원천' 일치로 고르는 추정이다 — 그래서 모든 채운 단계에 '추정'을 붙인다.
+// 일치하는 이벤트가 없으면 성공으로 두지 않고 '기록 없음'으로 바꾼다(선택 기간 밖일 수 있음을 밝힌다).
+const DOWN=['detect','hub','store','judge','act','verify'];
+function fillFromEvents(base,{events,since}){
+ if(!Array.isArray(events)||!Number.isFinite(since)||!base.detectors.length)return base;
+ const ok=new Set(base.detectors);
+ const hits=events.filter(e=>{const t=Date.parse(e.observedAt);return Number.isFinite(t)&&t>=since-60000&&ok.has(detectorOf(e.source));})
+  .sort((a,b)=>Date.parse(b.observedAt)-Date.parse(a.observedAt));
+ const stages={...base.stages};
+ if(!hits.length){
+  for(const k of DOWN)if(base.stages[k].state!=='missing')stages[k]={state:'missing',detail:k==='detect'?'이번 실행 이후 같은 탐지 원천의 이벤트 기록 없음(선택 기간 기준)':'탐지 기록이 없어 이 단계도 기록 없음',at:null};
+  return {...base,stages,evidence:{matched:0}};
+ }
+ const seen=eventStages(hits[0]).stages,tag=`추정(실행 이후·같은 탐지 원천 ${hits.length}건) · `;
+ for(const k of DOWN){
+  if(['judge','act','verify'].includes(k)&&base.stages[k].state==='missing')continue;   // 응답이 없는 시나리오는 그대로 둔다
+  stages[k]={...seen[k],detail:tag+(seen[k].detail||'')};
+ }
+ return {...base,stages,evidence:{matched:hits.length,eventId:hits[0].id||null}};
+}
+
+// 모델: 7단계(origin~verify)마다 그릴 선들과 배지 위치. opts={events,since}
+export function scenarioRoute(s,items=null,opts={}){
+ const base=fillFromEvents(scenarioStages(s,items),opts),cfg=routeOf(s.id),T=cfg.t;
  const dets=base.detectors.length?base.detectors:[];
  const edges=[],badges={};
  const push=(stage,id,d,extra={})=>edges.push({stage,id,d,...extra});
@@ -172,4 +194,4 @@ export function routeList(m){
   return `<li data-stage="${s.key}" data-state="${i.state}"><b style="border-color:${color};color:${color}">${s.n}</b><span>${esc(s.label)}</span><em style="color:${color}">${mark} ${esc(text)}</em><small>${esc(i.detail||'')}</small></li>`;
  }).join('')}</ol>`;
 }
-export const ROUTE_NOTE='실선·색은 이번 [전부 실행]에서 관측한 ① 실행 단계뿐입니다. 점선(설계 경로)은 카탈로그에 정해 둔 경로이며 실제로 관측된 사실이 아닙니다. 기록이 없는 단계를 성공으로 그리지 않습니다.';
+export const ROUTE_NOTE='① 실행은 이번 [전부 실행]의 실제 기록입니다. ②~⑦이 \'완료\'로 켜진 것은 실행 이후 같은 탐지 원천에서 들어온 이벤트로 채운 \'추정\'이고, 점선은 이벤트를 찾을 수 없어 카탈로그 설계만 보여 주는 경로입니다. 기록이 없는 단계를 성공으로 그리지 않습니다.';

@@ -94,6 +94,9 @@ SCENARIOS = [
     {"id": "SEC-10", "purpose": "CPU·메모리 과부하와 운영 알림", "types": ["load"],
      "sources": ["EC2 CPU", "Agent 메모리", "CloudWatch Alarm", "SNS"], "response": "없음",
      "support": "runnable", "note": "부하 실행의 대시보드 경로는 신규. 알람 임계값은 실제 설정에서 조회한다."},
+    {"id": "HONEYPOT", "purpose": "내부 침투 시연과 미끼 서버 자동 차단", "types": [],
+     "sources": ["허니팟 로그", "CloudWatch Alarm", "asr_trigger"], "response": "Private NACL 자동 차단",
+     "support": "runnable", "note": "파리(홈 리전) VPC 안 공격자 EC2가 미끼 서버에 SSH 접속(ATK-HoneypotProbe). 경로 지도는 허니팟 페이지의 공격 경로 지도와 같은 그림을 쓴다."},
 ]
 
 
@@ -120,6 +123,21 @@ class DrillRuns:
             return None
         import json
         return json.loads(row[0])
+
+    def set_summary(self, run_id, line, source):
+        """요약 한 줄을 그 실행 기록(payload)에 한 번만 붙인다. 이미 있으면 그대로 둔다(덮어쓰지 않음)."""
+        import json
+        with self.store.connect(write=True) as db:
+            row = db.execute("SELECT payload FROM drills WHERE run_id=?", (run_id,)).fetchone()
+            if row is None:
+                return None
+            payload = json.loads(row[0])
+            if payload.get("summaryLine"):
+                return payload
+            payload["summaryLine"] = line
+            payload["summarySource"] = source
+            db.execute("UPDATE drills SET payload=? WHERE run_id=?", (json.dumps(payload), run_id))
+            return payload
 
     def save(self, run):
         import json

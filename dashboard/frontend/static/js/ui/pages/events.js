@@ -1,11 +1,11 @@
 // 보안 이벤트 표: 같은 제목 묶음, 펼치기, 페이지.
-import {severityColors} from '../constants.js?v=v44';
-import {state,summary,setFilters,selectEvents} from '../context.js?v=v44';
-import {esc,format,shortResource} from '../components/format.js?v=v44';
-import {badge,statusBadge,sourceTag} from '../components/badges.js?v=v44';
-import {header,empty} from '../components/panel.js?v=v44';
-import {autoChip} from '../components/remediation.js?v=v44';
-import {classify} from '../components/event-response.js?v=v44';
+import {severityColors} from '../constants.js?v=v45';
+import {state,summary,setFilters,selectEvents} from '../context.js?v=v45';
+import {esc,format,shortResource} from '../components/format.js?v=v45';
+import {badge,statusBadge,sourceTag} from '../components/badges.js?v=v45';
+import {header,empty} from '../components/panel.js?v=v45';
+import {autoChip} from '../components/remediation.js?v=v45';
+import {classify} from '../components/event-response.js?v=v45';
 // ── 목록 표 ────────────────────────────────────────────────
 const selected=new Set();
 

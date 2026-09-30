@@ -1,18 +1,18 @@
 // 통합 관제 지도: 지구본·국가·리전 마커·공격 흐름·리전 패널. 카메라와 지도 상태는 이 모듈만 바꾼다.
-import {globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './globe.js?v=v44';
-import {createMarkerLayer,createCameraController} from './interaction.js?v=v44';
-import {regions,severityColors} from '../constants.js?v=v44';
-import {$,state,summary,selectEvents,setFilters,hooks} from '../context.js?v=v44';
-import {esc} from '../components/format.js?v=v44';
-import {patchAnimated} from '../components/panel.js?v=v44';
-import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=v44';
-import {clearSelection} from '../pages/events.js?v=v44';
+import {globeArtwork,bindMapInteraction,connectionMarkup,polygonPath,wrapLon,clampPhi,findCountryIndex,DEFAULT_ROTATION,DEFAULT_ZOOM,REGION_ZOOM,ZOOM_MIN,ZOOM_MAX} from './globe.js?v=v45';
+import {createMarkerLayer,createCameraController} from './interaction.js?v=v45';
+import {regions,severityColors} from '../constants.js?v=v45';
+import {$,state,summary,selectEvents,setFilters,hooks} from '../context.js?v=v45';
+import {esc} from '../components/format.js?v=v45';
+import {patchAnimated} from '../components/panel.js?v=v45';
+import {resetVulnerabilityView} from '../pages/vulnerabilities.js?v=v45';
+import {clearSelection} from '../pages/events.js?v=v45';
 let attackSelection='all';
 let mapReady=false,zoom=DEFAULT_ZOOM,rotation=[...DEFAULT_ROTATION],panelOpen=true;
 let worldFeatures=[],cachedAll=[],cachedMapped=[],rafPending=false,selectedCountryIndex=-1;
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 export async function loadMap(){
- const response=await fetch('/static/data/countries.geojson?v=v44');if(!response.ok)throw Error('지도 데이터를 불러오지 못했습니다.');
+ const response=await fetch('/static/data/countries.geojson?v=v45');if(!response.ok)throw Error('지도 데이터를 불러오지 못했습니다.');
  const data=await response.json();worldFeatures=data.features.filter(f=>f.properties.ADMIN!=='Antarctica');mapReady=true;
  updateSelectedCountry(state.region);
  renderCountries();

@@ -1,8 +1,8 @@
 // 취약점 점검: 서버×패키지 묶음, 대상·페이지·크기, CVE CSV. 이 화면 상태는 이 모듈만 바꾼다.
-import {$,api,ui} from '../context.js?v=v44';
-import {esc,cmdBlock} from '../components/format.js?v=v44';
-import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v44';
-import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v44';
+import {$,api,ui} from '../context.js?v=v45';
+import {esc,cmdBlock} from '../components/format.js?v=v45';
+import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v45';
+import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v45';
 // ── 취약점 점검 ────────────────────────────────────────────
 let vulnTarget='',vulnPage=1,vulnSize=50,vulnFilter='',vulnData=null,vulnDataKey='';
 const vulnKey=()=>panelScope()+JSON.stringify([vulnTarget,ui.refreshSerial]);

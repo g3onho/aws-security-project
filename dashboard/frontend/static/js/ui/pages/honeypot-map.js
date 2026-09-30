@@ -3,7 +3,7 @@
 // 그림의 선·번호 배지에 옮길 뿐이다. AI 가 그림을 만들지 않는다(없는 경로를 그럴듯하게 그리는 위험을 피한다).
 // 단계의 상태(done/missing/failed/pending/unknown)를 색뿐 아니라 배지 글자(✓ – ✕ … ?)로도 표기한다.
 // 공격자가 조종할 수 있는 문자열(단계 detail)은 esc() 를 거쳐 <title>·텍스트로만 넣는다. 고정 라벨만 원문 그대로 쓴다.
-import {esc} from '../components/format.js?v=v44';
+import {esc} from '../components/format.js?v=v45';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const STATE={done:['완료','✓',MINT],missing:['기록 없음','–',GRAY],failed:['실패','✕',RED],pending:['진행 중','…',AMBER],unknown:['읽지 못함','?',AMBER]};

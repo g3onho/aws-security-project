@@ -1496,10 +1496,17 @@ body.view-events .timeline{margin-bottom:var(--space)}
 .cve-groups .vg-count{justify-self:center}
 @media(max-width:1100px){.cve-groups{--vg-cols:minmax(0,1fr) 70px 200px 170px;--vg-gap:16px}}
 
-/* v44: 시나리오 경로 지도 카드(#sc-map) — 허니팟 지도와 같은 카드. 7단계 목록은 한 줄로 */
-#sc-map .hp-map-svg{min-width:0}
-#sc-map .hp-pick select{max-width:340px}
-@media(min-width:1000px){#sc-map .hp-map-list{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;padding-left:16px;padding-right:16px}
- #sc-map .hp-map-list li{padding:7px 8px;column-gap:6px;grid-template-columns:22px minmax(0,1fr);font-size:12.5px;overflow-wrap:anywhere}
- #sc-map .hp-map-list small,#sc-map .hp-map-list em{font-size:12px}
- #sc-map .hp-map-list b{align-self:start}}
+/* v45: 전부 실행 카드와 시나리오 표를 같은 높이로(넓은 화면), 경로 지도 팝업 머리글 도구, 실행 이력 요약 열 */
+@media(min-width:1000px){
+ .drill-workspace{align-items:stretch}
+ .drill-workspace>.drill-config{position:static;align-self:stretch;margin-bottom:12px}
+ .drill-workspace>.table-scroll{display:flex;flex-direction:column;align-self:stretch;margin-bottom:12px}
+ .drill-workspace>.table-scroll>table{flex:1 1 auto;height:100%}
+}
+#flow-dialog .dialog-header{flex-wrap:wrap;gap:8px 14px;align-items:center}
+#flow-dialog .dialog-header>div:first-child{flex:1 1 260px;min-width:0}
+#flow-dialog .hp-map-tools{margin-left:auto}
+#flow-dialog .hp-pick select{max-width:300px}
+.run-history td.run-when small{display:block;font-size:11.5px;margin-top:2px;letter-spacing:.02em}
+.run-history td.run-summary{min-width:260px;white-space:normal;line-height:1.5}
+.run-history .run-sum{color:#161d1b}
