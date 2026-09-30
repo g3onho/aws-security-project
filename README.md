@@ -320,7 +320,7 @@ aws-security-project/
     └── tracking.md
 ```
 
-`README.md`는 목표와 상위 시스템 아키텍처를 소유한다. `agents.md`와 세 자동 인식 지침은 AI의 작업 행동을 소유한다. 기능별 `*-design.md`는 그 기능의 책임·상세 구조·자료/API 계약·실패·검증을 소유한다. 시나리오 문서는 검증 순서·안전 범위·증적을 소유한다. 용어집은 공통 개념·상태를 정의한다. 결정 기록부는 승인된 선택·근거·미결정 질문을 보관한다. 추적 문서는 코드 경로와 관측 시점별 구현·검증 근거를 보관한다. 발표용 이미지 제작 규칙은 `design-standards.md`에만 둔다. 설계 본문에는 Mermaid와 Markdown 표를 사용한다. 이 트리 밖의 `terraform/docs/`, `dashboard/backend/docs/`, `scripts/`, `atk_render.sh`는 정본이 아닌 운영 보조 자료다. 내용이 정본과 충돌하면 위 정본 문서를 따른다.
+`README.md`는 목표와 상위 시스템 아키텍처를 소유한다. `agents.md`와 세 자동 인식 지침은 AI의 작업 행동을 소유한다. 기능별 `*-design.md`는 그 기능의 책임·상세 구조·자료/API 계약·실패·검증을 소유한다. 시나리오 문서는 검증 순서·안전 범위·증적을 소유한다. 용어집은 공통 개념·상태를 정의한다. 결정 기록부는 승인된 선택·근거·미결정 질문을 보관한다. 추적 문서는 코드 경로와 관측 시점별 구현·검증 근거를 보관한다. 발표용 이미지 제작 규칙은 `design-standards.md`에만 둔다. 설계 본문에는 Mermaid와 Markdown 표를 사용한다. 이 트리 밖의 `terraform/docs/`, `dashboard/backend/docs/`, `scripts/`(`atk_render.sh` 포함)는 정본이 아닌 운영 보조 자료다. 내용이 정본과 충돌하면 위 정본 문서를 따른다.
 
 ## 8. 개발·문서 완료 기준
 
