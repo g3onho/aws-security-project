@@ -148,7 +148,7 @@ class AssistantService:
         self.enabled = bool(settings.get("ASSISTANT_ENABLED")) and model is not None
         self.model_id = getattr(model, "model_id", None) or settings.get("ASSISTANT_MODEL_ID")
         self.rate = int(settings.get("ASSISTANT_RATE_PER_10MIN", 20))
-        self.budget = int(settings.get("ASSISTANT_DAILY_TOKEN_BUDGET", 500000))
+        self.budget = int(settings.get("ASSISTANT_DAILY_TOKEN_BUDGET", 1000000))
         self._calls = defaultdict(deque)
         self._tokens = {"day": None, "used": 0}
         self._lock = threading.Lock()

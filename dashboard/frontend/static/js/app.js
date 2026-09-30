@@ -18,7 +18,7 @@ import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/
 import './ui/components/remediate-bulk.js?v=q6-ui-11';
 import {loadEventResponse,eventResponseCard} from './ui/components/event-response.js?v=q6-ui-11';
 import {renderAudit} from './ui/pages/history.js?v=q6-ui-11';
-import {renderDrills} from './ui/pages/drills.js?v=q6-ui-11-l1';
+import {renderDrills} from './ui/pages/drills.js?v=v39-5';
 import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=q6-ui-1-l1';
 import {initAssistant} from './ui/components/assistant.js?v=q6-ui-1';
 import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=q6-ui-1-l1';

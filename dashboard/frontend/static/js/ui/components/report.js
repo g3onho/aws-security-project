@@ -5,9 +5,9 @@ import {$,api} from '../context.js?v=q6-ui-1-l1';
 import {esc} from './format.js?v=q6-ui-1';
 import {downloadFile,stampedName} from './downloads.js?v=q6-ui-1-l1';
 
-const NAME={events:'보안 이벤트',vulnerabilities:'취약점 점검',infrastructure:'인프라 모니터링',drills:'보안 시나리오',honeypot:'허니팟'};
+const NAME={events:'보안 이벤트',vulnerabilities:'취약점 점검',infrastructure:'인프라 모니터링',drills:'보안 시나리오',honeypot:'허니팟','drill-run':'보안 시나리오 실행 결과'};
 const NOTE='문장은 AI가 작성했고, 수치는 원천 데이터 집계 기준입니다. 조치 전에 화면의 원본 자료로 확인하세요.';
-const S={view:null,busy:false,data:null,error:'',serial:0};
+const S={view:null,extra:{},busy:false,data:null,error:'',serial:0};
 const hooks={onDisabled:null};
 const kst=value=>{
   const t=Date.parse(value);
@@ -95,14 +95,14 @@ function paint(){
     <button type="button" class="subtle-button" data-report="close">닫기</button></div>`;
 }
 
-export async function openReport(view){
+export async function openReport(view,extra={}){
   if(S.busy)return;
-  S.view=view;S.busy=true;S.error='';S.data=null;
+  S.view=view;S.extra=extra||{};S.busy=true;S.error='';S.data=null;
   const serial=++S.serial;
   paint();
   if(!$('#report-dialog').open)$('#report-dialog').showModal();
   try{
-    const data=await api.assistantReport(view);
+    const data=await api.assistantReport(view,S.extra);
     if(serial!==S.serial)return;
     S.data=data;
   }catch(error){
@@ -121,7 +121,7 @@ export function initReportDialog({onDisabled}={}){
   dialog.addEventListener('click',event=>{
     const action=event.target.closest('[data-report]')?.dataset.report;
     if(action==='close')dialog.close();
-    if(action==='again')openReport(S.view);          // 5분 안에 같은 조건이면 서버가 저장해 둔 보고서를 돌려준다(비용 없음)
+    if(action==='again')openReport(S.view,S.extra);          // 5분 안에 같은 조건이면 서버가 저장해 둔 보고서를 돌려준다(비용 없음)
     if(action==='save'&&S.data)downloadFile(stampedName(`${S.view}-ai-report`,'md'),reportMarkdown(S.data),'text/markdown;charset=utf-8');
     if(event.target===dialog)dialog.close();          // 배경 클릭
   });

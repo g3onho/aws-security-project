@@ -19,6 +19,7 @@ from .assistant_service import compact
 from .contracts import ACTION_STATES, SEVERITIES, iso
 from .errors import Problem
 from .repositories import honeypot as hp
+from .run_report import build_run_facts
 from .store import now_ms
 
 LOG = logging.getLogger(__name__)
@@ -40,7 +41,12 @@ REQUIRED = {
     "infrastructure": ["임계치 초과 서버", "경보 상태 경보", "가동 이상 서버"],
     "drills": ["실패 시나리오", "기록 없음 시나리오"],
     "honeypot": ["고위험 세션", "AI 분석 미적용 세션", "차단 중 IP"],
+    # 전부 실행 1회의 결과 보고서(v39.3). VIEWS 에는 넣지 않는다 — 화면 보고서가 아니라 실행 단위 보고서다.
+    "drill-run": ["실패 항목", "결과 없는 리전", "열린 포트 발견 리전", "취약 지점 발견 단계"],
 }
+RUN_VIEW = "drill-run"
+RUN_TITLE = "보안 시나리오 실행 결과"
+RUN_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 SYSTEM_PROMPT = """너는 AWS 보안 관제 보고서 작성자다.
 <data> 안의 JSON만 근거로 한국어 요약 보고서를 쓴다.
@@ -66,6 +72,15 @@ SYSTEM_PROMPT = """너는 AWS 보안 관제 보고서 작성자다.
 최대 5개, 우선순위 순. 각 항목에 근거 수치 1개 이상.
 ## 5. 데이터 한계
 unavailable, 기간, 필터 조건."""
+
+# 실행 결과 보고서용 추가 규칙. 기본 규칙은 그대로 두고 아래를 덧붙인다.
+RUN_RULES = """
+추가 규칙(전부 실행 결과 보고서)
+- 이 <data>는 격리된 팀 소유 실습 환경에서 수행한 모의 공격·점검 1회의 결과다. "공격 로그"의 각 줄은 단계 출력에서 코드가 뽑은 사실이다.
+- 발견 여부는 "결과" 값만 따른다. "발견 없음"인 단계를 취약하다고 쓰지 않고, 출력이 없거나 결과가 없는 리전은 "결과 없음"이라고 쓴다.
+- 자격증명·비밀번호 값은 쓰지 않는다(건수만 쓴다). 실습 대상 밖의 주소나 도구 사용법을 새로 제안하지 않는다.
+- "진행 중 항목"이 0이 아니면 5장에 "일부 항목이 아직 끝나지 않음"을 쓴다.
+"""
 
 # -- 상태 라벨(코드가 붙인다. 모델이 다른 항목에 옮겨 붙이지 않게 facts 에 이미 한국어 라벨로 넣는다) ---------------------------------
 STATE_LABEL = {
@@ -435,6 +450,58 @@ class ReportService:
         if warnings:
             facts["원천 경고"] = [_short(m, 160) for m in dict.fromkeys(warnings)][:5]
 
+    # -- 전부 실행 1회 결과 보고서(v39.3) ---------------------------------------------------------------
+    def generate_run(self, run_id, actor):
+        """서버가 그 실행의 결과(SSM 상태 + S3 결과 JSON)를 직접 읽어 요약한다. 사람이 파일을 올릴 필요가 없다."""
+        if not self.enabled:
+            raise Problem(503, "AI 기능이 꺼져 있습니다(ASSISTANT_ENABLED·AWS 연결·IAM 확인).", "ASSISTANT_DISABLED")
+        if not isinstance(run_id, str) or not RUN_ID.match(run_id):
+            raise Problem(400, "runId 가 올바르지 않습니다.", "INVALID_PARAMETER")
+        key = (actor, RUN_VIEW, run_id)
+        now = self.clock()
+        with self._lock:
+            hit = self._cache.get(key)
+            if hit and now - hit[0] < self.cache_seconds:
+                return {**hit[1], "cached": True}
+        run = self.drills.run_detail(run_id)        # 없으면 404 그대로
+        if run.get("type") != "run-all":
+            raise Problem(400, "전부 실행 기록만 요약할 수 있습니다.", "INVALID_PARAMETER")
+        self._rate_check(actor)
+        if self.assistant is not None:
+            self.assistant.check_budget()
+        unavailable = []
+        status = self._source("실행 상태", unavailable, lambda: self.drills.all_status(run_id))
+        report = self._source("공격 로그(SEC-08)", unavailable, lambda: self.drills.report(run_id))
+        if status is None and report is None:
+            raise Problem(502, "원천 데이터를 읽지 못해 보고서를 만들 수 없습니다.", "REPORT_SOURCE_UNAVAILABLE")
+        facts = build_run_facts(run, status, report)
+        started = int(run.get("startedAt") or now_ms())
+        data = {**facts, "조회 조건": {"화면": RUN_TITLE, "실행 ID": run_id, "접수 시각": run.get("createdAt")},
+                "unavailable": unavailable}
+        self._rate_commit(actor)
+        response = self.model.converse(SYSTEM_PROMPT + RUN_RULES,
+                                       [{"role": "user", "content": [{"text": self._user_message(RUN_VIEW, data)}]}],
+                                       None, MAX_OUTPUT_TOKENS, temperature=TEMPERATURE)
+        usage = response.get("usage") or {}
+        if self.assistant is not None:
+            self.assistant.spend(usage)
+        blocks = ((response.get("output") or {}).get("message") or {}).get("content") or []
+        text = re.sub(r"<thinking>.*?</thinking>", "", "".join(b.get("text", "") for b in blocks if "text" in b), flags=re.S).strip()
+        if not text:
+            raise Problem(502, "AI 가 보고서를 만들지 못했습니다. 잠시 후 다시 시도하세요.", "REPORT_EMPTY")
+        params = {"hours": 0, "endOffset": 0}
+        result = {"view": RUN_VIEW, "title": f"{RUN_TITLE} AI 요약 보고서",
+                  "period": {"from": iso(started), "to": iso(now_ms()), "hours": 0, "endOffset": 0},
+                  "filters": {}, "generatedAt": iso(now_ms()), "model": self.model_id, "facts": data, "unavailable": unavailable,
+                  "markdown": text, "warnings": self._warnings(RUN_VIEW, data, text, params, response.get("stopReason") == "max_tokens"),
+                  "usage": {"inputTokens": int(usage.get("inputTokens", 0)), "outputTokens": int(usage.get("outputTokens", 0))},
+                  "cached": False}
+        if self.cache_seconds:
+            with self._lock:
+                self._cache = {k: v for k, v in self._cache.items() if now - v[0] < self.cache_seconds}
+                self._cache[key] = (now, result)
+        return result
+
     # -- 모델 호출 -----------------------------------------------------------------------------------
     def _rate_check(self, actor):
         now = self.clock()
@@ -469,6 +536,8 @@ class ReportService:
         return warnings
 
     def generate(self, view, body, actor):
+        if view == RUN_VIEW:
+            return self.generate_run(body.get("runId") if isinstance(body, dict) else None, actor)
         if view not in VIEWS:
             raise Problem(400, "지원하지 않는 화면입니다.", "INVALID_PARAMETER")
         if not self.enabled:

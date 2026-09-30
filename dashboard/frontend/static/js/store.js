@@ -1,7 +1,7 @@
 // Store 공개 진입점(설계 2.2). UI 는 store.actions·store.selectors·store.subscribe 만 쓴다.
 // 구조: store/api(client·endpoints·validators) → store/adapters → store/state → store/selectors
 // 아래의 옛 이름(state·api·selectEvents 등)은 기존 호환 검사(backend/tests/test_compat_store.mjs)를 위해 남긴다.
-import {actions,subscribe,query,request,reset} from './store/actions.js?v=q6-local-2-l1';
+import {actions,subscribe,query,request,reset} from './store/actions.js?v=v39-5';
 import {selectors} from './store/selectors.js?v=q6-local-2';
 export {filters as state,config,summary,DATA_AS_OF} from './store/state.js?v=q6-local-2';
 export const store=Object.freeze({actions,selectors,subscribe});

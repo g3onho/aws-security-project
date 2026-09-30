@@ -289,7 +289,7 @@ export const actions={
  },
  // 화면별 AI 요약 보고서(조회 전용). 필터는 Store 가 이 화면에서 실제로 쓰는 것만 골라 보낸다(숨겨진 필터가 섞이지 않게).
  // 숫자는 서버가 집계하고 모델은 문장만 쓴다. 취약점·시나리오는 기간 막대를 쓰지 않아 서버가 31일로 고정한다.
- async assistantReport(view){
+ async assistantReport(view,extra={}){
   const status=Object.keys(ACTION_LABELS).find(key=>ACTION_LABELS[key]===filters.status)||'';
   const period={hours:filters.hours,endOffset:filters.endOffset};
   const scoped={
@@ -299,7 +299,7 @@ export const actions={
   }[view];
   markRequest('assistantReport',{status:'loading'});
   try{
-   const response=envelope(await request(endpoints.assistantReport,{method:'POST',body:JSON.stringify({view,...(scoped||{})})}));
+   const response=envelope(await request(endpoints.assistantReport,{method:'POST',body:JSON.stringify({view,...(scoped||{}),...(extra||{})})}));
    markRequest('assistantReport',{status:'success',lastUpdated:Date.now(),requestId:response.meta?.requestId||null,error:null});
    return response.data;
   }catch(error){markRequest('assistantReport',{status:'error',error:error.message});throw error;}

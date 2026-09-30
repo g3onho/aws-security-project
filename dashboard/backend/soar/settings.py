@@ -63,7 +63,7 @@ def configure(overrides=None):
         "ASSISTANT_ENABLED": os.getenv("ASSISTANT_ENABLED", "false"),
         "ASSISTANT_MODEL_ID": os.getenv("ASSISTANT_MODEL_ID", "apac.amazon.nova-pro-v1:0"),
         "ASSISTANT_REGION": os.getenv("ASSISTANT_REGION") or None,
-        "ASSISTANT_DAILY_TOKEN_BUDGET": int(os.getenv("ASSISTANT_DAILY_TOKEN_BUDGET", "500000")),
+        "ASSISTANT_DAILY_TOKEN_BUDGET": int(os.getenv("ASSISTANT_DAILY_TOKEN_BUDGET", "1000000")),
         "ASSISTANT_RATE_PER_10MIN": int(os.getenv("ASSISTANT_RATE_PER_10MIN", "20")),
         "ASSISTANT_REPORT_RATE_PER_10MIN": int(os.getenv("ASSISTANT_REPORT_RATE_PER_10MIN", "6")),
         "ASSISTANT_REPORT_CACHE_SECONDS": int(os.getenv("ASSISTANT_REPORT_CACHE_SECONDS", "300")),

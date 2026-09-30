@@ -5,7 +5,7 @@ import {toast} from './panel.js?v=q6-ui-1';
 import {eventCsv,downloadCsv,stampedName,infrastructureCsv,drillsCsv,honeypotSessionsCsv} from './downloads.js?v=q6-ui-1-l1';
 import {hostViews} from '../pages/infrastructure.js?v=q6-ui-4-l1';
 import {exportVulnerabilities} from '../pages/vulnerabilities.js?v=q6-ui-6-l1';
-import {openReport,initReportDialog} from './report.js?v=q6-ui-1-l1';
+import {openReport,initReportDialog} from './report.js?v=v39-3';
 
 export const EXPORT_VIEWS=new Set(['events','vulnerabilities','infrastructure','drills','honeypot']);
 const iso=ms=>ms?new Date(ms).toISOString():'';
