@@ -7,7 +7,7 @@
 // horizon can show a minor straight-line seam.
 const CX=500, CY=230, BASE_R=380, D2R=Math.PI/180, PHI_LIMIT=80;
 export const ZOOM_MIN=1, ZOOM_MAX=3.2, DEFAULT_ZOOM=1, REGION_ZOOM=2.6; // v2.2.1: default view now 1.0x (user request) -- the globe rim is visible at this zoom, which is expected
-export const DEFAULT_ROTATION=[126.978,37.566]; // v2.2.1: centered exactly on Seoul (ap-northeast-2), not just "Korea-ish" East Asia
+export const DEFAULT_ROTATION=[2.35,48.86]; // 홈 리전 파리(eu-west-3) — constants.js regions 의 좌표와 같다. 2026-09-30 서울→파리 이전
 
 export function wrapLon(lon){return((lon+180)%360+360)%360-180;}
 export function clampPhi(phi){return Math.max(-PHI_LIMIT,Math.min(PHI_LIMIT,phi));}

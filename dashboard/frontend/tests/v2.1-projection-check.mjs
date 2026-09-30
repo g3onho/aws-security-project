@@ -1,6 +1,7 @@
 // Pure-math sanity checks for the v2.1 rotating-globe projection (static/js/ui/map/globe.js).
 // Node-only, no browser required: run with `node tests/v2.1-projection-check.mjs`.
 import {project, wrapLon, clampPhi, DEFAULT_ROTATION, DEFAULT_ZOOM, REGION_ZOOM, ZOOM_MIN, ZOOM_MAX} from '../static/js/ui/map/globe.js';
+import {regions} from '../static/js/ui/constants.js';
 
 function approx(a, b, eps, label) {
   if (Math.abs(a - b) > eps) throw new Error(`FAIL ${label}: got ${a}, expected ~${b}`);
@@ -59,8 +60,10 @@ approx(clampPhi(-95), -80, 1e-6, 'clampPhi(-95)');
   console.log(`ok DEFAULT_ZOOM (${DEFAULT_ZOOM}) shows the rim by design: R=${(BASE_R * DEFAULT_ZOOM).toFixed(0)} <= corner ${cornerDist.toFixed(0)}`);
   if (!(REGION_ZOOM > DEFAULT_ZOOM && REGION_ZOOM <= ZOOM_MAX && ZOOM_MIN <= DEFAULT_ZOOM)) throw new Error('FAIL: zoom constants out of expected order');
   console.log(`ok zoom ordering: ZOOM_MIN(${ZOOM_MIN}) <= DEFAULT_ZOOM(${DEFAULT_ZOOM}) < REGION_ZOOM(${REGION_ZOOM}) <= ZOOM_MAX(${ZOOM_MAX})`);
-  if (!(DEFAULT_ROTATION[0].toFixed(3) === '126.978' && DEFAULT_ROTATION[1].toFixed(3) === '37.566')) throw new Error(`FAIL: DEFAULT_ROTATION should be centered exactly on Seoul, got ${DEFAULT_ROTATION}`);
-  console.log(`ok DEFAULT_ROTATION is centered exactly on Seoul (ap-northeast-2): ${DEFAULT_ROTATION}`);
+  // 첫 화면은 홈 리전(2026-09-30 서울→파리 이전) 중심. 좌표는 regions 목록의 값과 같아야 한다.
+  const home = regions.find(r => r.id === 'eu-west-3');
+  if (!(DEFAULT_ROTATION[0] === home.lon && DEFAULT_ROTATION[1] === home.lat)) throw new Error(`FAIL: DEFAULT_ROTATION should be centered on Paris (eu-west-3) ${home.lon},${home.lat}, got ${DEFAULT_ROTATION}`);
+  console.log(`ok DEFAULT_ROTATION is centered on the home region Paris (eu-west-3): ${DEFAULT_ROTATION}`);
 }
 
 // 8) v2.2.1 bug fix: attack-line arcs are altitude-lifted (up to 8% beyond the flat globe
