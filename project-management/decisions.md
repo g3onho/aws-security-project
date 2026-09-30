@@ -7,7 +7,7 @@
 | 목적 | 확정된 선택, 결정 근거, 영향 범위와 미결정 질문을 한 곳에서 추적한다. |
 | 적용 범위 | 전체 아키텍처, dashboard, Terraform, 보호 대상, 탐지·SOAR, AI 허니팟, 운영·검증 |
 | 책임 역할 | 프로젝트 설계 책임자가 결정 상태와 영향 문서를 관리한다. 정책 결정은 권한을 가진 사용자·보안·운영 담당자가 확정한다. |
-| 관련 문서 | [전체 설계](../README.md), [AI 작업 지침](../agents.md), [Dashboard 설계](../dashboard/dashboard-design.md), [Terraform 설계](../terraform/infrastructure-design.md), [허니팟 설계](../honeypot/honeypot-design.md), [보안 시나리오](security-scenarios.md), [공통 용어](glossary.md), [추적 현황](tracking.md) |
+| 관련 문서 | [전체 설계](../README.md), [AI 작업 지침](../agents.md), [Dashboard 설계](../dashboard/dashboard-design.md), [Terraform 설계](../terraform/infrastructure-design.md), [허니팟 설계](honeypot-design.md), [보안 시나리오](security-scenarios.md), [공통 용어](glossary.md), [추적 현황](tracking.md) |
 | 기록 원칙 | 설계 결정은 코드의 현재 상태와 다를 수 있다. 구현 및 검증 상태는 tracking.md에서 별도로 관리한다. |
 | 갱신을 유발하는 변경 | 사용자 선택, 보안·운영 정책 승인, 요구사항·제약 변경, 편차 분류 변경 |
 

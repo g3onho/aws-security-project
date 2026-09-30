@@ -7,7 +7,7 @@
 | 문서 목적 | 탐지부터 재검증까지 보안 검증 시나리오와 안전한 증적 기준 정의 |
 | 적용 범위 | SEC-01~SEC-10, 웹·인증 경로 검증, 수동 및 자동 조치 확인 |
 | 책임 역할 | 보안 설계자: 시나리오·통제 승인, 구현 담당자: 코드·계약 반영, 검증 담당자: 격리된 환경에서 증적 수집 |
-| 기준 문서 | [README.md](../README.md), [agents.md](../agents.md), [dashboard-design.md](../dashboard/dashboard-design.md), [infrastructure-design.md](../terraform/infrastructure-design.md), [honeypot-design.md](../honeypot/honeypot-design.md), [glossary.md](glossary.md), [tracking.md](tracking.md), [decisions.md](decisions.md) |
+| 기준 문서 | [README.md](../README.md), [agents.md](../agents.md), [dashboard-design.md](../dashboard/dashboard-design.md), [infrastructure-design.md](../terraform/infrastructure-design.md), [honeypot-design.md](honeypot-design.md), [glossary.md](glossary.md), [tracking.md](tracking.md), [decisions.md](decisions.md) |
 | 확인 근거 | 읽기 전용 소스와 기존 가이드 정적 검토. 이 문서는 AWS 실행, 공격 재현, 통합 검증이 완료되었다고 주장하지 않는다. 구현 조사 기준일과 경로별 근거는 tracking.md에서 관리한다. |
 
 ## 1. 목적과 적용 원칙
@@ -108,7 +108,7 @@ flowchart LR
 
 IAM Access Key 비활성화 경로에는 확인한 코드상 화이트리스트와 전역 ENABLE_AUTO 검사는 있으나, 보안 그룹 태그 검사는 없다. 따라서 두 경로를 동일한 “3중 안전장치”라고 문서화하지 않는다. 사용자는 현 단계의 자동 조치에 추가 확인 단계를 넣지 않고, 확장된 승인·정책 설계는 후속 과제로 두도록 결정했다. 이미 연결된 자동 경로의 실행 전 확인 게이트를 이번 기준에서 새로 추가하지 않는다.
 
-NACL의 ASR-BlockIpWithNacl 문서는 별도 수동 승인 방식으로 작성되어 있다. 사용자는 2026-09-28에 무차별 대입 알람 두 가지(SEC-06A MySQL 인증 실패, SEC-06B VPC 내부 출발지 SSH 22번 거부 급증)에 한해 이 문서의 자동 실행을 확정했다(DEC-018·DEC-019). 그 밖의 IP 차단과 접속 즉시 차단(허니팟 등)은 확정되지 않았으며 수동 승인 흐름을 유지한다. Private NACL이 애플리케이션 및 DB 서브넷에서 공유될 수 있으므로 차단 영향 범위를 확인한다. 자동 차단은 VPC CIDR 안 주소만, 보호 자산(Role 태그 service-3tier·database·soar-dashboard 인스턴스와 ALB·VPC 엔드포인트 등 AWS 관리 ENI) 주소는 제외하며, NACL은 같은 서브넷 안 트래픽을 거르지 못하므로(decisions GAP-009) 공격 대상은 다른 서브넷 자원으로 두고, 자동 만료가 없으므로 시연 후 1~99번 Deny를 직접 정리한다.
+NACL의 ASR-BlockIpWithNacl 문서는 별도 수동 승인 방식으로 작성되어 있다. 사용자는 2026-09-28에 무차별 대입 알람 두 가지(SEC-06A MySQL 인증 실패, SEC-06B VPC 내부 출발지 SSH 22번 거부 급증)에 한해 이 문서의 자동 실행을 확정했다(DEC-018·DEC-019). 2026-09-29에는 허니팟 접속 알람도 같은 자동 차단 경로로 확정했다(DEC-020, `auto_remediable_controls`에 `HONEYPOT`이 있을 때만). 그 밖의 IP 차단은 확정되지 않았으며 수동 승인 흐름을 유지한다. Private NACL이 애플리케이션 및 DB 서브넷에서 공유될 수 있으므로 차단 영향 범위를 확인한다. 자동 차단은 VPC CIDR 안 주소만, 보호 자산(Role 태그 service-3tier·database·soar-dashboard 인스턴스와 ALB·VPC 엔드포인트 등 AWS 관리 ENI) 주소는 제외하며, NACL은 같은 서브넷 안 트래픽을 거르지 못하므로(decisions GAP-009) 공격 대상은 다른 서브넷 자원으로 두고, 자동 차단은 `ip_blocklist`에 기록되어 기본 24시간 뒤 `block_expiry`가 해제한다(DEC-021). `enable_block_expiry`를 끈 환경에서는 만료되지 않으므로 시연 후 1~99번 Deny를 직접 정리한다.
 
 Security Hub 규칙 ID 정확 일치 자동 조치 7종(EC2.2·EC2.7·EC2.182·S3.1·IAM.7·SSM.6·SSM.7, DEC-017)은 재부팅이 없고 Terraform이 관리하지 않는 계정·리전 설정만 바꾼다. 게이트는 규칙 목록과 전역 ENABLE_AUTO이며 태그 검사는 없다. 문서는 현재 값을 먼저 읽고 위반일 때만 바꾼다.
 
@@ -139,9 +139,9 @@ Security Hub 규칙 ID 정확 일치 자동 조치 7종(EC2.2·EC2.7·EC2.182·S
 | SEC-09 | CloudTrail, Config, VPC Flow Logs 등 감사 신호 확인 | 원천별 콘솔/API 조회 및 중앙 관측 | 원천별 수집·보존·권한 상태를 기록. 누락 원천은 데이터 없음으로 합치지 않음 |
 | SEC-10 | EC2 CPU·메모리 및 WAF 지표 경보 확인 | CloudWatch metric/alarm 및 SNS | 임계값과 평가 조건이 환경별 변수인지 확인. 경보 발생과 서비스 영향 및 회복을 별도로 검증 |
 
-### AI 허니팟 후보 시나리오 경계
+### AI 허니팟(A6) 시나리오 경계
 
-AI 허니팟은 프로젝트 목표 범위에 포함하되, 구현 기술과 자동 차단 정책은 미결정이다. 기존 공격 시뮬레이션·조치 검증 가이드만으로 구현이 존재한다고 간주하지 않는다. Beelzebub, OpenAI, Bedrock, 접속 즉시 NACL 차단은 확정 시나리오가 아니며, 별도 설계·결정과 안전 통제 승인을 거친 후 검증 항목으로 편입한다. 현재 이 문서의 SEC-01~SEC-10에는 구현 또는 검증 완료 상태로 포함하지 않는다.
+AI 허니팟은 DEC-020으로 구현 범위가 확정됐다. 미끼 서버(가짜 SSH 셸)에 접속하면 `HoneypotHitCount` 알람이 ALARM이 되고, `HONEYPOT` 자동 차단이 켜진 환경에서는 `asr_trigger`가 최다 출발지 IP를 NACL로 차단한다. AI(Bedrock, 현재 Nova Lite)는 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다(DEC-037). 시연은 두 가지다. ① 전부 실행의 HONEYPOT 항목이 서울 VPC 안 공격자 EC2에서 미끼 사설 IP로 SSH 접속한다(`ATK-HoneypotProbe`). ② `ATK-HoneypotAiDemo`·`scripts/honeypot-ai-demo.sh`가 AI 응답 경로를 확인한다. 이 시나리오는 SEC-01~SEC-10 번호 체계에 넣지 않은 별도 시나리오이며, 통과·실환경 검증 상태는 [tracking.md](tracking.md)의 HNY 행에서만 판단한다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011). 구성·데이터 계약은 [honeypot-design.md](honeypot-design.md)에 둔다.
 
 ## 6. 핵심 시나리오 상세
 

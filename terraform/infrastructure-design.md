@@ -4,9 +4,9 @@
 
 | 항목 | 내용 |
 |---|---|
-| 적용 범위 | Terraform 원격 state, AWS 인프라 자원, 4개 모듈의 책임과 인터페이스, 탐지·SOAR 연결, IAM, 배포·운영·비용·검증 경계 |
+| 적용 범위 | Terraform 원격 state, AWS 인프라 자원, 4개 기능 모듈(선택 구성으로 `honeypot` 모듈과 시연용 다중 리전 `attacker` 모듈 포함)의 책임과 인터페이스, 탐지·SOAR 연결, IAM, 배포·운영·비용·검증 경계 |
 | 책임 역할 | IaC 담당, 네트워크·보안 담당, SOAR/대시보드 담당, 배포 승인자, 운영·비용 담당 |
-| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../honeypot/honeypot-design.md`](../honeypot/honeypot-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md), [`../project-management/tracking.md`](../project-management/tracking.md) |
+| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../project-management/honeypot-design.md`](../project-management/honeypot-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md), [`../project-management/tracking.md`](../project-management/tracking.md) |
 | 조사 근거 | Terraform HCL, GitHub Actions workflow, 루트 README와 공통 관리 기준을 대조 |
 | 변경 이력 | 설계 선택·예외는 `../project-management/decisions.md`, 구현 및 검증 증거는 `../project-management/tracking.md`에 커밋 버전과 연결 |
 
@@ -317,7 +317,7 @@ terraform/
 | TF-014 | 기능/통합/실환경 검증 및 복구 | 신규 모듈, 탐지 시나리오, output/health/rollback 변경 |
 | TF-015 | 네 모듈·root·artifact 디렉터리 경계 | HCL 파일·module·template/document 이동 또는 신규 영역 추가 |
 | TF-016 | protected service와 DVWA/attacker 분리 | 서브넷, SG, target, 공격 환경 변경 |
-| TF-017 | AI honeypot 목표와 infrastructure boundary | honeypot vendor/runtime/data/egress/containment 설계 확정 |
+| TF-017 | AI honeypot 목표와 infrastructure boundary | `modules/honeypot`(EC2·전용 SG·최소 IAM·로그 그룹·알람)이 `terraform/honeypot.tf`의 `enable_honeypot`으로 배치된다(DEC-020). 남은 확인: 미끼 egress 범위, 세션 로그 보존·개인정보, 실환경 격리 검증 |
 | TF-018 | Terraform 변경 완료 및 커밋 연계 | 요구사항, 코드 증적, 변경 이력 형식 변경 |
 
 Terraform 변경의 완료 조건은 영향받는 설계·API/로그 데이터 계약·공격/대응 시나리오·검증 기준·코드/문서 링크·추적표 행을 검토한 뒤 충족한다. apply를 실행했다면 승인된 plan hash/commit, actor, account/region, 출력·로그의 제한된 증적, 정상/실패·정리 결과를 기록한다. 커밋 제목은 사용자 확정 형식 `vN` 또는 사소한 수정의 `vN.M`만 사용하고, 자세한 변경은 별도 결정/변경 기록에 버전으로 연결한다.

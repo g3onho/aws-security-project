@@ -1,11 +1,12 @@
-"""공격·대응 실습(drills) 조회 계약 — 1차(관측·구조) 범위.
+"""공격·대응 실습(drills) — 카탈로그·이력 조회와 실행(web-scan·run-all).
 
-이 모듈은 조회 전용이다. 실제 공격·부하 실행, SSM 호출, 대상 변경은 하지 않는다.
+조회(카탈로그·이력·상태·보고서)는 공급자 없이도 동작한다. 실행(start_web_scan·start_all)은 공급자를 통해
+SSM SendCommand 로 실제 공격·부하를 일으키며, 호출하는 라우트가 WRITE_ENABLED 로 막는다.
 - 실행 유형과 SEC 시나리오 카탈로그(설계 기준 정적 자료)를 제공한다.
 - 각 시나리오의 실행 지원 상태는 보안-시나리오 문서의 정적 분류를 그대로 표기한다
   (runnable/prep-needed/observe-only/design-needed). 코드가 임의로 승격하지 않는다.
 - 실습 실행 이력은 어댑터 경계(DrillRuns)로 읽는다. 목표 저장소는 DynamoDB이며(DEC-003)
-  현재 로컬 구현은 기존 SQLite Store 를 쓴다. 실행 경로가 없으므로 이력은 아직 비어 있다.
+  현재 로컬 구현은 기존 SQLite Store 를 쓴다. web-scan·run-all 실행 기록이 여기에 저장된다.
 """
 from .errors import Problem
 
