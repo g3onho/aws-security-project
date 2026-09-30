@@ -190,3 +190,32 @@ def test_resolver_rejects_unsupported_inputs():
     no_vpc = {"controlId": "EC2.2", "resource": "arn:aws:ec2:r:1:security-group/sg-0123456789abcdef0",
               "autoRemediation": {"mode": "conditional"}}
     assert resolve(no_vpc)["supported"] is False and resolve(no_vpc, "vpc-0123456789abcdef0")["parameters"]["VpcId"]
+
+
+# v37.1: 대조군(db-manual-sg)은 사람이 승인하면 회수되고, 서비스용 보안그룹은 계속 막힌다.
+def _precheck(tags):
+    from soar.provider import AwsProvider
+
+    class Gateway:
+        def describe_group(self, group_id):
+            return {"vpc": "vpc-1", "name": "sg", "tags": tags, "inbound": [], "outbound": []}
+
+        def measure(self, doc, params):
+            return {"compliant": False, "text": "미충족"}
+
+    fake = type("P", (), {"require_ready": lambda self: None, "_remediation": Gateway()})()
+    plan = {"playbookId": "ASR-RevokeSecurityGroupIngress", "parameters": {"SecurityGroupId": "sg-1"}, "needsTag": True}
+    return AwsProvider.remediation_precheck(fake, plan)
+
+
+def test_manual_control_group_can_be_revoked_after_approval():
+    assert _precheck({"RemediationGroup": "manual"})["blocked"] is None
+
+
+def test_auto_group_can_be_revoked():
+    assert _precheck({"AutoRemediation": "enabled"})["blocked"] is None
+
+
+def test_service_group_without_tags_stays_blocked():
+    result = _precheck({"Name": "soar-sec-dev-alb-sg"})
+    assert "서비스용" in result["blocked"] and result["state"] is None

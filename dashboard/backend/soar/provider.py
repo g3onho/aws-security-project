@@ -45,6 +45,18 @@ def _error_code(error):
     return type(error).__name__
 
 
+
+# v37.1: 0.0.0.0/0 회수(원클릭 조치)를 허용하는 보안그룹.
+#   AutoRemediation=enabled  -> 자동 조치 대상(db-auto-sg)
+#   RemediationGroup=manual  -> 대조군(db-manual-sg). 자동으로는 안 고치지만 사람이 승인하면 고친다.
+# 둘 다 없는 보안그룹은 ALB·웹처럼 원래 전체 공개여야 하는 서비스용이라, 회수하면 사이트가 끊겨 막는다.
+SERVICE_GROUP_BLOCKED = ("서비스용 보안그룹(AutoRemediation=enabled 또는 RemediationGroup=manual 태그 없음)이라 "
+                         "조치하지 않습니다. 공개 규칙을 회수하면 서비스가 끊길 수 있습니다.")
+
+
+def revocable_group(tags):
+    return tags.get("AutoRemediation") == "enabled" or tags.get("RemediationGroup") == "manual"
+
 class UnconfiguredProvider:
     connected = False
     regions = ()
@@ -238,8 +250,8 @@ class AwsProvider:
                 blocked = "대상 보안그룹을 찾을 수 없습니다."
             elif doc == "ASR-RemoveDefaultSgRules" and (group["name"] != "default" or group["vpc"] != params["VpcId"]):
                 blocked = "프로젝트 VPC 의 기본 보안그룹이 아니어서 조치하지 않습니다."
-            elif doc == "ASR-RevokeSecurityGroupIngress" and group["tags"].get("AutoRemediation") != "enabled":
-                blocked = "보안그룹에 AutoRemediation=enabled 태그가 없어(대조군·서비스용) 조치하지 않습니다."
+            elif doc == "ASR-RevokeSecurityGroupIngress" and not revocable_group(group["tags"]):
+                blocked = SERVICE_GROUP_BLOCKED
         return {"blocked": blocked, "state": None if blocked else gateway.measure(doc, params)}
 
     def remediation_measure(self, plan):

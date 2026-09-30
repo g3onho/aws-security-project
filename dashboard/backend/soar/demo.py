@@ -17,7 +17,7 @@ import zlib
 from datetime import datetime, timedelta, timezone
 
 from .guidance import AutoPolicy
-from .provider import AwsProvider
+from .provider import SERVICE_GROUP_BLOCKED, AwsProvider
 
 ACCOUNT = "000000000000"
 REGION = "ap-northeast-2"
@@ -447,7 +447,7 @@ class DemoProvider(AwsProvider):
     RUN_SECONDS = 4
     FAILS = {"ASR-EnableSsmAutomationLogging"}          # 실패 경로를 화면에서 볼 수 있게
     PRE_FIXED = {("ASR-RemoveDefaultSgRules", "sg-0d3m0default01"), ("ASR-EnableEbsDefaultEncryption", None)}  # 자동 조치가 이미 고친 것
-    UNTAGGED = {"sg-0d3m0web0002"}                       # AutoRemediation=enabled 태그가 없는 보안그룹(대조군)
+    UNTAGGED = {"sg-0d3m0web0002"}                       # 회수 허용 태그가 없는 서비스용 보안그룹(웹)
 
     def _demo_state(self):
         if not hasattr(self, "_fixed"):
@@ -469,7 +469,7 @@ class DemoProvider(AwsProvider):
     def remediation_precheck(self, plan):
         blocked = None
         if plan["playbookId"] == "ASR-RevokeSecurityGroupIngress" and plan["parameters"]["SecurityGroupId"] in self.UNTAGGED:
-            blocked = "보안그룹에 AutoRemediation=enabled 태그가 없어(대조군·서비스용) 조치하지 않습니다."
+            blocked = SERVICE_GROUP_BLOCKED
         return {"blocked": blocked, "state": None if blocked else self.remediation_measure(plan)}
 
     def remediation_start(self, plan, seed):
