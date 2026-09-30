@@ -48,7 +48,7 @@ resource "aws_kms_alias" "trail" {
 resource "aws_s3_bucket" "trail" {
   count = var.enable_cloudtrail ? 1 : 0
 
-  bucket        = "${var.name_prefix}-cloudtrail-${var.account_id}"
+  bucket        = "${var.name_prefix}-cloudtrail-${var.region}-${var.account_id}"
   force_destroy = false # 로그는 실수 삭제 방지. destroy 시 수동 정리.
 
   tags = merge(var.tags, { Scenario = "SEC-09" })

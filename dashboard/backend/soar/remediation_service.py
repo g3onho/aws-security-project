@@ -202,6 +202,7 @@ class RemediationService:
         result = {"eventId": event_id, "supported": plan["supported"], "eligible": plan["eligible"], "reason": plan["reason"],
                   "latest": [self.dto(item) for item in latest], "canExecute": False,
                   "canWrite": bool(self.writes_enabled and principal["role"] == "operator"), "blockedReason": None,
+                  "blockOverridable": False,
                   "accountId": getattr(self.provider, "account_id", None), "mode": "demo" if getattr(self.provider, "demo", False) else "aws"}
         if not plan["supported"]:
             return result
@@ -218,6 +219,7 @@ class RemediationService:
                 result["current"] = check["state"]
                 if check["blocked"]:
                     result["canExecute"], result["blockedReason"] = False, check["blocked"]
+                    result["blockOverridable"] = bool(check.get("overridable"))
                 elif check["state"] and check["state"]["compliant"]:
                     result["alreadyCompliant"] = True
             except Exception as error:  # noqa: BLE001
@@ -261,8 +263,11 @@ class RemediationService:
         self.provider.require_ready()
         if not self.writes_enabled:
             raise Problem(403, "현재 조회 전용 모드입니다.", "WRITE_DISABLED")
-        if (not isinstance(body, dict) or set(body) != {"reason", "playbookId"} or not isinstance(body["playbookId"], str)
-                or not isinstance(body["reason"], str) or not 1 <= len(body["reason"].strip()) <= 500):
+        if (not isinstance(body, dict) or not {"reason", "playbookId"} <= set(body)
+                or not set(body) <= {"reason", "playbookId", "acknowledgeRisk"}
+                or not isinstance(body["playbookId"], str) or not isinstance(body["reason"], str)
+                or not 1 <= len(body["reason"].strip()) <= 500
+                or not isinstance(body.get("acknowledgeRisk", False), bool)):
             raise Problem(400, "reason(1~500자)과 playbookId 가 필요합니다.", "INVALID_PARAMETER")
         self._key(key)
         event = self._event(event_id, actor)
@@ -291,7 +296,15 @@ class RemediationService:
         except Exception as error:  # noqa: BLE001 — 지금 상태를 모르면 실행하지 않는다
             raise Problem(502, "실행 전 대상 상태를 읽지 못해 조치하지 않았습니다.", "PRECHECK_FAILED", detail=_code(error)) from error
         if check["blocked"]:
-            raise Problem(409, check["blocked"], "REMEDIATION_BLOCKED")
+            # 가용성 위험을 감수하는 차단만, 조작자가 팝업에서 위험을 확인했을 때 넘어간다.
+            if not (check.get("overridable") and body.get("acknowledgeRisk")):
+                raise Problem(409, check["blocked"], "REMEDIATION_BLOCKED")
+            self._audit(actor, event_id, "remediation.override",
+                        {"playbookId": plan["playbookId"], "blocked": check["blocked"], "reason": body["reason"].strip()})
+            try:   # 차단 시 precheck 는 현재 상태를 재지 않는다 — 조치 전/후 비교를 위해 여기서 읽는다
+                check = {**check, "state": self.provider.remediation_measure(plan)}
+            except Exception as error:  # noqa: BLE001
+                raise Problem(502, "실행 전 대상 상태를 읽지 못해 조치하지 않았습니다.", "PRECHECK_FAILED", detail=_code(error)) from error
         now = now_ms()
         snapshot = {k: event.get(k) for k in ("resource", "region", "accountId", "title", "severity", "controlId")}
         item = {"id": "rem-" + uuid.uuid4().hex[:16], "eventId": event_id, "actor": actor, "requestKey": key,

@@ -1105,6 +1105,12 @@ tr.event-row:hover>td{background:#eef3f1}
 .rem-runs{list-style:none;margin:0;padding:0;display:grid;gap:8px}.rem-run{padding:9px 11px;background:#ebf3ee;border:1px solid #d5e2d9;border-radius:4px}
 .rem-facts-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:13px;color:#314437}.rem-facts-list li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px}.rem-facts-list li>span:first-child{color:#506154}.rem-facts-list li.bad{color:#8f1f2d}.rem-facts-list code{font-size:12px}
 .rem-warn{margin:0 0 12px;padding:9px 12px;border-radius:4px;border:1px solid #e0cf86;background:#faf3d9;color:#5f5010;font-size:14px}
+/* 기본적으로 막아 둔 대상을 위험 확인 후 조치할 때. 경고(노랑)보다 한 단계 강한 빨강으로 구분한다. */
+.rem-risk{margin:0 0 12px;padding:10px 12px;border-radius:4px;border:1px solid #d99a9a;background:#fbeaea;color:#7a2020;font-size:14px}
+.rem-risk-why{margin:0 0 8px}
+.rem-risk-ask{margin:0}
+.primary-button.rem-override{background:#a32b2b;border-color:#8d2222}
+.primary-button.rem-override:hover:not(:disabled){background:#8d2222}
 .rem-field{display:block;margin:10px 0 4px;font-size:13.5px;color:#26382b}.rem-field small{color:#506154}
 #rem-reason{width:100%;padding:8px 10px;border:1px solid #a9bbb0;border-radius:4px;background:#fff;font:inherit;font-size:14px;resize:vertical}
 #remediate-dialog{width:min(640px,calc(100% - 30px))}

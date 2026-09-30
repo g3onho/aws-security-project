@@ -470,7 +470,8 @@ class DemoProvider(AwsProvider):
         blocked = None
         if plan["playbookId"] == "ASR-RevokeSecurityGroupIngress" and plan["parameters"]["SecurityGroupId"] in self.UNTAGGED:
             blocked = SERVICE_GROUP_BLOCKED
-        return {"blocked": blocked, "state": None if blocked else self.remediation_measure(plan)}
+        return {"blocked": blocked, "overridable": blocked == SERVICE_GROUP_BLOCKED,
+                "state": None if blocked else self.remediation_measure(plan)}
 
     def remediation_start(self, plan, seed):
         _, runs = self._demo_state()

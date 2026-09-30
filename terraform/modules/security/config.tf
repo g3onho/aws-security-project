@@ -7,7 +7,7 @@
 resource "aws_s3_bucket" "config" {
   count = var.enable_config ? 1 : 0
 
-  bucket        = "${var.name_prefix}-config-${var.account_id}"
+  bucket        = "${var.name_prefix}-config-${var.region}-${var.account_id}"
   force_destroy = true
 
   tags = var.tags

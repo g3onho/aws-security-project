@@ -4,6 +4,7 @@
 읽기 권한이 없으면 '통과'가 아니라 예외로 알린다 — 서비스가 재검증 오류로 기록한다.
 """
 import hashlib
+import uuid
 
 from botocore.exceptions import ClientError
 
@@ -42,7 +43,9 @@ class RemediationGateway:
         """같은 seed 의 재시도는 SSM 이 같은 실행으로 돌려준다(ClientToken). 응답을 잃어도 중복 실행되지 않는다."""
         params = {key: [value] for key, value in parameters.items()}
         params["AutomationAssumeRole"] = [self.automation_role_arn]
-        token = hashlib.sha256(seed.encode()).hexdigest()[:32]
+        # SSM ClientToken 은 UUID 형식 36자여야 한다(32자 hex 는 ParamValidationError 로 시작조차 못 함).
+        # 같은 seed → 같은 해시 → 같은 UUID 라 재시도 멱등성은 그대로다.
+        token = str(uuid.UUID(hex=hashlib.sha256(seed.encode()).hexdigest()[:32]))
         return self._session.client("ssm").start_automation_execution(
             DocumentName=document, Parameters=params, ClientToken=token)["AutomationExecutionId"]
 

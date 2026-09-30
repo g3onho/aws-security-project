@@ -95,6 +95,7 @@ output "target_security_groups" {
   value = {
     auto_remediated = module.network.sg_db_auto_id
     manual_only     = module.network.sg_db_manual_id
+    override_demo   = var.enable_override_demo_sg ? aws_security_group.override_demo[0].id : ""
     private_nacl_id = module.network.private_nacl_id
   }
 }

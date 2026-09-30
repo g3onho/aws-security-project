@@ -219,3 +219,40 @@ def test_auto_group_can_be_revoked():
 def test_service_group_without_tags_stays_blocked():
     result = _precheck({"Name": "soar-sec-dev-alb-sg"})
     assert "서비스용" in result["blocked"] and result["state"] is None
+
+
+# 서비스용 SG 차단은 '가용성 위험을 감수하는' 차단이라 조작자가 팝업에서 확인하면 넘길 수 있다.
+# 반면 대상 없음·프로젝트 VPC 밖은 범위를 벗어나므로 확인으로도 넘기지 않는다.
+
+def test_service_group_block_is_overridable_but_scope_blocks_are_not():
+    assert _precheck({"Name": "soar-sec-dev-alb-sg"})["overridable"] is True
+    assert _precheck({"AutoRemediation": "enabled"})["overridable"] is False
+
+
+def _run_ack(client, event_id, key, ack, reason="위험 확인 후 조치"):
+    plan = client.get(f"/api/events/{event_id}/remediation").json["data"]
+    body = {"reason": reason, "playbookId": plan["playbookId"]}
+    if ack is not None:
+        body["acknowledgeRisk"] = ack
+    return client.post(f"/api/events/{event_id}/remediate", json=body, headers={"Idempotency-Key": key})
+
+
+def test_blocked_plan_tells_ui_the_block_can_be_confirmed(tmp_path):
+    op = login(build(tmp_path), "op")
+    plan = op.get(f"/api/events/{event_of(op, 'EC2.18')}/remediation").json["data"]
+    assert plan["canExecute"] is False and plan["blockOverridable"] is True
+
+
+def test_acknowledged_risk_executes_the_blocked_remediation(tmp_path):
+    op = login(build(tmp_path), "op")
+    event_id = event_of(op, "EC2.18")
+    assert _run_ack(op, event_id, "ack-key-00000001", None).status_code == 409   # 확인 없으면 그대로 막힌다
+    response = _run_ack(op, event_id, "ack-key-00000002", True)
+    assert response.status_code in (200, 202), response.json
+    # 조치 전 상태를 읽어 두어야 조치 전/후 비교가 남는다(차단 시 precheck 는 상태를 재지 않는다)
+    assert response.json["data"]["before"]["text"]
+
+
+def test_acknowledge_flag_must_be_boolean(tmp_path):
+    op = login(build(tmp_path), "op")
+    assert _run_ack(op, event_of(op, "EC2.18"), "ack-key-00000003", "yes").status_code == 400

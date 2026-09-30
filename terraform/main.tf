@@ -21,7 +21,7 @@ locals {
   remediation_actions_table = "${local.name_prefix}-remediation-actions"
   ip_blocklist_table        = "${local.name_prefix}-ip-blocklist"
   tier_status_table         = "${local.name_prefix}-tier-status"
-  scan_results_bucket       = "${local.name_prefix}-scan-results-${local.account_id}"
+  scan_results_bucket       = "${local.name_prefix}-scan-results-${local.region}-${local.account_id}"
 
   # 탐지·취약점 적재(v21). soar 가 만들고(finding_sync), compute 대시보드가 읽는다.
   findings_table        = "${local.name_prefix}-findings"

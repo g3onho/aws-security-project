@@ -261,7 +261,10 @@ class AwsProvider:
                 blocked = "프로젝트 VPC 의 기본 보안그룹이 아니어서 조치하지 않습니다."
             elif doc == "ASR-RevokeSecurityGroupIngress" and not revocable_group(group["tags"]):
                 blocked = SERVICE_GROUP_BLOCKED
-        return {"blocked": blocked, "state": None if blocked else gateway.measure(doc, params)}
+        # overridable: 가용성 위험만 있는 차단(서비스용 SG). 조작자가 위험을 확인하면 실행을 허용한다.
+        # 대상 없음·프로젝트 VPC 밖은 범위를 벗어나는 차단이라 확인으로도 넘기지 않는다.
+        return {"blocked": blocked, "overridable": blocked == SERVICE_GROUP_BLOCKED,
+                "state": None if blocked else gateway.measure(doc, params)}
 
     def remediation_measure(self, plan):
         self.require_ready()

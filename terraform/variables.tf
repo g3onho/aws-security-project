@@ -124,6 +124,12 @@ variable "enable_attacker_instance" {
   default     = false
 }
 
+variable "enable_override_demo_sg" {
+  description = "대시보드 '위험 확인 후 조치' 시연용 SG. 태그 없이 3389 를 전체 공개하고 어디에도 붙이지 않는다 — 회수해도 서비스에 영향이 없다."
+  type        = bool
+  default     = false
+}
+
 variable "enable_geo_attackers" {
   description = <<-EOT
     지리별 공격 시연 fleet(미국·싱가포르·시드니·뭄바이·도쿄 5개 리전에 공인
