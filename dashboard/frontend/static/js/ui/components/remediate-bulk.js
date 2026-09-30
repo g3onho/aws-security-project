@@ -28,17 +28,25 @@ function render(){
  if(bulk.mode==='auto'){renderAuto(box);return;}
  const field=$('#bulk-reason'),reason=field?.value||'',focused=document.activeElement===field,at=field?.selectionStart;
  const canWrite=bulk.items.some(i=>i.plan?.canWrite===true);
- const selected=bulk.items.filter(i=>i.checked&&runnable(i)).length,loading=bulk.items.some(i=>i.loading);
- const rows=bulk.items.map(i=>`<li class="bulk-item${runnable(i)?'':' off'}" data-key="bulk-${esc(i.e.id)}"><label><input type="checkbox" data-bulk-check="${esc(i.e.id)}"${i.checked&&runnable(i)?' checked':''}${runnable(i)&&!bulk.running?'':' disabled'}>
+ // 체크박스를 절대 못 누르는 건(이미 기준 충족 + 정책상 대시보드가 손대면 안 되는 것) 전부
+ // '양호' 섹션으로 뺀다(2026-09-30 사용자 요청) — 실제 사유(태그 없음 등)는 접었을 때 안 보이지만
+ // 펼치면 그대로 남아 있어, 위험이 사라진 게 아니라 '대시보드로는 조치 안 함'이라는 걸 알 수 있다.
+ const compliant=bulk.items.filter(i=>i.plan&&!i.loading&&!i.error&&!runnable(i)&&!i.result);
+ const pending=bulk.items.filter(i=>!(i.plan&&!i.loading&&!i.error&&!runnable(i)&&!i.result));
+ const selected=pending.filter(i=>i.checked&&runnable(i)).length,loading=pending.some(i=>i.loading);
+ const rows=pending.map(i=>`<li class="bulk-item${runnable(i)?'':' off'}" data-key="bulk-${esc(i.e.id)}"><label><input type="checkbox" data-bulk-check="${esc(i.e.id)}"${i.checked&&runnable(i)?' checked':''}${runnable(i)&&!bulk.running?'':' disabled'}>
   <span class="rem-sev">${badge(i.e)}</span><span class="rem-what"><strong>${esc(i.e.guidance?.title||i.e.title)}</strong><small><span class="resource-id" title="${esc(i.e.resource)}">${esc(shortResource(i.e.resource))}</span> · ${esc(i.e.dashboardAction.title)}</small><span class="auto-chip ${REASON[i.reason]?.[1]||'muted'}">${esc(REASON[i.reason]?.[0]||'')}</span></span></label><div class="bulk-state">${planNote(i)}</div></li>`).join('');
- const done=bulk.items.filter(i=>i.result);
+ const compliantRows=compliant.map(i=>`<li class="bulk-item off" data-key="bulk-${esc(i.e.id)}"><span class="rem-sev">${badge(i.e)}</span><span class="rem-what"><strong>${esc(i.e.guidance?.title||i.e.title)}</strong><small><span class="resource-id" title="${esc(i.e.resource)}">${esc(shortResource(i.e.resource))}</span> · ${esc(i.e.dashboardAction.title)}</small><small class="bulk-note">${esc(i.plan.alreadyCompliant?'실행할 필요 없음':(i.plan.blockedReason||'대시보드로는 조치하지 않음'))}</small></span><span class="auto-chip ok">양호</span></li>`).join('');
+ const compliantSection=compliant.length?`<details class="bulk-compliant"><summary>양호 ${compliant.length}건(대응 불필요 또는 대시보드 조치 제외)</summary><ul class="bulk-list">${compliantRows}</ul></details>`:'';
+ const done=pending.filter(i=>i.result);
  const ok=done.filter(i=>['accepted','already'].includes(i.result.kind)).length,bad=done.filter(i=>i.result.kind==='failed').length;
  const summary=done.length&&!bulk.running?`<p class="rem-note ${bad?'warn':'ok'}">${ok}건 처리(접수 또는 이미 충족)${bad?` · ${bad}건 실패`:''}. 접수는 해결이 아닙니다 — 재검증 결과는 조치 이력에서 확인하세요.${bad?' 실패한 건은 사유를 그대로 두고 다시 실행하면 이미 접수된 건은 중복 실행되지 않습니다.':''}</p>`:'';
- box.innerHTML=`<div class="dialog-header"><div><div class="eyebrow">보안 이벤트</div><h2 id="bulk-title">수동 대응 ${bulk.items.length}건</h2><p class="dialog-subtitle">대시보드에서 조치할 수 있는 미조치 항목입니다(수동 대응 필요 · 자동 조치가 실패했거나 실행 뒤에도 열려 있는 것 포함). 고른 항목을 사유 하나로 한 번에 실행합니다.</p></div><button class="dialog-close" data-bulk="close" aria-label="닫기">×</button></div>
+ box.innerHTML=`<div class="dialog-header"><div><div class="eyebrow">보안 이벤트</div><h2 id="bulk-title">수동 대응 ${pending.length}건</h2><p class="dialog-subtitle">대시보드에서 조치할 수 있는 미조치 항목입니다(수동 대응 필요 · 자동 조치가 실패했거나 실행 뒤에도 열려 있는 것 포함). 고른 항목을 사유 하나로 한 번에 실행합니다.${compliant.length?` 이미 양호한 ${compliant.length}건은 아래에 접어 뒀습니다.`:''}</p></div><button class="dialog-close" data-bulk="close" aria-label="닫기">×</button></div>
   <div class="dialog-body">${canWrite||loading?'':'<p class="rem-note warn">이 계정은 조치를 실행할 수 없습니다(조회 전용이거나 실행 권한이 없습니다).</p>'}
   <p class="rem-warn"><strong>실행을 누르면 고른 항목이 바로 실행됩니다.</strong> 건마다 서버가 권한·범위·현재 상태를 다시 확인하며, 실행 뒤 같은 기준으로 자동 재검증합니다.</p>
   <div class="bulk-tools"><button type="button" class="text-button" data-bulk="all"${bulk.running?' disabled':''}>실행 가능한 항목 모두 선택</button><button type="button" class="text-button" data-bulk="none"${bulk.running?' disabled':''}>선택 해제</button><span class="muted-mini">선택 ${selected}건</span></div>
   <ul class="bulk-list">${rows}</ul>
+  ${compliantSection}
   <label class="rem-field" for="bulk-reason">실행 사유 <small>(필수 · 500자 이내 · 선택한 모든 건의 조치 이력에 남습니다)</small></label><textarea id="bulk-reason" maxlength="500" rows="2" placeholder="예: 서비스에 영향이 없음을 확인함">${esc(reason)}</textarea>${summary}</div>
   <div class="dialog-actions"><span>${bulk.running?'순서대로 보내는 중입니다. 창을 닫아도 이미 보낸 건은 계속 진행됩니다.':''}</span><button class="cancel-button" data-bulk="close">닫기</button><button class="primary-button" id="bulk-run" data-bulk="run"${selected&&reason.trim()&&!bulk.running?'':' disabled'}>${bulk.running?'실행 중…':`일괄 조치 · 선택 ${selected}건`}</button></div>`;
  if(focused){const f=$('#bulk-reason');f.focus();if(at!=null)f.setSelectionRange(at,at);}

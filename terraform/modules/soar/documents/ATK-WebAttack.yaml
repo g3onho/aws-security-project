@@ -51,6 +51,11 @@ mainSteps:
         - 'echo "== ATK from {{ RegionLabel }} -> {{ TargetHost }} @ $TS (5-way 병렬) ==" > "$OUT"'
         - '# 부팅 시 만든 attacker 이미지가 준비될 때까지 잠깐 대기'
         - 'for i in $(seq 1 30); do [ -f /opt/attacker/READY ] && break; sleep 5; done'
+        - '# 결과 업로드에 AWS CLI 가 필요한데 공격 노드 부팅 스크립트는 docker·nmap·hydra 만 설치한다. 없으면 여기서 설치한다.'
+        - 'if ! command -v aws >/dev/null 2>&1; then'
+        - '  command -v unzip >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq unzip; } >/dev/null 2>&1'
+        - '  ( cd /tmp && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o awscliv2.zip && unzip -oq awscliv2.zip && ./aws/install --update ) >/dev/null 2>&1'
+        - 'fi'
         - WL=/opt/attacker/wordlists
         - '# 로그인은 빠르고(1~2초) ③⑤ 가 세션을 써야 하므로 병렬 시작 전에 동기적으로 먼저 한다.'
         - JAR=$(mktemp)
@@ -119,6 +124,8 @@ mainSteps:
         - 'rm -rf "$D" "$JAR"'
         - '# 결과 업로드 (지역별 프리픽스). 파일명은 RunToken — 백엔드가 이미 알고 있는 값이라'
         - '# 출력 파싱 없이 바로 다운로드 링크를 만들 수 있다. $TS 는 파일 내용(로그) 쪽에만 남는다.'
-        - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.txt"'
-        - 'aws s3 cp "$OUTJSON" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.json"'
-        - 'echo "uploaded to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.{txt,json} (generated at $TS)"'
+        - '# 업로드가 하나라도 실패하면 명령을 실패로 끝낸다. 예전엔 실패해도 아래 echo 가 찍혀 SSM 이 Success 로 보였고, 보고서만 조용히 비었다.'
+        - 'UP=0'
+        - 'aws s3 cp "$OUT" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.txt" || UP=1'
+        - 'aws s3 cp "$OUTJSON" "s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.json" || UP=1'
+        - 'if [ "$UP" = 0 ]; then echo "uploaded to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}.{txt,json} (generated at $TS)"; else echo "UPLOAD FAILED to s3://{{ ScanBucket }}/atk/{{ RegionLabel }}/{{ RunToken }}" >&2; exit 1; fi'

@@ -38,3 +38,9 @@ variable "attack_document_content" {
   type        = string
   description = "공격 SSM 문서 YAML 내용. 루트에서 file()로 읽어 넘긴다(단일 원본)."
 }
+
+variable "scan_results_bucket" {
+  type        = string
+  default     = ""
+  description = "공격 결과(.txt/.json)를 올릴 스캔 결과 버킷 이름(홈 리전). 비우면 업로드 권한을 만들지 않는다."
+}

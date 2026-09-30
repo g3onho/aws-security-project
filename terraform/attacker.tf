@@ -31,6 +31,7 @@ module "attacker_us_virginia" {
 
   attack_document_name    = local.atk_document_name
   attack_document_content = local.atk_document_content
+  scan_results_bucket     = local.scan_results_bucket
 }
 
 module "attacker_singapore" {
@@ -46,6 +47,7 @@ module "attacker_singapore" {
 
   attack_document_name    = local.atk_document_name
   attack_document_content = local.atk_document_content
+  scan_results_bucket     = local.scan_results_bucket
 }
 
 module "attacker_sydney" {
@@ -61,6 +63,7 @@ module "attacker_sydney" {
 
   attack_document_name    = local.atk_document_name
   attack_document_content = local.atk_document_content
+  scan_results_bucket     = local.scan_results_bucket
 }
 
 module "attacker_mumbai" {
@@ -76,6 +79,7 @@ module "attacker_mumbai" {
 
   attack_document_name    = local.atk_document_name
   attack_document_content = local.atk_document_content
+  scan_results_bucket     = local.scan_results_bucket
 }
 
 module "attacker_tokyo" {
@@ -91,6 +95,7 @@ module "attacker_tokyo" {
 
   attack_document_name    = local.atk_document_name
   attack_document_content = local.atk_document_content
+  scan_results_bucket     = local.scan_results_bucket
 }
 
 ############################################

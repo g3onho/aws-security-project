@@ -29,7 +29,7 @@ const RUNNING=new Set(['Pending','InProgress','Delayed','Cancelling']);
 
 let catalog=null,runs=null;
 const run={runId:null,items:[],skipped:[],busy:false,error:null,timer:null,done:false};
-// SEC-08 공격 로그(.txt·.json) 다운로드 링크. runId 당 한 번 요청, [다시 확인]으로 재요청(아직 안 끝난 리전 채우기).
+// [보고서 추출] 상태. 누를 때마다 서버에서 리전별 SEC-08 로그를 읽어 파일 하나로 바로 내려받는다(아직 안 끝난 리전은 빠지고, 다시 누르면 채워진다).
 const report={runId:null,regions:null,loading:false,error:null};
 function downloadJson(filename,obj){
  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
@@ -109,26 +109,10 @@ function runPanel(){
   ${elig}
   <div class="drill-actions">
    <button type="button" class="primary-button" ${attr}>${run.busy?'실행 중…':'전부 실행'}</button>
-   <button type="button" class="cancel-button" ${reportAttr} title="SEC-08 공격 로그(.txt·.json)를 S3에서 내려받을 링크를 만듭니다">${report.loading?'추출 중…':'보고서 추출'}</button>
+   <button type="button" class="cancel-button" ${reportAttr} title="SEC-08 공격 로그를 리전 구분 없이 파일 하나(atk-report-*.json)로 바로 내려받습니다. 아직 끝나지 않은 리전은 이번 파일에서 빠지니, 끝난 뒤 다시 누르세요.">${report.loading?'추출 중…':'보고서 추출'}</button>
   </div>
   ${run.error?`<p class="panel-error" role="alert">${esc(run.error)}</p>`:''}
   ${report.error?`<p class="panel-error" role="alert">${esc(report.error)}</p>`:''}</div>`;
-}
-
-function reportSection(){
- if(!report.regions)return '';
- const entries=Object.entries(report.regions);
- const rows=entries.map(([label,r])=>
-  `<tr><td>${esc(label)}</td><td>${r.ready?'포함됨':esc(r.reason||'제외')}</td></tr>`).join('');
- const readyCount=entries.filter(([,r])=>r.ready).length;
- return `<section class="panel full-panel">${header('공격 로그 보고서','SEC-08 REPORT')}
-  <p class="muted">[보고서 추출]을 누르면 리전을 나누지 않고 파일 하나(atk-report-*.json)로 바로 다운로드됩니다.
-   분석 프롬프트가 포함돼 있어 그대로 분석 도구에 넣으면 됩니다. 아직 안 끝난 리전은 이번 파일에서 빠지니,
-   끝난 뒤 다시 누르면 그때 포함됩니다.</p>
-  <p class="muted">이번 다운로드에 포함: ${readyCount}/${entries.length}개 리전</p>
-  <div class="table-scroll"><table><caption class="sr-only">공격 로그 보고서 포함 여부</caption>
-  <thead><tr><th>출발 지역</th><th>이번 파일 포함 여부</th></tr></thead>
-  <tbody>${rows||'<tr><td colspan="2" class="muted">SEC-08 실행 결과가 없습니다.</td></tr>'}</tbody></table></div></section>`;
 }
 
 function progressSection(){
@@ -163,7 +147,7 @@ function runsSection(){
 
 function paint(){
  return `<section class="panel full-panel drill-workspace">${header('보안 시나리오','SCENARIOS')}
-  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${progressSection()}${reportSection()}${runsSection()}`;
+  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${progressSection()}${runsSection()}`;
 }
 function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();if(flowId)paintFlowDialog();}
 

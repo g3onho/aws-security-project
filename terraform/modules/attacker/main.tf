@@ -43,7 +43,7 @@ data "aws_ami" "ubuntu" {
 }
 
 ############################################
-# IAM — SSM 관리 + 결과 CloudWatch Logs 업로드
+# IAM — SSM 관리 + CloudWatch Agent + 결과 S3 업로드(atk/ 쓰기 전용)
 ############################################
 
 data "aws_iam_policy_document" "assume" {
@@ -74,6 +74,26 @@ resource "aws_iam_role_policy_attachment" "cwagent" {
   count      = var.enabled ? 1 : 0
   role       = aws_iam_role.this[0].name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+# ATK-WebAttack 문서가 끝에 aws s3 cp 로 결과를 홈 리전 스캔 결과 버킷의 atk/ 아래에 올린다.
+# 이 권한이 없으면 CLI 를 설치해도 AccessDenied 로 업로드가 실패해 [보고서 추출]이 비어 있다(2026-09-30).
+# 쓰기만, atk/ 경로만 준다 — 조회·삭제·다른 경로는 주지 않는다. IAM 은 전역이라 노드가 다른 리전에 있어도 홈 리전 버킷에 쓸 수 있다.
+data "aws_iam_policy_document" "atk_upload" {
+  count = var.enabled && var.scan_results_bucket != "" ? 1 : 0
+
+  statement {
+    sid       = "UploadAttackReport"
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${var.scan_results_bucket}/atk/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "atk_upload" {
+  count  = var.enabled && var.scan_results_bucket != "" ? 1 : 0
+  name   = "atk-upload"
+  role   = aws_iam_role.this[0].id
+  policy = data.aws_iam_policy_document.atk_upload[0].json
 }
 
 resource "aws_iam_instance_profile" "this" {
