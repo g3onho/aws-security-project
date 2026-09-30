@@ -373,11 +373,11 @@ class AwsProvider:
                 regions[label] = {"ready": False, "reason": _error_code(error)}
         return regions
 
-    # --- 서울 서비스 호스트 대상 스캔·부하 실행(전부 실행의 SEC-02/07/10) ------------
+    # --- 파리(홈 리전) 서비스 호스트 대상 스캔·부하 실행(전부 실행의 SEC-02/07/10) ------------
     # 웹 공격(geo)과 달리 이들은 서비스 3-tier 호스트(docker-host)에서 로컬로 돈다.
     # 인스턴스는 태그 Role=service-3tier 로 홈 리전에서 런타임 탐색한다(IP·ID 하드코딩 회피).
 
-    def discover_host_by_role(self, region, role, region_label="seoul"):
+    def discover_host_by_role(self, region, role, region_label="paris"):
         """홈 리전에서 태그 Role=<role> 인 running 인스턴스 하나를 찾는다.
         -> {regionLabel, regionCode, instanceId} 또는 None."""
         self.require_ready()
@@ -447,7 +447,7 @@ class AwsProvider:
                 raise Problem(502, f"{step['sec']} 실행 실패: {code}. "
                               "대시보드 롤의 ssm:SendCommand 권한과 대상 문서를 확인하세요.",
                               "SCAN_SEND_FAILED")
-            launched.append({"sec": step["sec"], "regionLabel": target.get("regionLabel", "seoul"),
+            launched.append({"sec": step["sec"], "regionLabel": target.get("regionLabel", "paris"),
                              "regionCode": target["regionCode"], "instanceId": target["instanceId"],
                              "commandId": resp["Command"]["CommandId"]})
         return launched

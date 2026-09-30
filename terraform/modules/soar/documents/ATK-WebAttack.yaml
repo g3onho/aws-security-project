@@ -1,6 +1,6 @@
 schemaVersion: '2.2'
 description: |
-  지리별 공격자 노드에서 서울 DVWA 대상으로 자동 공격을 실행한다.
+  지리별 공격자 노드에서 파리(홈 리전) DVWA 대상으로 자동 공격을 실행한다.
   ① nmap 포트/서비스 스캔  ② hydra SSH 무차별 대입  ③ hydra DVWA 웹 로그인 무차별 대입
   ④ OWASP ZAP 베이스라인 스캔  ⑤ sqlmap SQL 주입 점검.
   5개를 전부 동시 실행한다(t3.medium 4GB 전제 — t3.micro/small 에서 5개를 한꺼번에

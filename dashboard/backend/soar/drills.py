@@ -119,7 +119,7 @@ class DrillService:
         self.runs = DrillRuns(store)
         self.provider = provider
         self.attack_config = attack_config or {}
-        # 서울 서비스 호스트(docker-host) 스캔·부하 대상 리전. 웹 공격(geo)과 별개.
+        # 파리(홈 리전) 서비스 호스트(docker-host) 스캔·부하 대상 리전. 웹 공격(geo)과 별개.
         self.home_region = self.attack_config.get("homeRegion") or getattr(provider, "region", None)
 
     def attack_ready(self):
@@ -182,14 +182,14 @@ class DrillService:
         return {"runId": run_id, "targetIp": run.get("targetIp"),
                 "startedAt": run.get("startedAt"), "regions": regions}
 
-    # --- 전부 실행(SEC-08/06B geo + SEC-02/07/10 서울 서비스 호스트) -----------------
+    # --- 전부 실행(SEC-08/06B geo + SEC-02/07/10 파리 서비스 호스트) -----------------
     def start_all(self, params, actor):
         """[시작] 하나로 준비된 모든 실습을 실행한다. 대상이 없는 항목은 건너뛰고 사유를 남긴다.
         - SEC-08/06B: 지리별 공격자 → DVWA (nmap·hydra ssh·hydra web)
         - SEC-02: 서비스 HTTP·포트/헤더 점검(SCAN-PortAndWeb)
         - SEC-07: 코드/설정 비밀값 점검(SCAN-Secrets)
-        - SEC-10: 서울 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증
-        - HONEYPOT: 서울 VPC 안 공격자 EC2 → 미끼서버 SSH 접속(ATK-HoneypotProbe) → 탐지·자동 차단"""
+        - SEC-10: 파리 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증
+        - HONEYPOT: 파리(홈 리전) VPC 안 공격자 EC2 → 미끼서버 SSH 접속(ATK-HoneypotProbe) → 탐지·자동 차단"""
         active = self._active_run_all()
         if active:
             raise Problem(409, f"이미 실행 중인 작업이 있습니다(실행 ID: {active['runId']}). "
@@ -217,7 +217,7 @@ class DrillService:
         else:
             skipped.append("SEC-08/06B(지리 공격 미설정)")
 
-        # 2) 서울 로컬 실습(SEC-02/07/10). SSM 문서가 실행 시 도구(nmap·trivy·stress-ng)를 자가 설치한다.
+        # 2) 파리(홈 리전) 로컬 실습(SEC-02/07/10). SSM 문서가 실행 시 도구(nmap·trivy·stress-ng)를 자가 설치한다.
         region = self.home_region
         bucket = cfg.get("scanBucket", "")
         # SEC-02(서비스 헤더·포트)와 SEC-07(코드 비밀값)은 서비스와 코드(/opt/app)가 있는
@@ -230,11 +230,11 @@ class DrillService:
                 {"sec": "SEC-04", "documentName": "SCAN-ContainerImage",
                  "parameters": {"ServiceDir": "/opt/app", "ScanBucket": bucket}},
                 {"sec": "SEC-07", "documentName": "SCAN-Secrets",
-                 "parameters": {"ServiceDir": "/opt/app", "ScanBucket": bucket, "RegionLabel": "seoul"}}]))
+                 "parameters": {"ServiceDir": "/opt/app", "ScanBucket": bucket, "RegionLabel": "paris"}}]))
         else:
             skipped.append("SEC-02/04/07(서비스 호스트 미탐색)")
 
-        # SEC-10: 부하. stress-ng 는 실행 노드 자신을 부하시키므로, 서울 EC2(대시보드 제외) 전부에 보낸다.
+        # SEC-10: 부하. stress-ng 는 실행 노드 자신을 부하시키므로, 파리 EC2(대시보드 제외) 전부에 보낸다.
         load = {"ScanBucket": bucket}
         for k_out, k_in in (("DurationSeconds", "durationSeconds"),
                             ("CpuTarget", "cpuTarget"), ("MemPercent", "memPercent")):
@@ -249,7 +249,7 @@ class DrillService:
         else:
             skipped.append("SEC-10(부하 대상 미탐색)")
 
-        # HONEYPOT: 내부 침투 시연. 서울 VPC 안 공격자 EC2(Role=attack-simulation)가 미끼서버(Role=honeypot-decoy)
+        # HONEYPOT: 내부 침투 시연. 파리(홈 리전) VPC 안 공격자 EC2(Role=attack-simulation)가 미끼서버(Role=honeypot-decoy)
         # 사설 IP 로 SSH 접속한다. 인터넷 경유 공격(SEC-08)과 달리 "이미 안으로 들어온" 출발지라야 미끼에 닿는다.
         # 두 인스턴스 중 하나라도 없으면 건너뛴다(enable_attacker_instance·enable_honeypot).
         inner = self.provider.discover_host_by_role(region, "attack-simulation") if region else None
@@ -257,7 +257,7 @@ class DrillService:
         if inner and decoy and decoy.get("privateIp"):
             launched.extend(self.provider.send_commands(inner, [
                 {"sec": "HONEYPOT", "documentName": "ATK-HoneypotProbe",
-                 "parameters": {"HoneypotHost": decoy["privateIp"], "RegionLabel": "seoul"}}]))
+                 "parameters": {"HoneypotHost": decoy["privateIp"], "RegionLabel": "paris"}}]))
         else:
             skipped.append("HONEYPOT(공격자 EC2 또는 미끼서버 미탐색)")
 
@@ -361,7 +361,7 @@ def _label(support):
             "observe-only": "조회 전용", "design-needed": "설계 필요"}.get(support, support)
 
 
-_REGION_KO = {"seoul": "서울", "tokyo": "도쿄", "singapore": "싱가포르",
+_REGION_KO = {"paris": "파리", "tokyo": "도쿄", "singapore": "싱가포르",
               "sydney": "시드니", "mumbai": "뭄바이", "us-virginia": "미국(버지니아)"}
 
 
@@ -369,10 +369,10 @@ def _step_label(cmd):
     """진행·이력 표기는 리전이 아니라 SEC 항목을 앞세운다(예: 'SEC-10 · docker-host', 'SEC-08 · 도쿄')."""
     sec = cmd.get("sec") or "실행"
     region = cmd.get("regionLabel")
-    if sec == "SEC-08" and region and region != "seoul":
+    if sec == "SEC-08" and region and region != "paris":
         return f"{sec} · {_REGION_KO.get(region, region)}"  # geo: 출발 지역
     if sec == "HONEYPOT":
-        return "HONEYPOT · 내부 침투"  # 출발은 서울 VPC 안 공격자 EC2
+        return "HONEYPOT · 내부 침투"  # 출발은 파리(홈 리전) VPC 안 공격자 EC2
     if sec == "SEC-10" and region:
         return f"{sec} · {_REGION_KO.get(region, region)}"  # 부하: 대상 EC2 이름
     return sec

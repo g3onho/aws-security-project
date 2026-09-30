@@ -7,7 +7,7 @@
 #   인도(뭄바이)    ap-south-1
 #   도쿄            ap-northeast-1
 #
-# 각 리전에 공인 공격자 EC2 1대씩. 서로 다른 국가 공인 IP로 서울 DVWA를
+# 각 리전에 공인 공격자 EC2 1대씩. 서로 다른 국가 공인 IP로 파리(홈 리전) DVWA를
 # 인터넷 경유 공격 → GuardDuty가 remoteIpDetails.geoLocation 으로 출발지
 # 국가를 태깅한다. 대시보드 지도에 "미국발/싱가포르발/..." 로 표시된다.
 #
