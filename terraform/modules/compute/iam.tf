@@ -333,6 +333,8 @@ data "aws_iam_policy_document" "dashboard_execute" {
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/LOAD-Stress",
       # 내부 침투 시연(공격자 EC2 → 미끼서버 SSH, HONEYPOT).
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ATK-HoneypotProbe",
+      # MySQL 무차별 대입 시연(공격자 EC2 → DB EC2, SEC-06A).
+      "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ATK-MysqlBruteForce",
       # 대상 인스턴스(공격자·파리 실습 대상). 실행 시 태그로 탐색하므로 계정 내 인스턴스로 한정.
       "arn:${var.partition}:ec2:*:${var.account_id}:instance/*",
     ]
