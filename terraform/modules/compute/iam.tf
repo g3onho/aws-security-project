@@ -262,6 +262,11 @@ data "aws_iam_policy_document" "dashboard_read" {
       # 읽기 전용이며 키 값 자체는 반환되지 않는다(메타데이터만).
       "iam:ListAccessKeys",
       "iam:GetAccessKeyLastUsed",
+      # SEC-09([전부 실행]) — 감사·구성·로그 수집이 실제로 기록 중인지 조회만 한다. 쓰기 없음.
+      "cloudtrail:DescribeTrails",
+      "cloudtrail:GetTrailStatus",
+      "config:DescribeConfigurationRecorderStatus",
+      "ec2:DescribeFlowLogs",
     ]
     resources = ["*"]
   }
@@ -331,6 +336,30 @@ data "aws_iam_policy_document" "dashboard_execute" {
       # 대상 인스턴스(공격자·파리 실습 대상). 실행 시 태그로 탐색하므로 계정 내 인스턴스로 한정.
       "arn:${var.partition}:ec2:*:${var.account_id}:instance/*",
     ]
+  }
+
+  # SEC-01/03 시연([전부 실행]) — 격리된 실습 SG(기존 Scenario 태그: db-auto-sg="SEC-03",
+  # db-manual-sg="SEC-03/SEC-06", sec01-demo="SEC-01")에만 위반 규칙을 추가하고, asr_trigger 를
+  # 직접 호출해 즉시 회수 결과를 본다(demo/trigger-auto-remediation.sh 와 같은 기법). 새 태그를 넣지
+  # 않는 이유: modules/network 안의 리소스를 바꾸면 module.compute 의 AMI 조회가 apply 시점으로
+  # 밀려 EC2 전부가 재생성된다(override-demo.tf 참고) — 기존 태그만 그대로 재사용한다.
+  # 실서비스 SG(docker-host·web-dvwa 등)에는 이 태그값이 없어 대상이 될 수 없다.
+  statement {
+    sid       = "RunSgViolationDrill"
+    actions   = ["ec2:AuthorizeSecurityGroupIngress"]
+    resources = ["arn:${var.partition}:ec2:${var.region}:${var.account_id}:security-group/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Scenario"
+      values   = ["SEC-01", "SEC-03", "SEC-03/SEC-06"]
+    }
+  }
+
+  statement {
+    sid       = "InvokeAsrTriggerForDrill"
+    actions   = ["lambda:InvokeFunction"]
+    resources = ["arn:${var.partition}:lambda:${var.region}:${var.account_id}:function:${var.name_prefix}-asr-trigger"]
   }
 
   statement {

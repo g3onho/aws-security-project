@@ -130,6 +130,12 @@ variable "enable_override_demo_sg" {
   default     = false
 }
 
+variable "enable_sec01_demo_sg" {
+  description = "SEC-01([전부 실행]) 시연용 SG. AutoRemediation=enabled 태그를 붙이고 어디에도 붙이지 않는다 — 실행할 때 22 를 전체 공개해 위반을 재현하고 즉시 자동 회수한다."
+  type        = bool
+  default     = false
+}
+
 variable "enable_geo_attackers" {
   description = <<-EOT
     지리별 공격 시연 fleet(미국·싱가포르·시드니·뭄바이·도쿄 5개 리전에 공인

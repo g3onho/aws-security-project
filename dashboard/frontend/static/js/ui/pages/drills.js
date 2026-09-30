@@ -9,14 +9,17 @@ import {openReport} from '../components/report.js?v=v39-3';
 
 const SUPPORT_COLOR={runnable:'#bcfbf1','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#93a7b7'};
 // 백엔드 DrillService.start_all 이 한 번에 실행하는 시나리오(SEC-06B 는 SEC-08 지리 공격 실행에 함께 들어 있다).
-const RUN_ALL_SECS=['SEC-02','SEC-04','SEC-06A','SEC-07','SEC-08','SEC-06B','SEC-10'];
+const RUN_ALL_SECS=['SEC-01','SEC-02','SEC-03','SEC-04','SEC-06A','SEC-07','SEC-08','SEC-06B','SEC-09','SEC-10'];
 // [전부 실행] 카드에 보여줄 시나리오별 공격·점검 방법(백엔드 DrillService.start_all 이 쓰는 도구 기준).
 const RUN_METHODS=[
+ ['SEC-01','SSH 과다 공개','전용 실습 SG 에 0.0.0.0/0:22 재현 → asr_trigger 직접 호출로 즉시 자동 회수'],
  ['SEC-02','포트·헤더 점검','nmap 으로 열린 포트를 스캔하고 curl 로 응답 보안 헤더를 확인'],
+ ['SEC-03','DB 포트 노출 비교','db-auto-sg(자동 회수)·db-manual-sg(알림만)에 0.0.0.0/0:3306 재현 후 비교'],
  ['SEC-04','이미지 CVE','Trivy 로 컨테이너 이미지의 알려진 취약점(CVE)을 스캔'],
  ['SEC-06A','DB 무차별 대입','파리 내부 공격자 EC2 에서 hydra 로 테스트 DB 계정에 반복 로그인 시도, 자동 차단 시연'],
  ['SEC-07','비밀값 스캔','코드·이미지에 합성 테스트 비밀값이 남아 있는지 스캔'],
  ['SEC-08/06B','지리 공격','5개 리전 공격자 EC2 가 nmap 스캔 → hydra SSH·웹 무차별 대입 → ZAP·sqlmap 으로 DVWA 공격'],
+ ['SEC-09','감사 로그 상태','CloudTrail·Config·VPC Flow Logs 수집 상태를 즉시 조회(조회 전용)'],
  ['SEC-10','부하','stress-ng 로 파리 EC2(대시보드 제외)에 CPU·메모리 부하'],
  ['HONEYPOT','내부 침투','파리(홈 리전) 공격자 EC2 에서 미끼 서버로 SSH 접속 시도, 자동 차단 시연']];
 const RUN_SEC_OF={'SEC-06B':'SEC-08'};

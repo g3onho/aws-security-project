@@ -91,7 +91,7 @@ STATE_LABEL = {
     "CANCELLED": "취소·조치 없음",
 }
 DETECTED_ONLY = "탐지됨(자동 조치 대상 아님)"
-RUN_ALL_SECS = ("SEC-02", "SEC-04", "SEC-06A", "SEC-07", "SEC-08", "SEC-06B", "SEC-10")
+RUN_ALL_SECS = ("SEC-01", "SEC-02", "SEC-03", "SEC-04", "SEC-06A", "SEC-07", "SEC-08", "SEC-06B", "SEC-09", "SEC-10")
 RUN_SEC_OF = {"SEC-06B": "SEC-08"}
 RUN_RUNNING = {"Pending", "InProgress", "Delayed", "Cancelling"}
 

@@ -117,6 +117,7 @@ class AwsProvider:
                  automation_role_arn=None, tier_status_table=None):
         self.region = region
         self.regions = (region,)
+        self.name_prefix = name_prefix
         self._aws = AwsSession(region, session_factory)
         self.connected = self._aws.connected
         self.account_id = self._aws.account_id
@@ -336,10 +337,19 @@ class AwsProvider:
         return commands[0].get("Status") if commands else None
 
     def attack_command_status(self, commands):
-        """commands: [{regionCode, instanceId, commandId, regionLabel}] -> 리전별 진행상태·출력 요약."""
+        """commands: [{regionCode, instanceId, commandId, regionLabel}] -> 리전별 진행상태·출력 요약.
+        commandId 가 없는 항목(SEC-01·03 — SSM 이 아니라 API 호출 자체가 결과)은 SSM 조회 없이
+        launch 시점에 이미 담아둔 상태를 그대로 돌려준다."""
         self.require_ready()
         out = []
         for c in commands:
+            if not c.get("commandId"):
+                row = {"regionLabel": c["regionLabel"], "status": c.get("status", "Success"),
+                       "output": c.get("output", "")}
+                if c.get("detail"):
+                    row["detail"] = c["detail"]
+                out.append(row)
+                continue
             ssm = self._aws.regional_client("ssm", c["regionCode"])
             try:
                 inv = ssm.get_command_invocation(CommandId=c["commandId"], InstanceId=c["instanceId"])
@@ -463,3 +473,102 @@ class AwsProvider:
                              "regionCode": target["regionCode"], "instanceId": target["instanceId"],
                              "commandId": resp["Command"]["CommandId"]})
         return launched
+
+    # --- SG 과다 공개 → 자동 회수 시연(SEC-01·03) ------------------------------------------
+    # demo/trigger-auto-remediation.sh 와 같은 기법: 위반 규칙을 넣고 asr_trigger 를 합성
+    # Security Hub finding 으로 직접 호출해 실제 조치 코드(ASR-RevokeSecurityGroupIngress)를
+    # 그대로 태운다 — Config/Security Hub 의 실제 평가 주기(수 시간)를 기다리지 않는다.
+    # 대상은 DrillTarget=true 태그가 붙은, 어디에도 연결되지 않은 전용 SG 뿐이다(실서비스 SG 아님).
+
+    def discover_sg_by_name(self, region, group_name):
+        """정확한 이름으로 SG 를 찾는다(SEC-01·03 대상 이름은 Terraform 이 고정한다).
+        -> sg_id 또는 None."""
+        self.require_ready()
+        ec2 = self._aws.regional_client("ec2", region)
+        try:
+            resp = ec2.describe_security_groups(Filters=[{"Name": "group-name", "Values": [group_name]}])
+        except Exception:
+            return None
+        groups = resp.get("SecurityGroups", [])
+        return groups[0]["GroupId"] if groups else None
+
+    def run_sg_violation_drill(self, region, sg_id, port, sec, title, expect_revoked, region_label="paris"):
+        """0.0.0.0/0 인바운드를 재현하고 asr_trigger 를 직접 호출해 즉시 결과를 확인한다.
+        expect_revoked=True(AutoRemediation=enabled 대상)면 회수돼야 성공,
+        False(대조군 — db-manual-sg 등)면 회수되지 않고 남아 있어야(알림만) 성공이다.
+        -> {sec, regionLabel, status, output, detail?}(commandId 없음 — SSM 이 아니라 API 호출)."""
+        self.require_ready()
+        ec2 = self._aws.regional_client("ec2", region)
+        try:
+            ec2.authorize_security_group_ingress(
+                GroupId=sg_id, IpPermissions=[{
+                    "IpProtocol": "tcp", "FromPort": port, "ToPort": port,
+                    "IpRanges": [{"CidrIp": "0.0.0.0/0", "Description": f"{sec} drill (reproduced by run-all)"}]}])
+        except Exception as error:
+            if _error_code(error) != "InvalidPermission.Duplicate":
+                return {"sec": sec, "regionLabel": region_label, "status": "Failed", "detail": _error_code(error)}
+            # 이미 열려 있음 — 이전 실행이 아직 회수 전이거나 대조군이다. 계속 진행한다.
+
+        finding = {"detail": {"findings": [{
+            "Title": title, "Types": ["Software and Configuration Checks/AWS Security Best Practices"],
+            "GeneratorId": "aws-foundational-security-best-practices/v/1.0.0/EC2.19",
+            "Compliance": {"Status": "FAILED"}, "RecordState": "ACTIVE",
+            "Resources": [{"Type": "AwsEc2SecurityGroup",
+                           "Id": f"arn:aws:ec2:{region}:{self.account_id}:security-group/{sg_id}"}]}]}}
+        lam = self._aws.regional_client("lambda", region)
+        try:
+            resp = lam.invoke(FunctionName=f"{self.name_prefix}-asr-trigger",
+                              InvocationType="RequestResponse", Payload=json.dumps(finding).encode())
+            if resp.get("FunctionError"):
+                return {"sec": sec, "regionLabel": region_label, "status": "Failed", "detail": "asr_trigger 실행 오류"}
+        except Exception as error:
+            return {"sec": sec, "regionLabel": region_label, "status": "Failed", "detail": _error_code(error)}
+
+        desc = ec2.describe_security_groups(GroupIds=[sg_id])["SecurityGroups"][0]
+        still_open = any(r.get("CidrIp") == "0.0.0.0/0"
+                         for perm in desc.get("IpPermissions", []) if perm.get("FromPort") == port
+                         for r in perm.get("IpRanges", []))
+        revoked = not still_open
+        ok = revoked if expect_revoked else not revoked
+        label = "자동 회수됨" if revoked else "회수 안 됨(알림만·대조군)"
+        return {"sec": sec, "regionLabel": region_label, "status": "Success" if ok else "Failed",
+                "output": f"{sg_id} 0.0.0.0/0:{port} 규칙 추가 -> asr_trigger 호출 -> {label}",
+                **({} if ok else {"detail": "예상과 다른 결과(자동/대조군 구분 확인 필요)"})}
+
+    # --- 감사·구성·로그 수집 상태 점검(SEC-09) — 조회만, 아무것도 바꾸지 않는다 -----------------
+
+    def check_audit_sources(self, region):
+        """CloudTrail·Config·VPC Flow Logs 수집 상태를 즉시 조회한다(쓰기 없음).
+        -> {sec, regionLabel, status, output}(commandId 없음 — 조회 API 호출 자체가 결과)."""
+        self.require_ready()
+        lines, ok = [], True
+
+        ct = self._aws.regional_client("cloudtrail", region)
+        try:
+            trails = ct.describe_trails().get("trailList", [])
+            logging_trails = [t for t in trails if ct.get_trail_status(Name=t["Name"]).get("IsLogging")]
+            lines.append(f"CloudTrail {len(logging_trails)}/{len(trails)}개 기록 중")
+            ok = ok and bool(logging_trails)
+        except Exception as error:
+            lines.append(f"CloudTrail 조회 실패({_error_code(error)})"); ok = False
+
+        cfg = self._aws.regional_client("config", region)
+        try:
+            status = cfg.describe_configuration_recorder_status().get("ConfigurationRecordersStatus", [])
+            recording = any(s.get("recording") for s in status)
+            lines.append(f"Config {'기록 중' if recording else '중지됨'}")
+            ok = ok and recording
+        except Exception as error:
+            lines.append(f"Config 조회 실패({_error_code(error)})"); ok = False
+
+        ec2 = self._aws.regional_client("ec2", region)
+        try:
+            flow_logs = ec2.describe_flow_logs(
+                Filters=[{"Name": "deliver-log-status", "Values": ["SUCCESS"]}]).get("FlowLogs", [])
+            lines.append(f"VPC Flow Logs {len(flow_logs)}개 정상 전송 중")
+            ok = ok and bool(flow_logs)
+        except Exception as error:
+            lines.append(f"VPC Flow Logs 조회 실패({_error_code(error)})"); ok = False
+
+        return {"sec": "SEC-09", "regionLabel": "paris", "status": "Success" if ok else "Failed",
+                "output": " · ".join(lines)}

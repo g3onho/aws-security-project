@@ -42,14 +42,14 @@ DRILL_TYPES = [
 # SEC 시나리오 카탈로그. support 는 보안-시나리오 문서의 정적 분류다(실행 가능 여부의 승인이 아님).
 SCENARIOS = [
     {"id": "SEC-01", "purpose": "과도하게 공개된 SSH 보안 그룹 구성", "types": [],
-     "sources": ["AWS Config", "Security Hub"], "response": "SG 자동 회수(코드 존재)",
-     "support": "observe-only", "note": "SSH 구성 finding은 SSH 무차별 대입 탐지가 아니다."},
+     "sources": ["AWS Config", "Security Hub"], "response": "SG 자동 회수",
+     "support": "runnable", "note": "SSH 구성 finding은 SSH 무차별 대입 탐지가 아니다. 전용 실습 SG에서 재현·즉시 회수(ASR-RevokeSecurityGroupIngress)."},
     {"id": "SEC-02", "purpose": "서비스 HTTP·보안 헤더 구성", "types": ["web-scan"],
      "sources": ["웹 응답", "curl/ZAP"], "response": "수동(Nginx 강화)",
      "support": "prep-needed", "note": "수동 변경·검증. 설정 파일 존재만으로 TLS 완료로 보지 않는다."},
     {"id": "SEC-03", "purpose": "3306 노출과 자동/수동 SG 비교", "types": [],
      "sources": ["Config", "Security Hub"], "response": "SG 자동/수동",
-     "support": "observe-only", "note": "격리된 테스트 SG에서만. 하나의 SG 조치로 전체 차단을 단정하지 않는다."},
+     "support": "runnable", "note": "격리된 테스트 SG에서만. db-auto-sg(자동 회수)·db-manual-sg(알림만)에 같은 위반을 재현해 비교한다."},
     {"id": "SEC-04", "purpose": "컨테이너 이미지 CVE", "types": [],
      "sources": ["Inspector", "Trivy(S3)"], "response": "수동 교체",
      "support": "prep-needed", "note": "Trivy 결과의 화면 통합은 별도 계약."},
@@ -70,7 +70,7 @@ SCENARIOS = [
      "support": "prep-needed", "note": "DVWA는 별도 시험 대상(DEC-004). ZAP 실행 경로는 신규."},
     {"id": "SEC-09", "purpose": "감사·구성·서비스 로그", "types": [],
      "sources": ["CloudTrail", "Config", "VPC Flow Logs", "CloudWatch Logs"], "response": "없음",
-     "support": "observe-only", "note": "원본 로그 보관과 finding 통합을 분리한다."},
+     "support": "runnable", "note": "원본 로그 보관과 finding 통합을 분리한다. CloudTrail·Config·VPC Flow Logs 수집 상태를 즉시 조회한다(조회 전용, 조치 없음)."},
     {"id": "SEC-10", "purpose": "CPU·메모리 과부하와 운영 알림", "types": ["load"],
      "sources": ["EC2 CPU", "Agent 메모리", "CloudWatch Alarm", "SNS"], "response": "없음",
      "support": "prep-needed", "note": "부하 실행의 대시보드 경로는 신규. 알람 임계값은 실제 설정에서 조회한다."},
@@ -191,6 +191,9 @@ class DrillService:
         - SEC-07: 코드/설정 비밀값 점검(SCAN-Secrets)
         - SEC-10: 파리 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증
         - SEC-06A: 파리(홈 리전) VPC 안 공격자 EC2 → DB EC2 MySQL 무차별 대입(ATK-MysqlBruteForce) → 탐지·자동 차단
+        - SEC-01: 전용 실습 SG 에 0.0.0.0/0:22 재현 → asr_trigger 직접 호출 → 즉시 자동 회수
+        - SEC-03: db-auto-sg(자동 회수) · db-manual-sg(알림만·대조군) 에 0.0.0.0/0:3306 재현 → asr_trigger 직접 호출
+        - SEC-09: CloudTrail·Config·VPC Flow Logs 수집 상태 조회(쓰기 없음)
         - HONEYPOT: 파리(홈 리전) VPC 안 공격자 EC2 → 미끼서버 SSH 접속(ATK-HoneypotProbe) → 탐지·자동 차단"""
         active = self._active_run_all()
         if active:
@@ -264,6 +267,40 @@ class DrillService:
                  "parameters": {"DbHost": db["privateIp"], "RegionLabel": "paris"}}]))
         else:
             skipped.append("SEC-06A(공격자 EC2 또는 DB 미탐색)")
+
+        # SEC-01: SSH 과다 공개 SG 자동 회수 시연. 전용 실습 SG(AutoRemediation=enabled, 어디에도
+        # 연결 안 됨)에 0.0.0.0/0:22 를 재현하고 asr_trigger 를 직접 호출해 즉시 회수 결과를 본다
+        # (demo/trigger-auto-remediation.sh 와 같은 기법 — Security Hub 실제 평가 주기를 기다리지 않는다).
+        prefix = self.provider.name_prefix
+        sec01_sg = self.provider.discover_sg_by_name(region, f"{prefix}-sec01-ssh-demo-sg") if region and prefix else None
+        if sec01_sg:
+            launched.append(self.provider.run_sg_violation_drill(
+                region, sec01_sg, 22, "SEC-01",
+                "Security group allows ingress from 0.0.0.0/0 to port 22", expect_revoked=True))
+        else:
+            skipped.append("SEC-01(실습 SG 미배포 — enable_sec01_demo_sg)")
+
+        # SEC-03: 3306 노출 자동/수동 비교. db-auto-sg(AutoRemediation=enabled → 자동 회수)와
+        # db-manual-sg(태그 없음 → 알림만, 대조군)에 같은 위반을 넣어 결과가 갈리는 것을 보여준다.
+        db_auto_sg = self.provider.discover_sg_by_name(region, f"{prefix}-db-auto-sg") if region and prefix else None
+        db_manual_sg = self.provider.discover_sg_by_name(region, f"{prefix}-db-manual-sg") if region and prefix else None
+        if db_auto_sg and db_manual_sg:
+            launched.append(self.provider.run_sg_violation_drill(
+                region, db_auto_sg, 3306, "SEC-03",
+                "Security group allows ingress from 0.0.0.0/0 to port 3306",
+                expect_revoked=True, region_label="auto"))
+            launched.append(self.provider.run_sg_violation_drill(
+                region, db_manual_sg, 3306, "SEC-03",
+                "Security group allows ingress from 0.0.0.0/0 to port 3306",
+                expect_revoked=False, region_label="manual"))
+        else:
+            skipped.append("SEC-03(db-auto-sg 또는 db-manual-sg 미탐색)")
+
+        # SEC-09: 감사·구성·로그 수집 상태 조회. 아무것도 바꾸지 않는다 — 항상 대상이 있다(region 만 있으면 됨).
+        if region:
+            launched.append(self.provider.check_audit_sources(region))
+        else:
+            skipped.append("SEC-09(리전 미설정)")
 
         # HONEYPOT: 내부 침투 시연. 파리(홈 리전) VPC 안 공격자 EC2(Role=attack-simulation)가 미끼서버(Role=honeypot-decoy)
         # 사설 IP 로 SSH 접속한다. 인터넷 경유 공격(SEC-08)과 달리 "이미 안으로 들어온" 출발지라야 미끼에 닿는다.
@@ -390,4 +427,6 @@ def _step_label(cmd):
         return "HONEYPOT · 내부 침투"  # 출발은 파리(홈 리전) VPC 안 공격자 EC2
     if sec == "SEC-10" and region:
         return f"{sec} · {_REGION_KO.get(region, region)}"  # 부하: 대상 EC2 이름
+    if sec == "SEC-03" and region in ("auto", "manual"):
+        return f"{sec} · {region}"  # db-auto-sg(자동) vs db-manual-sg(대조군) 구분
     return sec
