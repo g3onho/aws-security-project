@@ -1,9 +1,9 @@
 // 탐지 상세의 '대시보드 조치'(v29): 미리보기 → 확인창에서 바로 실행 → 진행 상태 → 자동 재검증 결과.
 // 계획(문서·대상)은 서버가 만든다. 이 화면은 사유와 '이 계획을 보고 눌렀다'는 playbookId 만 보낸다.
-import {$,api,storeApi} from '../context.js?v=q6-ui-1-l1';
-import {esc,format,milliseconds} from './format.js?v=q6-ui-1';
-import {patchMarkup} from './rendering.js?v=q6-ui-1';
-import {remediationState,remediationDetail,REMEDIATION_ACTIVE,remediationErrorText} from './remediation.js?v=q6-ui-1';
+import {$,api,storeApi} from '../context.js?v=v42';
+import {esc,format,milliseconds} from './format.js?v=v42';
+import {patchMarkup} from './rendering.js?v=v42';
+import {remediationState,remediationDetail,REMEDIATION_ACTIVE,remediationErrorText} from './remediation.js?v=v42';
 const POLL_MS=3000;
 const view={eventId:null,plan:null,timer:null,serial:0};
 const newKey=()=>{const bytes=new Uint8Array(16);if(globalThis.crypto?.getRandomValues)globalThis.crypto.getRandomValues(bytes);else bytes.forEach((_,i)=>{bytes[i]=Math.floor(Math.random()*256);});return 'rm-'+[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');};

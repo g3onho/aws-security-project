@@ -1,8 +1,8 @@
 // 취약점 점검: 서버×패키지 묶음, 대상·페이지·크기, CVE CSV. 이 화면 상태는 이 모듈만 바꾼다.
-import {$,api,ui} from '../context.js?v=q6-ui-1-l1';
-import {esc,cmdBlock} from '../components/format.js?v=q6-ui-1';
-import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=q6-ui-1';
-import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=q6-ui-1-l1';
+import {$,api,ui} from '../context.js?v=v42';
+import {esc,cmdBlock} from '../components/format.js?v=v42';
+import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v42';
+import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v42';
 // ── 취약점 점검 ────────────────────────────────────────────
 let vulnTarget='',vulnPage=1,vulnSize=50,vulnFilter='',vulnData=null,vulnDataKey='';
 const vulnKey=()=>panelScope()+JSON.stringify([vulnTarget,ui.refreshSerial]);
@@ -52,7 +52,8 @@ function summaryButton(severity,count,total){
  const active=vulnFilter===severity,color=SEV_COLOR[severity],share=total?count/total*100:0;
  return `<button type="button" title="중복을 제거한 CVE 종류 기준 · 다시 누르면 전체 목록" class="vuln-summary-button${active?' active':''}" style="--sev-color:${color};--sev-share:${share}%" data-vuln-filter="${severity}" aria-pressed="${active}"><span>${SEV_KO[severity]}</span><b>${count}</b></button>`;
 }
-function sevChip(sev){const c=SEV_COLOR[sev]||SEV_COLOR.UNTRIAGED,t=SEV_TEXT[sev]||'#3f4e46';return `<span class="sev-chip" data-severity="${esc(sev)}" style="color:${t};background:${c}33;border-color:${c}">${SEV_KO[sev]||esc(sev)}</span>`;}
+function sevChip(sev,n){const c=SEV_COLOR[sev]||SEV_COLOR.UNTRIAGED,t=SEV_TEXT[sev]||'#3f4e46';return `<span class="sev-chip" data-severity="${esc(sev)}" style="color:${t};background:${c}33;border-color:${c}">${SEV_KO[sev]||esc(sev)}${n==null?'':` <b>${n}</b>`}</span>`;}
+function sevBar(counts,total){return `<div class="sev-bar" aria-hidden="true">${SEV_ORDER.filter(s=>counts[s]).map(s=>`<i style="width:${counts[s]/total*100}%;background:${SEV_COLOR[s]}"></i>`).join('')}</div>`;}
 // 같은 패키지가 여러 서버에 똑같이 걸리면(같은 AMI) 한 줄로 합치고, 토글 안에서 서버별로 보여준다.
 // 개수는 CVE 종류(중복 제거) 기준 — 서버 5대 × 951건을 4755건으로 부풀리지 않는다.
 export function vulnGroups(rows){
@@ -60,8 +61,8 @@ export function vulnGroups(rows){
  for(const v of rows){
   const key=v.package||'—';
   const g=groups.get(key)||{key,package:key,cves:new Map(),servers:new Map(),counts:{},maxCvss:null};
-  const s=g.servers.get(v.resource)||{resource:v.resource,name:v.resourceName||v.resource,installed:v.installedVersion,count:0};
-  s.count++;g.servers.set(v.resource,s);
+  const s=g.servers.get(v.resource)||{resource:v.resource,name:v.resourceName||v.resource,installed:v.installedVersion,count:0,fixable:0};
+  s.count++;if(hasFixedVersion(v))s.fixable++;g.servers.set(v.resource,s);
   const cveKey=v.cveId||v.id,c=g.cves.get(cveKey),host=s.name.replace(/^soar-sec-dev-/,'');
   if(c){c.servers++;c.hosts.push(host);if(hasFixedVersion(v)){c.fixedCount++;c.fixedVersions.add(v.fixedVersion);}}
   else{
@@ -71,7 +72,8 @@ export function vulnGroups(rows){
   groups.set(key,g);
  }
  for(const g of groups.values()){
-  g.items=[...g.cves.values()];
+  g.items=[...g.cves.values()];g.fixable=g.items.filter(c=>c.fixedCount===c.servers).length;
+  g.partial=g.items.filter(c=>c.fixedCount>0&&c.fixedCount<c.servers).length;
   g.serverList=[...g.servers.values()].sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name));
  }
  const rank=g=>SEV_ORDER.map(s=>g.counts[s]||0);
@@ -101,16 +103,19 @@ function fixedVersionText(c){
 }
 function vulnGroupMarkup(g){
  const top=[...g.items].sort((a,b)=>(b.cvss??-1)-(a.cvss??-1)||SEV_ORDER.indexOf(a.severity)-SEV_ORDER.indexOf(b.severity)).slice(0,VULN_PREVIEW);
- const MAIN_SEV=['CRITICAL','HIGH','MEDIUM','LOW'],mix=MAIN_SEV.filter(sev=>g.counts[sev]),mixTotal=mix.reduce((n,sev)=>n+g.counts[sev],0);
- const severityMeter=`<div class="vg-severity-meter" role="img" aria-label="${esc(`위험도 구성: ${mix.map(sev=>`${SEV_KO[sev]} ${g.counts[sev]}종`).join(', ')}`)}">${mix.map(sev=>`<i style="width:${(g.counts[sev]/mixTotal*100).toFixed(1)}%;background:${SEV_COLOR[sev]}"></i>`).join('')}</div>`;
+ // v42: 패키지 묶음 행을 v27 모양으로 되돌렸다(패키지·서버 / CVE 종류 / 위험도 구성 / 최고 CVSS·수정 버전 상태). 묶음 기준은 그대로다.
+ const known=g.fixable+g.partial;
+ const fix=g.fixable===g.items.length?`<span class="fix-state ok">수정 버전 명시</span>`:known?`<span class="fix-state">수정 버전 일부 명시 ${known}종</span>`:`<span class="fix-state wait">수정 버전 미제공</span>`;
  const one=g.serverList.length===1?g.serverList[0]:null;
- const hosts=g.serverList.slice(0,3).map(s=>`<span class="vg-ec2-node" title="${esc(s.resource)} · 설치 ${esc(s.installed||'—')}"><i aria-hidden="true">▣</i>${esc(s.name.replace(/^soar-sec-dev-/,''))}</span>`).join('');
+ const where=one?`<button class="link-button" data-vuln-target="${esc(one.resource)}" title="${esc(one.resource)}">${esc(one.name)}</button> · 설치 ${esc(one.installed||'—')}`
+  :`<span class="server-count">서버 ${g.serverList.length}대</span> · ${g.serverList.slice(0,3).map(s=>esc(s.name.replace(/^soar-sec-dev-/,''))).join(', ')}${g.serverList.length>3?' 외':''}`;
  return `<details class="cve-group" data-key="vg-${esc(g.key)}"><summary>
-  <div class="vg-asset-lane"><small>발견 위치 · EC2 ${g.serverList.length}대</small><div class="vg-ec2-nodes">${hosts}${g.serverList.length>3?`<span class="vg-ec2-more">외 ${g.serverList.length-3}대</span>`:''}</div></div>
-  <div class="vg-main"><small>설치된 패키지</small><strong>${esc(g.package)}</strong>${severityMeter}</div>
-  <div class="vg-result"><small>발견된 취약점</small><b>${g.items.length}종</b></div></summary>
-  ${fixPanel(g)}
-  ${one?'':`<div class="vg-servers"><h3>영향받는 서버 ${g.serverList.length}대</h3><ul>${g.serverList.map(s=>`<li><button class="link-button" data-vuln-target="${esc(s.resource)}" title="${esc(s.resource)}">${esc(s.name)}</button><span>설치 ${esc(s.installed||'—')}</span><span>CVE ${s.count}건</span></li>`).join('')}</ul></div>`}
+  <div class="vg-main"><strong>${esc(g.package)}</strong><small>${where}</small></div>
+  <div class="vg-count"><b>${g.items.length}</b><span>CVE 종류</span></div>
+  <div class="vg-sev">${sevBar(g.counts,g.items.length)}<div class="vg-chips">${SEV_ORDER.filter(s=>g.counts[s]).map(s=>sevChip(s,g.counts[s])).join('')}</div></div>
+  <div class="vg-meta"><span>최고 CVSS <b>${g.maxCvss??'—'}</b></span>${fix}${g.items.some(v=>v.rebootRequired===true)?'<span class="fix-state reboot">재부팅 필요</span>':''}${g.items.some(v=>v.exploitAvailable==='YES')?'<span class="fix-state exploit">공격 코드 공개</span>':''}</div></summary>
+ ${fixPanel(g)}
+  ${one?'':`<div class="vg-servers"><h3>영향받는 서버 ${g.serverList.length}대</h3><ul>${g.serverList.map(s=>`<li><button class="link-button" data-vuln-target="${esc(s.resource)}" title="${esc(s.resource)}">${esc(s.name)}</button><span>설치 ${esc(s.installed||'—')}</span><span>CVE ${s.count}건</span>${s.fixable?`<span class="fix-state ok">수정 버전 명시 ${s.fixable}건</span>`:'<span class="fix-state wait">수정 버전 미제공</span>'}</li>`).join('')}</ul></div>`}
   <div class="table-scroll"><table><thead><tr><th>심각도</th><th>CVSS</th><th>EPSS</th><th>CVE</th><th>공격 코드</th><th>Inspector 수정 버전</th><th>영향 서버</th></tr></thead><tbody>${top.map(v=>`<tr><td>${sevChip(v.severity)}</td><td>${v.cvss??'—'}</td><td>${pctScore(v.epss)}</td><td title="${esc(v.title||'')}">${cveLink(v)}</td><td>${v.exploitAvailable==='YES'?'<span class="bad-text">공개됨</span>':v.exploitAvailable==='NO'?'없음':'—'}</td><td>${esc(fixedVersionText(v))}</td><td class="cve-hosts">${v.hosts.sort().map(h=>`<span>${esc(h)}</span>`).join('')}</td></tr>`).join('')}</tbody></table></div>
   ${g.items.length>VULN_PREVIEW?`<p class="muted vg-more">CVSS 상위 ${VULN_PREVIEW}종만 표시 · 나머지 ${g.items.length-VULN_PREVIEW}종은 CVE CSV로 확인</p>`:''}
  </details>`;

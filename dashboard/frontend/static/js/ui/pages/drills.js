@@ -1,9 +1,9 @@
 // 보안 시나리오: 시나리오 표가 화면의 뼈대이고, 선택 없이 [전부 실행] 한 번으로 준비된 모든 시나리오를 실행한다.
 // 실행은 백엔드 POST /api/drills/run-all/start(SSM)이며 WRITE_ENABLED 가 꺼져 있으면 403 이다.
-import {$,api} from '../context.js?v=q6-ui-1-l1';
-import {esc,format,milliseconds} from '../components/format.js?v=q6-ui-1';
-import {loadPanel,header} from '../components/panel.js?v=q6-ui-1';
-import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=q6-ui-1-l1';
+import {$,api} from '../context.js?v=v42';
+import {esc,format,milliseconds} from '../components/format.js?v=v42';
+import {loadPanel,header} from '../components/panel.js?v=v42';
+import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=v42';
 
 // runnable 을 prep-needed 와 같은 색으로 통일한다 — 시나리오 표는 [전부 실행] 대상만 보여주므로(RUN_ALL_SECS 필터)
 // 전부 "실행 가능"이고, 이 표 밖에서는 이 색이 안 쓰인다.

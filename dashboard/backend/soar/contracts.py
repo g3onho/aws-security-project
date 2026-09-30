@@ -112,11 +112,13 @@ def parse_query(raw, kind, default_to):
     if "status" in values and values["status"] not in ACTION_STATES:
         raise Problem(400, "status 필터가 올바르지 않습니다.", "INVALID_FILTER")
     if kind in {"events", "vulnerabilities", "history"}:
-        if not re.fullmatch(r"[0-9]{1,3}", values.get("limit", "50")):
-            raise Problem(400, "limit은 1~200 정수여야 합니다.", "INVALID_FILTER")
+        # v42: 취약점은 수천 건을 한 번에 받아 묶는 화면이라 한 페이지 상한만 1000으로 넓혔다(25회 → 5회 왕복). 나머지 목록은 그대로 200.
+        max_limit = 1000 if kind == "vulnerabilities" else 200
+        if not re.fullmatch(r"[0-9]{1,4}", values.get("limit", "50")):
+            raise Problem(400, f"limit은 1~{max_limit} 정수여야 합니다.", "INVALID_FILTER")
         q["limit"] = int(values.get("limit", "50"))
-        if not 1 <= q["limit"] <= 200:
-            raise Problem(400, "limit은 1~200 정수여야 합니다.", "INVALID_FILTER")
+        if not 1 <= q["limit"] <= max_limit:
+            raise Problem(400, f"limit은 1~{max_limit} 정수여야 합니다.", "INVALID_FILTER")
     if kind == "metrics":
         if values.get("periodSeconds", "300") not in {"60", "300", "3600"}:
             raise Problem(400, "periodSeconds는 60, 300, 3600 중 하나여야 합니다.", "INVALID_FILTER")

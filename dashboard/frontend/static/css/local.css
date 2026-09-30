@@ -1296,3 +1296,130 @@ body.view-events .timeline{margin-bottom:var(--space)}
 .hp-graph text{fill:#3f4f40;font-size:12.5px}
 .hp-node:hover circle,.hp-node:focus-visible circle{stroke:#3f4f40;stroke-width:2}
 .hp-legend{padding:12px var(--space) 0;gap:6px 16px;color:#3f4f40}
+
+/* ── v42 ─────────────────────────────────────────────────────────────────────────────────────────────── */
+/* (1) 인프라 모니터링 · 운영 중인 서버: 카드가 줄바꿈하지 않고 가로로 스크롤된다 */
+.host-grid{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(232px,232px);align-items:stretch;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:thin;padding-bottom:16px}
+.host-grid>.host-card{scroll-snap-align:start;min-width:0}
+/* (4) 상단 우측: AWS 연동 상태 · 알림 · 계정 · 자동 새로고침 · 로그아웃 */
+.top-controls{gap:12px}
+.connection{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid #c7d0cd;border-radius:999px;background:#eef2f1;color:#3f4f48;font-size:13px;font-weight:700;white-space:nowrap}
+.connection::before{content:'';width:8px;height:8px;border-radius:50%;background:#8a9691;flex:none}
+.connection[data-state=on]{color:#0b6b3b;border-color:#8fd4a6;background:#e2f5ea}.connection[data-state=on]::before{background:#2e9e57}
+.connection[data-state=off]{color:#a3202b;border-color:#f28f96;background:#fde4e6}.connection[data-state=off]::before{background:#d63a44}
+.connection[hidden]{display:none}
+/* (3) AI 도우미 버튼: 글씨 없이 로고만 */
+.as-fab{width:56px;height:56px;padding:0;justify-content:center;gap:0;border-radius:50%}
+.as-fab .as-logo,.as-fab .as-mark{width:30px;height:30px}
+/* (5) 취약점 점검 · 패키지 묶음 행을 v27 모양으로 복원(묶음·위험도 버튼은 그대로) */
+.cve-group>summary{grid-template-columns:minmax(180px,1.4fr) 76px minmax(200px,2fr) minmax(170px,1fr);gap:14px;padding:12px 14px;min-height:0;align-items:center}
+.cve-group>summary>*{padding:0}
+.cve-group>summary>.vg-main,.cve-group>summary>.vg-result{border-left:0}
+.vg-main strong{font-size:15.5px}
+.vg-count{text-align:center}.vg-count b{display:block;font-size:22px;color:#161d1b}.vg-count span{font-size:13px;color:#4f5b58}
+.vg-sev{display:flex;flex-direction:column;gap:6px;min-width:0;justify-self:stretch}
+.sev-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#dbe2df}.sev-bar i{display:block;height:100%}
+.vg-chips{display:flex;flex-wrap:wrap;gap:4px}.vg-chips .sev-chip b{font-weight:800}
+.vg-meta{display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:13px;color:#4f5b58}.vg-meta b{color:#161d1b}
+.fix-state{display:inline-block;padding:1px 8px;border-radius:3px;background:#fff6d6;color:#7a5b00;font-size:12.5px;font-weight:700}
+.fix-state.ok{background:#e2f5ea;color:#1b7a3a}.fix-state.wait{background:#e6eae8;color:#4a5a54}
+.fix-state.reboot{background:#ffe9d2;color:#a85100}.fix-state.exploit{background:#fde4e6;color:#b3121e}
+.vg-servers li{grid-template-columns:minmax(160px,1.5fr) 1fr 90px auto}
+@media(max-width:1100px){.cve-group>summary{grid-template-columns:minmax(150px,1.2fr) 66px minmax(170px,1.6fr) minmax(140px,1fr);gap:10px}.cve-group>summary>*{padding:0}}
+@media(max-width:720px){.cve-group>summary{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px}.vg-sev,.vg-meta{grid-column:1/-1;align-items:flex-start}.vg-servers li{grid-template-columns:1fr auto}}
+/* (6) AI 요약 보고서 — 대시보드 디자인 + Claude 로고. 대화상자와 PDF(인쇄)가 같은 .rp 마크업을 쓴다 */
+#report-dialog{width:min(960px,calc(100% - 30px));background:#f2f7f5;position:relative}
+#report-content{position:relative}
+.rp-close{position:absolute;top:10px;right:12px;z-index:3;width:34px;height:34px;border-radius:50%;color:#fff;font-size:24px;line-height:1;background:rgba(255,255,255,.14)}
+.rp-close:hover{background:rgba(255,255,255,.3);color:#fff}
+.rp{background:#f2f7f5;color:#16201e}
+.rp-hero{padding:20px 28px 20px;background:linear-gradient(135deg,#0b7f72 0%,#09615a 62%,#0a4d49 100%);color:#fff;border-bottom:4px solid #32d4be}
+.rp-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-right:40px}
+.rp-brand{display:inline-flex;align-items:center;gap:10px;font-size:15px;letter-spacing:.1px}.rp-brand b{font-weight:700}
+.rp-by{display:inline-flex;align-items:center;gap:8px;padding:5px 13px 5px 8px;border-radius:999px;background:#fff;color:#33241c;font-size:13px;font-weight:500;white-space:nowrap}
+.rp-by img{display:block;width:22px;height:22px}.rp-by b{font-weight:700}
+.rp-eyebrow{margin-top:20px;font-size:12px;letter-spacing:.24em;color:#b9efe6}
+.rp-hero h2{margin-top:4px;font-size:27px;line-height:1.25;letter-spacing:-.5px;font-weight:700;color:#fff}
+.rp-meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0}
+.rp-meta>div{min-width:0;padding:6px 11px;border:1px solid rgba(255,255,255,.28);border-radius:7px;background:rgba(255,255,255,.12)}
+.rp-meta dt{font-size:11.5px;letter-spacing:.06em;color:#b9efe6}.rp-meta dd{margin:1px 0 0;font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
+.rp-page{padding:2px 28px 22px}
+.rp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0 4px}
+.rp-kpi{padding:10px 14px 11px;border:1px solid #d3dfdb;border-top:4px solid var(--k,#0b7f72);border-radius:8px;background:#fff}
+.rp-kpi span{display:block;font-size:12.5px;font-weight:600;color:#52655f;overflow-wrap:anywhere}
+.rp-kpi b{display:block;margin-top:2px;font-size:28px;line-height:1.2;font-weight:700;color:var(--k,#16201e);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.rp-kpi b.zero{color:#7b8a85}
+.rp .report-warn{margin-top:12px;padding:10px 14px;border:1px solid #e3c766;border-left:5px solid #d4a800;border-radius:8px;background:#fff8dc;color:#5d4a00}
+.rp .report-warn ul{margin:4px 0 0;padding-left:20px}
+.rp .panel-error{margin-top:12px}
+.rp .report-md{display:grid;gap:12px;margin-top:14px}
+.rp-sec{min-width:0;padding:14px 18px 12px;border:1px solid #d3dfdb;border-left:5px solid #0b7f72;border-radius:8px;background:#fff;counter-increment:none}
+.rp-sec>h3{margin:0 0 8px;padding:0;font-size:16.5px;font-weight:700;color:#0a4d49}
+.rp-sec p{margin:4px 0;line-height:1.7}
+.rp-sec ul,.rp-sec ol{margin:4px 0 6px;padding-left:22px}.rp-sec li{margin:3px 0;line-height:1.65}
+.rp-sec .table-scroll{max-height:none;margin:6px 0}
+.rp-sec table{font-size:14px;white-space:normal}
+.rp-sec th{background:#e6eeeb;color:#2c4a43;font-weight:700;position:static}
+.rp-sec td{overflow-wrap:anywhere}
+.rp-foot{margin-top:14px;padding-top:12px;border-top:1px dashed #b8c9c4;font-size:12.5px;color:#52655f}
+.rp-foot p{margin:2px 0}.rp-gen{display:flex;align-items:center;gap:6px}.rp-gen img{display:block}
+.rp-state{display:grid;justify-items:center;gap:10px;padding:48px 28px;text-align:center}
+.rp-state h2{font-size:20px}
+#report-dialog .dialog-actions{background:#fff;border-top:1px solid #d3dfdb;position:sticky;bottom:0}
+#report-print{display:none}
+@page{size:A4;margin:12mm}
+@media print{
+ body.printing-ai-report{background:#fff!important;color:#16201e}
+ body.printing-ai-report>*:not(#report-print){display:none!important}
+ body.printing-ai-report #report-print{display:block!important}
+ #report-print .rp,#report-print .rp *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ #report-print .rp{font-size:10.5pt;background:#f2f7f5}
+ #report-print .rp-hero{border-radius:0}
+ #report-print .rp-sec,#report-print .rp-kpi,#report-print .report-warn{break-inside:avoid}
+ #report-print .rp-sec>h3{break-after:avoid}
+ #report-print .rp-page{padding:2px 6mm 6mm}
+}
+@media(max-width:600px){.rp-hero{padding:18px 16px}.rp-page{padding:2px 14px 18px}.rp-top{flex-wrap:wrap}.rp-hero h2{font-size:22px}}
+@media print{#report-print .rp-sec .table-scroll{overflow:visible;max-height:none}#report-print .rp-sec table{width:100%}}
+@media print{#report-print .rp-top{margin-right:0}}
+/* (7) 허니팟 공격 경로 지도: IP 선택 + 다시 재생을 카드 머리글 오른쪽에 */
+#hp-map>.panel-heading .meta{letter-spacing:0}
+.hp-map-tools{display:inline-flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:8px 10px}
+.hp-pick{display:inline-flex;align-items:center;gap:8px;margin:0;color:#3f4f48;font-size:13.5px;font-weight:600}
+.hp-pick select{width:auto;min-width:150px;max-width:260px;height:34px}
+/* (8) 허니팟 공격 관계 그래프: 끌기·강조·겹침 방지 */
+.hp-graph{max-height:none;cursor:default;touch-action:none}
+.hp-graph .hp-node{cursor:grab}.hp-graph .hp-node:active{cursor:grabbing}
+.hp-graph .hp-lbl{paint-order:stroke;stroke:#f7faf9;stroke-width:3.5px;stroke-linejoin:round;fill:#28372d;font-size:12.5px}
+.hp-graph line{transition:stroke .15s,stroke-width .15s,opacity .15s}
+.hp-graph.hp-focus .hp-node:not(.hp-hl){opacity:.22}
+.hp-graph.hp-focus line:not(.hp-hl){opacity:.12}
+.hp-graph.hp-focus line.hp-hl{stroke:#0b7f72;stroke-width:2.2}
+.hp-graph .hp-node.hp-hl circle{stroke:#16201e;stroke-width:2}
+.hp-graph.hp-focus .hp-node.hp-hl .hp-lbl{font-weight:700}
+/* (9) 허니팟 세션 재생: 별도 창 · 시각 순서 한 흐름 · 터미널 모양 · 줄이 차례로 나타남 */
+#replay-dialog{width:min(860px,calc(100% - 30px));background:#f2f7f5}
+#replay-dialog .hp-detail{border-top:0;margin:0;padding-bottom:4px}
+.hp-replay-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 20px 12px;background:#fff;border-bottom:3px solid #0a7a6d}
+.hp-replay-title{margin:0;font-size:19px;color:#161d1b}
+.hp-replay-sub{margin:4px 0 0;font-size:13.5px;color:#52655f;overflow-wrap:anywhere}
+.hp-replay-ctl{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.hp-replay-ctl .dialog-close{position:static}
+.hp-facts{list-style:none;margin:0;padding:12px 20px 2px;display:flex;flex-wrap:wrap;gap:6px}
+.hp-facts li{padding:3px 11px;border:1px solid #c7d6d1;border-radius:999px;background:#fff;color:#2c4a43;font-size:13px;font-weight:600}
+#replay-dialog .hp-terminal{margin:10px 20px;padding:14px 16px;max-height:min(52vh,460px);overflow:auto;border-radius:8px;background:#11211d;color:#cfe6df;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Malgun Gothic',monospace;font-size:13.5px;line-height:1.55;white-space:normal}
+.hp-terminal .hp-line{display:grid;grid-template-columns:62px minmax(0,1fr);column-gap:12px;padding:1px 0}
+.hp-terminal .hp-ts{color:#6f9a90;font-size:12px;text-align:right;white-space:nowrap;padding-top:1px}
+.hp-terminal .hp-msg{color:#9fc4bb}.hp-terminal .hp-auth .hp-msg{color:#f2d46b}.hp-terminal .hp-msg code{color:#fff;background:rgba(255,255,255,.08);padding:0 4px;border-radius:3px}
+.hp-terminal .hp-mask{letter-spacing:1px}
+.hp-terminal .hp-cmd{margin-top:8px}
+.hp-terminal .hp-ps{color:#47d8c2;font-weight:700}.hp-terminal .hp-in{color:#fff;font-weight:700;overflow-wrap:anywhere}
+.hp-terminal .hp-out{color:#b9d5cd;white-space:pre-wrap;overflow-wrap:anywhere}
+.hp-terminal .hp-none{color:#7f9d95;font-style:italic}
+.hp-terminal.play .hp-line{opacity:0;animation:hp-line-in .28s ease-out forwards;animation-delay:var(--d,0s)}
+.hp-terminal.done .hp-line{animation:none;opacity:1}
+@keyframes hp-line-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.hp-terminal .hp-line{animation:none!important;opacity:1!important}}
+#replay-dialog .hp-ai{margin:8px 20px}
+#replay-dialog .hp-pad{padding:10px 20px}
+.hp-close-row{display:flex;justify-content:flex-end}

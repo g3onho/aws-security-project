@@ -1,8 +1,8 @@
 // 대시보드 도우미(챗봇, v27) — 조회 전용. 화면 어디서나 오른쪽 아래 버튼으로 연다.
 // UI 는 Store action(api.assistant*)만 부른다. 답변·도구 이름은 서버·모델이 만든 문자열이므로 전부 esc() 를 거쳐 텍스트로만 그린다
 // (마크다운·HTML 해석 없음). 도우미는 변경 도구가 없다 — 조치는 화면의 기존 버튼(권한·CSRF·멱등키 검증)으로만 한다.
-import {$,api,state} from '../context.js?v=q6-ui-1-l1';
-import {esc} from './format.js?v=q6-ui-1';
+import {$,api,state} from '../context.js?v=v42';
+import {esc} from './format.js?v=v42';
 
 const SUGGEST={
  overview:['지금 가장 심각한 보안 이벤트가 뭐야?','자동 조치는 얼마나 됐어?','열린 취약점 요약해줘'],
@@ -88,7 +88,7 @@ export function resetAssistant(){S.turns=[];S.error='';paint();}
 export function initAssistant(){
  if(S.mounted||!document.body)return;
  S.mounted=true;
- document.body.insertAdjacentHTML('beforeend',`<button type="button" id="assistant-fab" class="as-fab" aria-controls="assistant-panel" aria-expanded="false" aria-label="AI 도우미 열기">${logo}<span>AI</span></button>
+ document.body.insertAdjacentHTML('beforeend',`<button type="button" id="assistant-fab" class="as-fab" aria-controls="assistant-panel" aria-expanded="false" aria-label="AI 도우미 열기" title="AI 도우미">${logo}</button>
  <section id="assistant-panel" class="as-panel" role="dialog" aria-label="AI 도우미" hidden>
   <header class="as-head"><span class="as-title">${logo}<b>AI 도우미</b><em>조회 전용</em></span>
    <span><button type="button" class="as-icon" data-as-reset title="새 대화" aria-label="새 대화">↺</button><button type="button" class="as-icon" data-as-close title="닫기" aria-label="닫기">✕</button></span></header>

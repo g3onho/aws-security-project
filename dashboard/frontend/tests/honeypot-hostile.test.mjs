@@ -32,7 +32,7 @@ test('hostile session content is rendered as text only, and a double click sends
  };
  const {dom,w,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  loadD3Force(w);w.__pwned=0;
- const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=q6-local-2');client.setTimers({sleep:async()=>{}});
+ const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=v42');client.setTimers({sleep:async()=>{}});
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');

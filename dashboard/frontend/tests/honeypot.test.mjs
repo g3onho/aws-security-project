@@ -19,7 +19,7 @@ test('honeypot view shows status, timeline, charts, graph, sessions and the bloc
  click('nav [data-view="honeypot"]');
  await until(()=>$('#honeypot')?.textContent.includes('차단 IP 관리'),'honeypot did not render');
  await until(()=>$('.hp-steps'),'timeline did not render');
- const text=()=>$('#honeypot').textContent;
+ const text=()=>$('#honeypot').textContent+($('#replay-content')?.textContent||'');
 
  // 화면 위치·공통 부품
  assert.equal($('nav [data-view="honeypot"]').textContent.includes('허니팟'),true);
@@ -57,7 +57,7 @@ test('honeypot view shows status, timeline, charts, graph, sessions and the bloc
  click('[data-hp-session="a00000000001"]');
  await until(()=>$('.hp-terminal'),'session detail did not render');
  assert($('.hp-terminal').textContent.includes('$ cat /etc/passwd')&&$('.hp-terminal').textContent.includes('root:x:0:0'));
- assert(text().includes('가림 · 7자')&&!text().includes('S3cret!'),'passwords are masked by default');
+ assert(text().includes('7자, 가림')&&!text().includes('S3cret!'),'passwords are masked by default');
  assert(text().includes('참고용 · 차단 판단에 쓰지 않음'));
  click('[data-hp-reveal]');
  await until(()=>text().includes('S3cret!'),'reveal did not show the password');

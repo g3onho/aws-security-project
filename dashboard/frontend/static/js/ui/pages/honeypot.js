@@ -2,13 +2,13 @@
 // 세션의 명령·사용자명·비밀번호·미끼 응답·AI 요약은 모두 공격자가 조종할 수 있는 값이다 — 이 파일은 그 값을
 // 항상 esc() 를 거쳐 텍스트로만 그린다(innerHTML 에 원문을 넣지 않는다). 그래프도 SVG 문자열을 esc() 로 만든다.
 // 원천을 읽지 못한 구역은 그 구역에만 "읽지 못함"을 표시하고, 빈 표나 0 으로 바꾸지 않는다.
-import {$,$$,api,config,state,ui} from '../context.js?v=q6-ui-1-l1';
-import {esc,format,formatAt} from '../components/format.js?v=q6-ui-1';
-import {header,canvas,toast} from '../components/panel.js?v=q6-ui-1';
-import {drawChart} from '../charts/charts.js?v=q6-ui-1-l1';
-import {severityColors} from '../constants.js?v=q6-ui-1-l1';
-import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=q6-ui-1-l1';
-import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=q6-ui-1-l1';
+import {$,$$,api,config,state,ui} from '../context.js?v=v42';
+import {esc,format,formatAt} from '../components/format.js?v=v42';
+import {header,canvas,toast} from '../components/panel.js?v=v42';
+import {drawChart} from '../charts/charts.js?v=v42';
+import {severityColors} from '../constants.js?v=v42';
+import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=v42';
+import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=v42';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const VERDICT={ok:['정상 동작',MINT],waiting:['동작 확인 중',AMBER],partial:['일부 동작',AMBER],unknown:['확인 불가',GRAY],not_deployed:['허니팟 미배포',GRAY]};
@@ -74,7 +74,7 @@ function ipChoices(){
 }
 function pickerHtml(){
  const ips=ipChoices();
- return ips.length?`<label class="drill-field"><span>공격 IP</span><select data-hp-select>${ips.map(ip=>`<option value="${esc(ip)}"${ip===S.ip?' selected':''}>${esc(ip)}</option>`).join('')}</select></label>`:'';
+ return ips.length?`<label class="hp-pick"><span>공격 IP</span><select data-hp-select>${ips.map(ip=>`<option value="${esc(ip)}"${ip===S.ip?' selected':''}>${esc(ip)}</option>`).join('')}</select></label>`:'';
 }
 // 공격 경로 지도: 타임라인 API 의 steps 를 아키텍처 위에 그린다(새 데이터 원천 없음).
 function mapSection(){
@@ -84,7 +84,9 @@ function mapSection(){
  else if(!tl)body=`${mapSvg(null)}<p class="panel-loading">불러오는 중…</p>`;
  else if(!tl.ok)body=`${mapSvg(null)}${failed('공격 경로',tl)}`;
  else{steps=tl.data.steps;body=`${warnLines(tl)}${mapSvg(steps)}${stageList(steps)}<p class="muted hp-note">선·번호는 실제 기록으로만 켜집니다. ✓ 완료 · – 기록 없음 · ✕ 실패 · … 진행 중 · ? 읽지 못함. 기록이 없는 단계를 성공으로 그리지 않습니다.</p>`;}
- return `<section class="panel full-panel" id="hp-map">${header('공격 경로 지도 · 아키텍처 위에서 본 한 공격','ATTACK PATH')}<div class="hp-pad hp-tools">${pickerHtml()}${ips.length?'<button type="button" class="subtle-button" data-hp-replay>▶ 다시 재생</button>':''}</div><div class="hp-map">${body}</div></section>`;
+ // v42: 공격 IP 선택과 [다시 재생]을 지도 위 별도 줄이 아니라 카드 머리글 오른쪽(제목과 같은 줄)에 둔다. 지도는 머리글 바로 아래부터 시작한다.
+ const tools=ips.length?`<span class="hp-map-tools">${pickerHtml()}<button type="button" class="subtle-button" data-hp-replay>▶ 다시 재생</button></span>`:'';
+ return `<section class="panel full-panel" id="hp-map">${header('공격 경로 지도 · 아키텍처 위에서 본 한 공격',tools)}<div class="hp-map">${body}</div></section>`;
 }
 function timelineSection(){
  const ips=ipChoices();
@@ -148,42 +150,114 @@ function drawCharts(){
 }
 
 // ── ④ 관계 그래프 ──────────────────────────────────────────────────────────
-// d3-force 로 배치를 한 번 계산하고(애니메이션 없음) SVG 문자열을 esc() 로 만든다. 노드를 누르면 세션 상세·IP 타임라인으로 간다.
-const W=880,H=420;
+// d3-force 로 처음 배치를 계산한 뒤(애니메이션 없음) SVG 문자열을 esc() 로 만든다. v42: ① 글자가 겹치지 않게 자리를 고른다(네 방향 후보,
+// 자리가 없으면 글자를 숨기고 마우스를 올리면 툴팁) ② 노드를 끌어 옮길 수 있다 ③ 노드에 마우스를 올리면 이어진 노드만 강조한다.
+// 노드를 누르면(끌지 않고) 세션 상세·IP 타임라인으로 간다.
+const W=1040,H=540,LABEL_FS=12.5,NODE_R={ip:13,session:8,command:5};
 function layout(graph){
  const key=JSON.stringify([graph.nodes.map(n=>n.id),graph.links.length]);
  if(S.layoutKey===key&&S.layout)return S.layout;
  const d3=window.d3force;
  const nodes=graph.nodes.map(n=>({...n})),links=graph.links.map(l=>({...l}));
- if(!d3)return {nodes:nodes.map((n,i)=>({...n,x:60+(i%12)*70,y:50+Math.floor(i/12)*60})),links,plain:true};
- const sim=d3.forceSimulation(nodes).force('link',d3.forceLink(links).id(n=>n.id).distance(l=>l.target.type==='command'?70:55).strength(.8))
-  .force('charge',d3.forceManyBody().strength(-140)).force('center',d3.forceCenter(W/2,H/2)).force('collide',d3.forceCollide(16))
-  .force('x',d3.forceX(W/2).strength(.04)).force('y',d3.forceY(H/2).strength(.06)).stop();
- for(let i=0;i<260;i++)sim.tick();
- const clamp=(v,max)=>Math.max(18,Math.min(max-18,v));
+ if(!d3)return {nodes:nodes.map((n,i)=>({...n,x:60+(i%14)*70,y:50+Math.floor(i/14)*60})),links,plain:true};
+ const room=n=>n.type==='ip'?34:n.type==='session'?15:26;   // 글자가 들어갈 여유까지 충돌 반경에 포함
+ const sim=d3.forceSimulation(nodes).force('link',d3.forceLink(links).id(n=>n.id).distance(l=>l.target.type==='command'?95:66).strength(.7))
+  .force('charge',d3.forceManyBody().strength(-300)).force('center',d3.forceCenter(W/2,H/2)).force('collide',d3.forceCollide(room).iterations(2))
+  .force('x',d3.forceX(W/2).strength(.03)).force('y',d3.forceY(H/2).strength(.05)).stop();
+ for(let i=0;i<320;i++)sim.tick();
+ const clamp=(v,max)=>Math.max(22,Math.min(max-22,v));
  nodes.forEach(n=>{n.x=clamp(n.x,W);n.y=clamp(n.y,H);});
  S.layout={nodes,links:links.map(l=>({source:l.source.id||l.source,target:l.target.id||l.target}))};S.layoutKey=key;
  return S.layout;
+}
+const labelOf=n=>n.type==='ip'?String(n.label).slice(0,20):n.type==='command'?String(n.label).slice(0,22):'';
+const textW=t=>{let w=0;for(const ch of t)w+=ch.codePointAt(0)>0x2e7f?LABEL_FS:/[A-Z0-9mwMW@%]/.test(ch)?LABEL_FS*.68:/[ilj.,:;'|! ]/.test(ch)?LABEL_FS*.36:LABEL_FS*.6;return w;};
+// 글자 자리 정하기: IP → 세션 수가 많은 명령 순으로, 노드 오른쪽·왼쪽·위·아래 중 다른 글자·노드와 겹치지 않는 첫 자리. 없으면 글자를 그리지 않는다.
+export function placeLabels(nodes,width=W,height=H){
+ const boxes=[],out=new Map(),circles=nodes.map(n=>({x:n.x,y:n.y,r:(NODE_R[n.type]||6)+2}));
+ const hit=b=>boxes.some(o=>b.x<o.x+o.w&&b.x+b.w>o.x&&b.y<o.y+o.h&&b.y+b.h>o.y)||circles.some(c=>b.x<c.x+c.r&&b.x+b.w>c.x-c.r&&b.y<c.y+c.r&&b.y+b.h>c.y-c.r);
+ const order=nodes.filter(n=>labelOf(n)).sort((a,b)=>(a.type==='ip'?0:1)-(b.type==='ip'?0:1)||(b.count||b.sessions||0)-(a.count||a.sessions||0));
+ for(const n of order){
+  const t=labelOf(n),w=textW(t)+4,h=LABEL_FS+3,rr=(NODE_R[n.type]||6)+4;
+  const spots=[{x:n.x+rr,y:n.y-h/2,a:'start'},{x:n.x-rr-w,y:n.y-h/2,a:'end'},{x:n.x-w/2,y:n.y-rr-h,a:'middle'},{x:n.x-w/2,y:n.y+rr,a:'middle'}];
+  for(const c of spots){
+   const b={x:c.x,y:c.y,w,h};
+   if(b.x<2||b.x+b.w>width-2||b.y<2||b.y+b.h>height-2||hit(b))continue;
+   boxes.push(b);out.set(n.id,{x:c.a==='start'?c.x:c.a==='end'?c.x+w:c.x+w/2,y:c.y+h-3,anchor:c.a});break;
+  }
+ }
+ return out;
 }
 function graphSection(){
  const part=S.stats;
  if(!part?.ok||!part.data.totals.sessions)return '';
  const g=part.data.graph,hidden=g.hidden;
- const lay=layout(g),at=Object.fromEntries(lay.nodes.map(n=>[n.id,n]));
- const lines=lay.links.map(l=>at[l.source]&&at[l.target]?`<line x1="${at[l.source].x.toFixed(1)}" y1="${at[l.source].y.toFixed(1)}" x2="${at[l.target].x.toFixed(1)}" y2="${at[l.target].y.toFixed(1)}"/>`:'').join('');
+ const lay=layout(g),at=Object.fromEntries(lay.nodes.map(n=>[n.id,n])),labels=placeLabels(lay.nodes);
+ const lines=lay.links.map(l=>at[l.source]&&at[l.target]?`<line data-s="${esc(l.source)}" data-t="${esc(l.target)}" x1="${at[l.source].x.toFixed(1)}" y1="${at[l.source].y.toFixed(1)}" x2="${at[l.target].x.toFixed(1)}" y2="${at[l.target].y.toFixed(1)}"/>`:'').join('');
  const dots=lay.nodes.map(n=>{
-  const r=n.type==='ip'?13:n.type==='session'?8:5,fill=n.type==='ip'?CH.mint:n.type==='session'?(INTENT_COLOR[n.intent]||CH.gray):CH.ink;
+  const r=NODE_R[n.type]||6,fill=n.type==='ip'?CH.mint:n.type==='session'?(INTENT_COLOR[n.intent]||CH.gray):CH.ink;
   const name=n.type==='ip'?n.label:n.type==='session'?`세션 ${n.label} · ${INTENT_KO[n.intent]||'미상'}`:n.label;
-  const tip=`<title>${esc(name)}</title>`;
-  const text=n.type==='session'?'':`<text x="${(n.x+r+3).toFixed(1)}" y="${(n.y+4).toFixed(1)}">${esc(n.label.slice(0,n.type==='ip'?20:18))}</text>`;
+  const tip=`<title>${esc(name)}</title>`,spot=labels.get(n.id);
+  const text=labelOf(n)?`<text class="hp-lbl" ${spot?`x="${spot.x.toFixed(1)}" y="${spot.y.toFixed(1)}" text-anchor="${spot.anchor}"`:'hidden'}>${esc(labelOf(n))}</text>`:'';
   return `<g class="hp-node hp-node-${esc(n.type)}" tabindex="0" role="button" data-hp-node="${esc(n.id)}" aria-label="${esc(name)}"><circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${r}" fill="${fill}"/>${text}${tip}</g>`;
  }).join('');
  const more=hidden.ips||hidden.sessions||hidden.commands?`<p class="muted hp-note">화면이 복잡해지지 않도록 일부만 그렸습니다: 외 IP ${hidden.ips}개 · 세션 ${hidden.sessions}개 · 명령 ${hidden.commands}종.</p>`:'';
- return `<section class="panel full-panel">${header('공격 관계 그래프 · IP → 세션 → 명령','RELATIONS')}${warnLines(part)}
+ const hiddenLabels=lay.nodes.filter(n=>labelOf(n)&&!labels.has(n.id)).length;
+ return `<section class="panel full-panel">${header('공격 관계 그래프 · IP → 세션 → 명령',`<button type="button" class="subtle-button" data-hp-relayout>배치 다시 계산</button>`)}${warnLines(part)}
   <svg class="hp-graph" viewBox="0 0 ${W} ${H}" role="group" aria-label="출발지 IP, 세션, 명령의 관계 그래프"><g class="hp-links">${lines}</g>${dots}</svg>
   <div class="hp-legend"><span><i style="background:${CH.mint}"></i>출발지 IP</span>${Object.entries(INTENT_KO).map(([k,v])=>`<span><i style="background:${INTENT_COLOR[k]}"></i>세션 · ${esc(v)}</span>`).join('')}<span><i style="background:${CH.ink}"></i>명령</span></div>
   ${lay.plain?'<p class="muted hp-note">그래프 배치 라이브러리를 불러오지 못해 격자로 표시합니다.</p>':''}${more}
-  <p class="muted hp-note">IP·세션 노드를 누르면 아래 타임라인·세션 상세로 이동합니다.</p></section>`;
+  <p class="muted hp-note">노드를 끌어 옮기거나 마우스를 올려 이어진 노드를 볼 수 있습니다. 노드를 누르면 아래 타임라인·세션 상세로 이동합니다.${hiddenLabels?` 글자가 겹치는 ${hiddenLabels}개는 숨겼습니다(마우스를 올리면 이름이 보입니다).`:''}</p></section>`;
+}
+// 끌기: 노드 위치를 S.layout 에 저장하므로 자동 새로고침으로 다시 그려도 옮긴 자리가 유지된다. 끌지 않고 누르기만 하면 기존 클릭(상세 열기)이다.
+let drag=null;
+function svgPoint(svg,e){
+ const m=svg.getScreenCTM?.();if(!m)return null;
+ const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse());
+ return {x:Math.max(14,Math.min(W-14,p.x)),y:Math.max(14,Math.min(H-14,p.y))};
+}
+function moveNode(svg,id,x,y){
+ const node=S.layout.nodes.find(n=>n.id===id);if(!node)return;
+ node.x=x;node.y=y;
+ const g=[...svg.querySelectorAll('[data-hp-node]')].find(el=>el.dataset.hpNode===id);
+ const circle=g?.querySelector('circle');if(circle){circle.setAttribute('cx',x.toFixed(1));circle.setAttribute('cy',y.toFixed(1));}
+ for(const line of svg.querySelectorAll('line')){
+  if(line.dataset.s===id){line.setAttribute('x1',x.toFixed(1));line.setAttribute('y1',y.toFixed(1));}
+  if(line.dataset.t===id){line.setAttribute('x2',x.toFixed(1));line.setAttribute('y2',y.toFixed(1));}
+ }
+ const labels=placeLabels(S.layout.nodes);
+ for(const el of svg.querySelectorAll('[data-hp-node]')){
+  const text=el.querySelector('text');if(!text)continue;
+  const spot=labels.get(el.dataset.hpNode);
+  if(!spot){text.setAttribute('hidden','');continue;}
+  text.removeAttribute('hidden');text.setAttribute('x',spot.x.toFixed(1));text.setAttribute('y',spot.y.toFixed(1));text.setAttribute('text-anchor',spot.anchor);
+ }
+}
+function onPointerDown(e){
+ const el=e.target.closest?.('[data-hp-node]'),svg=el?.closest('svg.hp-graph');
+ if(!el||!svg||!S.layout||e.button>0)return;
+ drag={id:el.dataset.hpNode,svg,sx:e.clientX,sy:e.clientY,moved:false};
+ const move=ev=>{
+  if(!drag)return;
+  if(!drag.moved&&Math.hypot(ev.clientX-drag.sx,ev.clientY-drag.sy)<4)return;
+  drag.moved=true;
+  const p=svgPoint(drag.svg,ev);if(p)moveNode(drag.svg,drag.id,p.x,p.y);
+ };
+ const up=()=>{
+  window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);
+  if(drag?.moved){S.justDragged=true;setTimeout(()=>{S.justDragged=false;},0);}
+  drag=null;
+ };
+ window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);
+}
+function highlight(e,on){
+ const el=e.target.closest?.('[data-hp-node]'),svg=el?.closest('svg.hp-graph');
+ if(!svg||!S.layout)return;
+ svg.classList.toggle('hp-focus',on);
+ const id=el.dataset.hpNode,near=new Set([id]);
+ for(const l of S.layout.links){if(l.source===id)near.add(l.target);if(l.target===id)near.add(l.source);}
+ for(const g of svg.querySelectorAll('[data-hp-node]'))g.classList.toggle('hp-hl',on&&near.has(g.dataset.hpNode));
+ for(const line of svg.querySelectorAll('line'))line.classList.toggle('hp-hl',on&&(line.dataset.s===id||line.dataset.t===id));
 }
 
 // ── ⑤ 세션 목록·재생 ──────────────────────────────────────────────────────
@@ -207,26 +281,84 @@ function sessionsSection(){
   ${d.items.length?`<div class="table-scroll"><table><caption class="sr-only">미끼서버 세션 목록</caption>
   <thead><tr><th>시각(KST)</th><th>출발지 IP</th><th>세션</th><th>로그인 시도</th><th>명령</th><th>의도</th><th>위험도</th><th>분석</th><th>차단 상태</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
    :'<p class="muted hp-pad">조건에 맞는 세션이 없습니다(로그는 정상적으로 읽었습니다).</p>'}
-  ${d.nextCursor?`<div class="hp-pad"><button type="button" class="subtle-button" data-hp-more="${esc(d.nextCursor)}">더 보기</button></div>`:''}
-  ${detailPanel()}</section>`;
+  ${d.nextCursor?`<div class="hp-pad"><button type="button" class="subtle-button" data-hp-more="${esc(d.nextCursor)}">더 보기</button></div>`:''}</section>`;
+}
+// ── 세션 재생(v42 재구성) ──────────────────────────────────────────────────────
+// 전에는 명령과 응답 원문을 한 덩어리로 붙였다(제어 문자·ANSI 색 코드·\r\n 이 그대로 섞이고, 로그인 시도는 아래 표에 따로 있었다).
+// 지금은 ① 별도 창에서 열고 ② 접속 → 로그인 시도 → 명령·응답 → 종료를 시각 순서 한 흐름으로 보이고 ③ 응답의 제어 문자를 정리하며
+// ④ 줄이 시각 간격대로 차례로 나타난다(다시 재생·바로 보기). 텍스트는 처음부터 DOM 에 모두 있다 — 재생은 CSS 애니메이션일 뿐이다.
+export function cleanOutput(value,limit=2000){
+ if(value==null)return null;
+ let text=String(value)
+  .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,'')          // OSC(창 제목 등)
+  .replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g,'')                    // CSI(색·커서 이동)
+  .replace(/\x1b[@-Z\\-_]/g,'')
+  .replace(/\r\n?/g,'\n')
+  .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'')
+  .replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,'\n\n').replace(/^\n+|\s+$/g,'');
+ if(text.length>limit)text=`${text.slice(0,limit)}\n… (이하 ${text.length-limit}자 생략)`;
+ return text;
+}
+const fmtSec=ms=>`+${(Math.max(0,ms)/1000).toFixed(1)}초`;
+function replayLines(s){
+ const t0=s.startedAt||s.commands[0]?.at||s.authAttempts[0]?.at||0;
+ const events=[];
+ if(s.hasConnect!==false)events.push({at:s.startedAt,kind:'connect'});
+ for(const x of s.authAttempts)events.push({at:x.at,kind:'auth',x});
+ for(const c of s.commands)events.push({at:c.at,kind:'cmd',c});
+ if(s.endedAt)events.push({at:s.endedAt,kind:'end'});
+ events.sort((a,b)=>(a.at||0)-(b.at||0));
+ let delay=0.15,prev=null;const out=[];
+ for(const e of events){
+  if(prev!=null&&e.at!=null)delay+=Math.min(1.6,Math.max(0.45,(e.at-prev)/1000*0.25));
+  if(e.at!=null)prev=e.at;
+  const tag=`<span class="hp-ts">${e.at!=null&&t0?esc(fmtSec(e.at-t0)):'&nbsp;'}</span>`;
+  const row=(cls,inner,extra='')=>out.push(`<span class="hp-line ${cls}" style="--d:${delay.toFixed(2)}s">${tag}${inner}</span>${extra}`);
+  if(e.kind==='connect')row('hp-sys',`<span class="hp-msg">접속 ${esc(s.srcIp||'출발지 미상')}${s.srcPort?':'+esc(s.srcPort):''}</span>`);
+  else if(e.kind==='auth'){
+   const pw=e.x.password==null?`<span class="hp-mask">${'•'.repeat(Math.min(12,e.x.passwordLength||0))}</span> <span class="muted">(${esc(e.x.passwordLength??'?')}자, 가림)</span>`:`<code>${esc(e.x.password)}</code>`;
+   row('hp-sys hp-auth',`<span class="hp-msg">로그인 시도 · 사용자명 <code>${esc(e.x.user||'—')}</code> · 비밀번호 ${pw}</span>`);
+  }else if(e.kind==='cmd'){
+   row('hp-cmd',`<span class="hp-cmdline"><span class="hp-ps">$ </span><span class="hp-in">${esc(e.c.command)}</span></span>`);
+   delay+=0.3;
+   const res=cleanOutput(e.c.response);
+   out.push(res==null?`<span class="hp-line hp-res" style="--d:${delay.toFixed(2)}s"><span class="hp-ts">&nbsp;</span><span class="hp-none">(응답 기록 없음)</span></span>`
+    :res===''?`<span class="hp-line hp-res" style="--d:${delay.toFixed(2)}s"><span class="hp-ts">&nbsp;</span><span class="hp-none">(출력 없음)</span></span>`
+    :`<span class="hp-line hp-res" style="--d:${delay.toFixed(2)}s"><span class="hp-ts">&nbsp;</span><span class="hp-out">${esc(res)}</span></span>`);
+  }else row('hp-sys',`<span class="hp-msg">세션 종료</span>`);
+ }
+ return out.join('');
 }
 function detailPanel(){
  const part=S.detail;
  if(!part)return '';
- if(part.loading)return '<div class="hp-detail"><p class="panel-loading">세션을 불러오는 중…</p></div>';
- if(!part.ok)return `<div class="hp-detail">${failed('세션 상세',part)}</div>`;
+ if(part.loading)return '<div class="hp-detail"><h2 id="replay-title" class="hp-replay-title">세션 재생</h2><p class="panel-loading">세션을 불러오는 중…</p></div>';
+ if(!part.ok)return `<div class="hp-detail"><h2 id="replay-title" class="hp-replay-title">세션 재생</h2>${failed('세션 상세',part)}<div class="hp-pad"><button type="button" class="text-button" data-hp-close-detail>닫기</button></div></div>`;
  const s=part.data,a=s.analysis;
- const term=s.commands.map(c=>`<span class="hp-in">$ ${esc(c.command)}</span>\n${c.response==null?'<span class="hp-none">(응답 기록 없음)</span>':esc(c.response)}`).join('\n');
- const auth=s.authAttempts.map(x=>`<tr><td>${esc(format(x.at))}</td><td>${esc(x.user||'—')}</td><td>${x.password==null?'<span class="muted">가림 · '+x.passwordLength+'자</span>':esc(x.password)}</td></tr>`).join('');
+ const length=s.startedAt&&s.endedAt?fmtSec(s.endedAt-s.startedAt).replace('+',''):'';
  const reveal=canWrite()?`<button type="button" class="subtle-button" data-hp-reveal>${S.reveal?'비밀번호 가리기':'비밀번호 원문 보기'}</button>`:'<span class="muted">비밀번호 원문은 조치 담당 계정만 볼 수 있습니다.</span>';
+ const facts=[`로그인 시도 ${s.authCount}회`,`명령 ${s.commandCount}개`,length?`길이 ${length}`:'',
+  s.intent?`의도 ${INTENT_KO[s.intent]||s.intent}`:'의도 분석 없음',s.severity?`위험도 ${SEVERITY_KO[s.severity]||s.severity}`:'',s.analyzed?(s.aiApplied?'AI 분석':'규칙 분석'):''].filter(Boolean);
  const ai=a?`<div class="hp-ai"><b>AI 분석</b> <span class="hp-badge">참고용 · 차단 판단에 쓰지 않음</span>
    <p>${a.summary?esc(a.summary):'요약 없음'}</p><p class="muted">${a.aiApplied?'AI 가 만든 분석':'AI 미적용(규칙 기반 대체 판정)'} · 의도 ${esc(INTENT_KO[a.intent]||a.intent)} · 위험도 ${a.severity?esc(SEVERITY_KO[a.severity]):'미상'}</p>
-   ${a.iocs.length?`<p><b>IOC</b> ${a.iocs.map(i=>`<code>${esc(i)}</code>`).join(' ')}</p>`:''}</div>`:'<p class="muted">세션 종료·분석 기록이 아직 없습니다.</p>';
- return `<div class="hp-detail" data-detail="${esc(s.sessionId)}"><div class="panel-subhead">세션 재생 · ${esc(s.sessionId)} · ${esc(s.srcIp||'출발지 미상')} · ${esc(format(s.startedAt))} KST</div>
-  ${warnLines(part)}<pre class="hp-terminal" aria-label="세션 재생(입력한 명령과 미끼가 보낸 응답)">${term||'<span class="hp-none">입력한 명령이 없습니다(로그인만 시도).</span>'}</pre>
+   ${a.iocs.length?`<p><b>IOC</b> ${a.iocs.map(i=>`<code>${esc(i)}</code>`).join(' ')}</p>`:''}</div>`:'<p class="muted hp-pad">세션 종료·분석 기록이 아직 없습니다.</p>';
+ const empty=!s.commands.length&&!s.authAttempts.length;
+ return `<div class="hp-detail" data-detail="${esc(s.sessionId)}">
+  <div class="hp-replay-head"><div><h2 id="replay-title" class="hp-replay-title">세션 재생</h2>
+    <p class="hp-replay-sub"><code>${esc(s.sessionId)}</code> · ${esc(s.srcIp||'출발지 미상')} · ${esc(format(s.startedAt))} KST</p></div>
+   <div class="hp-replay-ctl"><button type="button" class="subtle-button" data-hp-play>▶ 다시 재생</button><button type="button" class="subtle-button" data-hp-skip>⏭ 바로 보기</button><button type="button" class="dialog-close" data-hp-close-detail aria-label="세션 재생 닫기">×</button></div></div>
+  <ul class="hp-facts">${facts.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>
+  ${warnLines(part)}
+  <pre class="hp-terminal${S.animate?' play':''}" aria-label="세션 재생(접속·로그인 시도·입력한 명령과 미끼가 보낸 응답)">${empty?'<span class="hp-none">기록된 로그인 시도나 명령이 없습니다(접속만 했습니다).</span>':replayLines(s)}</pre>
   <div class="hp-pad">${reveal}</div>
-  <div class="table-scroll"><table><caption class="sr-only">로그인 시도</caption><thead><tr><th>시각</th><th>사용자명</th><th>비밀번호</th></tr></thead><tbody>${auth||'<tr><td colspan="3" class="muted">로그인 시도 기록 없음</td></tr>'}</tbody></table></div>
-  ${ai}<div class="hp-pad"><button type="button" class="text-button" data-hp-close-detail>닫기</button></div></div>`;
+  ${ai}<div class="hp-pad hp-close-row"><button type="button" class="text-button" data-hp-close-detail>닫기</button></div></div>`;
+}
+function paintDetail(){
+ const dialog=$('#replay-dialog'),box=$('#replay-content');
+ if(!dialog||!box)return;
+ if(!S.detail){box.innerHTML='';if(dialog.open)dialog.close();return;}
+ box.innerHTML=detailPanel();
+ if(!dialog.open)dialog.showModal();
 }
 
 // ── ⑥ 차단 IP 관리 ────────────────────────────────────────────────────────
@@ -347,7 +479,14 @@ async function loadAll(){
 }
 export async function renderHoneypot(){
  const box=$('#honeypot');if(!box)return;
- if(!box._hpBound){box.addEventListener('click',onClick);box.addEventListener('change',onChange);box.addEventListener('keydown',onKeydown);box._hpBound=true;}
+ if(!box._hpBound){box.addEventListener('click',onClick);box.addEventListener('change',onChange);box.addEventListener('keydown',onKeydown);box.addEventListener('pointerdown',onPointerDown);
+  box.addEventListener('mouseover',e=>highlight(e,true));box.addEventListener('mouseout',e=>highlight(e,false));box._hpBound=true;}
+ const replayDialog=$('#replay-dialog');
+ if(replayDialog&&!replayDialog._hpBound){
+  replayDialog.addEventListener('click',e=>{if(e.target===replayDialog){S.detail=null;S.reveal=false;paintDetail();return;}onClick(e);});
+  replayDialog.addEventListener('close',()=>{S.detail=null;S.reveal=false;});
+  replayDialog._hpBound=true;
+ }
  const serial=ui.refreshSerial;
  box.setAttribute('aria-busy','true');
  try{
@@ -393,10 +532,17 @@ async function submitAction(){
  }
 }
 async function openSession(id,{reveal=false}={}){
- S.reveal=reveal;S.detail={loading:true};repaint();
+ S.reveal=reveal;S.detail={loading:true};S.animate=false;paintDetail();
  const part=await section(api.honeypotSession(id,{reveal}));
- S.detail=part.ok?part:{...part,ok:false};repaint();
- $('[data-detail]')?.scrollIntoView?.({block:'nearest'});
+ if(!S.detail)return;                          // 기다리는 동안 창을 닫았다
+ S.detail=part.ok?part:{...part,ok:false};
+ S.animate=!reveal;                            // 비밀번호 보기 전환 때는 처음부터 다시 재생하지 않는다
+ paintDetail();S.animate=false;
+}
+function replay(skip){
+ const term=$('.hp-terminal');if(!term)return;
+ term.classList.remove('play','done');void term.offsetWidth;
+ term.classList.add(skip?'done':'play');
 }
 async function selectIp(ip){
  if(!ip||ip===S.ip)return;
@@ -430,12 +576,16 @@ function printReport(){
 }
 function onClick(e){
  const t=e.target;
+ if(S.justDragged){S.justDragged=false;return;}
+ if(t.closest('[data-hp-relayout]')){S.layoutKey='';S.layout=null;repaint();return;}
  const ip=t.closest('[data-hp-ip]');if(ip){selectIp(ip.dataset.hpIp);return;}
  const node=t.closest('[data-hp-node]');if(node){const [kind,...rest]=node.dataset.hpNode.split(':'),id=rest.join(':');
   if(kind==='ip')selectIp(id);else if(kind==='s')openSession(id);return;}
  const view=t.closest('[data-hp-session]');if(view){openSession(view.dataset.hpSession);return;}
  if(t.closest('[data-hp-reveal]')){const id=S.detail?.data?.sessionId;if(id)openSession(id,{reveal:!S.reveal});return;}
- if(t.closest('[data-hp-close-detail]')){S.detail=null;S.reveal=false;repaint();return;}
+ if(t.closest('[data-hp-close-detail]')){S.detail=null;S.reveal=false;paintDetail();return;}
+ if(t.closest('[data-hp-play]')){replay(false);return;}
+ if(t.closest('[data-hp-skip]')){replay(true);return;}
  if(t.closest('[data-hp-filter-apply]')){applyFilter();return;}
  const more_=t.closest('[data-hp-more]');if(more_){more(more_.dataset.hpMore);return;}
  const rel=t.closest('[data-hp-release]');if(rel){S.action={kind:'release',ip:rel.dataset.hpRelease};S.message=null;repaint();$('[data-hp-form]')?.scrollIntoView?.({block:'nearest'});return;}
