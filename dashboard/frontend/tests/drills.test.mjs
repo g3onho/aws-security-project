@@ -32,7 +32,7 @@ test('security scenarios run everything with one button and no selection control
 
  let text=$('#drills').textContent;
  assert.equal($('nav .sidebar-nav-bottom [data-view="drills"]')?.textContent.includes('보안 시나리오'),true);
- assert.equal($('#drills select'),null,'시나리오·도구·대상 선택 컨트롤은 없다');
+ assert.equal($('#drills .drill-workspace select'),null,'실행 패널에는 시나리오·도구·대상 선택 컨트롤이 없다(경로 지도 카드의 선택기는 보기 전용)');
  assert.equal($('#drills [data-drill-scenario]'),null);
  assert(text.includes('전부 실행')&&text.includes('SEC-02')&&text.includes('SEC-10'));
  assert(text.includes('실행 결과'),'시나리오 표에 실행 결과 열');

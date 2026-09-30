@@ -1,9 +1,9 @@
 // 상단 상태 바로가기(v23): 자동 조치 실패·수동 대응 필요·CloudWatch 경보. 발송 알림 기록이 아니라 현재 필터 기준 관측 건수.
 // (예전의 '승인 대기'는 모든 탐지가 들어가 실제 승인 대기와 달랐고, 재검증 항목은 채울 경로가 없어 뺐다.)
-import {$,state,setFilters,notifications,hooks,summary} from '../context.js?v=v43';
-import {esc} from './format.js?v=v43';
-import {patchMarkup} from './rendering.js?v=v43';
-import {clearSelection} from '../pages/events.js?v=v43';
+import {$,state,setFilters,notifications,hooks,summary} from '../context.js?v=v44';
+import {esc} from './format.js?v=v44';
+import {patchMarkup} from './rendering.js?v=v44';
+import {clearSelection} from '../pages/events.js?v=v44';
 const GROUPS=[
  {key:'자동 조치 실패',count:()=>summary.automation?.failed??0,view:'responses'},
  {key:'수동 대응 필요',count:()=>summary.automation?.manual??0,view:'responses'},

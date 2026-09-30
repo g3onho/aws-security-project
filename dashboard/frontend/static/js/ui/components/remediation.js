@@ -1,5 +1,5 @@
 // 자동 조치 표시 공통(v23): 판정·상태 한글 이름, 자동 조치 여부 칩, 조치 전/후 바뀐 줄. 통합 관제·탐지 상세·조치 이력이 함께 쓴다.
-import {esc,format,milliseconds} from './format.js?v=v43';
+import {esc,format,milliseconds} from './format.js?v=v44';
 export const DECISION_KO={'auto-executed':'자동 실행','auto-skipped':'실행 생략(이미 조치됨)','manual-notified':'수동 대응 필요','dry-run':'판단만(dry-run)',
  approve:'승인',cancel:'승인 취소',execute:'실행 접수',verify:'재검증 접수','execute-completed':'실행 결과','verify-completed':'재검증 결과'};
 // SUCCESS 는 SSM 실행 성공이다. 같은 조건으로 다시 확인한 재검증이 아니다.

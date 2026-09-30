@@ -1,8 +1,8 @@
 // 통합 관제: 인프라 상태·자원 표본·자동 대응·최근 보안 이벤트.
-import {summary,metricsFor,servicesOf} from '../context.js?v=v43';
-import {header} from '../components/panel.js?v=v43';
-import {esc} from '../components/format.js?v=v43';
-import {responseStats} from '../components/event-response.js?v=v43';
+import {summary,metricsFor,servicesOf} from '../context.js?v=v44';
+import {header} from '../components/panel.js?v=v44';
+import {esc} from '../components/format.js?v=v44';
+import {responseStats} from '../components/event-response.js?v=v44';
 
 function highestLatest(metric,key){
  const values=(metric?.series||[]).filter(s=>s.metric===key).map(s=>{
@@ -100,7 +100,7 @@ export function responseCard(){
     <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false"><defs><linearGradient id="rr-${g.key}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--ring-from)"/><stop offset="1" stop-color="var(--ring-to)"/></linearGradient></defs>
     <circle class="rr-track" cx="60" cy="60" r="50" pathLength="100"/><circle class="rr-arc" cx="60" cy="60" r="50" pathLength="100" stroke="url(#rr-${g.key})" stroke-dasharray="${share>0?Math.max(share,1.5).toFixed(1):0} 100"/></svg><b>${pctText}</b></div></div>`;
  }).join('');
- return `<section class="panel response-overview-panel">${header('자동 대응 현황','선택 기간')}<div class="response-body">
+ return `<section class="panel response-overview-panel">${header('자동 대응 현황')}<div class="response-body">
   <div class="response-summary">${cards}</div>
   <div class="response-overview-footer"><button class="text-button" data-view="responses">조치 이력 보기 →</button></div></div></section>`;
 }

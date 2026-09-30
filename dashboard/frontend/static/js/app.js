@@ -1,28 +1,28 @@
 // 대시보드 시작점: 화면 조립(render)·새로고침(refresh)·사용자 입력 연결만 한다.
 // 화면별 표시는 ui/pages, 공통 부품은 ui/components, 차트는 ui/charts, 지도는 ui/map, 주소창은 ui/router(설계 2.1).
-import {regions,sources,statuses,periodStops} from './ui/constants.js?v=v43';
-import {periodTrackMarkup} from './ui/components/period-track.js?v=v43';
-import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=v43';
-import {esc,format} from './ui/components/format.js?v=v43';
-import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=v43';
-import {cleanCharts} from './ui/charts/charts.js?v=v43';
-import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=v43';
-import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=v43';
-import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=v43';
-import {titles,syncUrl,applyUrl} from './ui/router.js?v=v43';
-import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=v43';
-import {overviewCharts,responseCard} from './ui/pages/overview.js?v=v43';
-import {patchMarkup} from './ui/components/rendering.js?v=v43';
-import {table,eventTrendWidget,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=v43';
-import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=v43';
-import './ui/components/remediate-bulk.js?v=v43';
-import {loadEventResponse,eventResponseCard} from './ui/components/event-response.js?v=v43';
-import {renderAudit} from './ui/pages/history.js?v=v43';
-import {renderDrills} from './ui/pages/drills.js?v=v43';
-import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=v43';
-import {initAssistant} from './ui/components/assistant.js?v=v43';
-import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=v43';
-import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=v43';
+import {regions,sources,statuses,periodStops} from './ui/constants.js?v=v44';
+import {periodTrackMarkup} from './ui/components/period-track.js?v=v44';
+import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=v44';
+import {esc,format} from './ui/components/format.js?v=v44';
+import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=v44';
+import {cleanCharts} from './ui/charts/charts.js?v=v44';
+import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=v44';
+import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=v44';
+import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=v44';
+import {titles,syncUrl,applyUrl} from './ui/router.js?v=v44';
+import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=v44';
+import {overviewCharts,responseCard} from './ui/pages/overview.js?v=v44';
+import {patchMarkup} from './ui/components/rendering.js?v=v44';
+import {table,eventTrendWidget,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=v44';
+import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=v44';
+import './ui/components/remediate-bulk.js?v=v44';
+import {loadEventResponse,eventResponseCard} from './ui/components/event-response.js?v=v44';
+import {renderAudit} from './ui/pages/history.js?v=v44';
+import {renderDrills} from './ui/pages/drills.js?v=v44';
+import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=v44';
+import {initAssistant} from './ui/components/assistant.js?v=v44';
+import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=v44';
+import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=v44';
 function render({loadPanels=false}={}){
  const pending=[];
 

@@ -26,7 +26,7 @@ test('run popup can be closed and reopened, and history rows open a report popup
  await until(()=>$('#content .event-trend-widget'),'overview did not render');
  click('nav [data-view="drills"]');
  await until(()=>$('#drills [data-run-all-start]'),'run-all button did not render');
- assert($('#drills [data-run-report="old-1"]'),'이력 줄마다 보고서 버튼');
+ assert($('#drills [data-run-report="old-1"]'),'이력의 실행 ID 로 팝업을 연다');
 
  click('#drills [data-run-all-start]');
  await until(()=>$('#run-dialog').open&&$('#run-dialog-content').textContent.includes('실행 ID: run-1'),'popup did not open');

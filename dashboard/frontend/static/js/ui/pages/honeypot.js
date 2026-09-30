@@ -2,13 +2,13 @@
 // 세션의 명령·사용자명·비밀번호·미끼 응답·AI 요약은 모두 공격자가 조종할 수 있는 값이다 — 이 파일은 그 값을
 // 항상 esc() 를 거쳐 텍스트로만 그린다(innerHTML 에 원문을 넣지 않는다). 그래프도 SVG 문자열을 esc() 로 만든다.
 // 원천을 읽지 못한 구역은 그 구역에만 "읽지 못함"을 표시하고, 빈 표나 0 으로 바꾸지 않는다.
-import {$,$$,api,config,state,ui} from '../context.js?v=v43';
-import {esc,format,formatAt} from '../components/format.js?v=v43';
-import {header,canvas,toast} from '../components/panel.js?v=v43';
-import {drawChart} from '../charts/charts.js?v=v43';
-import {severityColors} from '../constants.js?v=v43';
-import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=v43';
-import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=v43';
+import {$,$$,api,config,state,ui} from '../context.js?v=v44';
+import {esc,format,formatAt} from '../components/format.js?v=v44';
+import {header,canvas,toast} from '../components/panel.js?v=v44';
+import {drawChart} from '../charts/charts.js?v=v44';
+import {severityColors} from '../constants.js?v=v44';
+import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=v44';
+import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=v44';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const VERDICT={ok:['정상 동작',MINT],waiting:['동작 확인 중',AMBER],partial:['일부 동작',AMBER],unknown:['확인 불가',GRAY],not_deployed:['허니팟 미배포',GRAY]};
@@ -52,17 +52,18 @@ function statusSection(){
  const d=part.data;
  if(!d.deployed)return `<section class="panel full-panel">${header('동작 상태','STATUS')}<div class="empty"><strong>허니팟 미배포</strong>enable_honeypot 이 꺼져 있어 미끼 서버가 없습니다. 배포 후 이 화면에서 접속·분석·차단을 확인합니다.</div></section>`;
  const [label,color]=VERDICT[d.verdict.state]||VERDICT.unknown;
- const cards=Object.keys(CARD_LABEL).filter(k=>d.cards[k]).map(k=>{
+ const cards=Object.keys(CARD_LABEL).filter(k=>d.cards[k]).map((k,i)=>{
   const c=d.cards[k],col=CARD_COLOR[c.state]||GRAY;
-  return `<div class="hp-card" data-card="${esc(k)}" data-state="${esc(c.state)}"><span class="hp-card-label">${esc(CARD_LABEL[k])}</span>
-   <strong style="color:${col}"><span aria-hidden="true">${CARD_MARK[c.state]||'?'}</span> ${esc(c.text)}</strong>
-   <small>${c.at?esc(format(c.at))+' KST':'시각 없음'}</small><small class="muted">${esc(c.detail||'')}</small></div>`;
+  return `<div class="hp-card" data-card="${esc(k)}" data-state="${esc(c.state)}" style="--c:${col}">
+   <div class="hp-card-top"><span class="hp-mark" aria-hidden="true">${CARD_MARK[c.state]||'?'}</span><span class="hp-card-label">${esc(CARD_LABEL[k])}</span></div>
+   <strong class="hp-card-text">${esc(c.text)}</strong>
+   <div class="hp-card-foot"><small>${c.at?esc(format(c.at))+' KST':'시각 없음'}</small>${c.detail?`<small class="muted">${esc(c.detail)}</small>`:''}</div></div>`;
  }).join('');
  const reasons=d.verdict.reasons.length?`<ul class="hp-reasons">${d.verdict.reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`:'';
- return `<section class="panel full-panel">${header('동작 상태 · 잘 되고 있나','STATUS')}
-  <div class="hp-verdict" data-verdict="${esc(d.verdict.state)}" style="border-color:${color}"><strong style="color:${color}">${esc(label)}</strong>${reasons}</div>
+ return `<section class="panel full-panel">${header('동작 상태','STATUS')}
+  <div class="hp-verdict" data-verdict="${esc(d.verdict.state)}" style="--c:${color}"><span class="hp-verdict-dot" aria-hidden="true"></span><div><strong>${esc(label)}</strong>${reasons}</div></div>
   ${warnLines(part)}<div class="hp-cards">${cards}</div>
-  <p class="muted hp-note">정상 동작은 미끼 인스턴스·로그·AI 분석·알람·자동 차단이 모두 관측됐을 때만 표시합니다. 접속이 없으면 "동작 확인 중"입니다.</p></section>`;
+  <p class="muted hp-note">미끼 인스턴스·로그·AI 응답·알람·자동 차단이 모두 관측되면 "정상 동작"으로 표시합니다. 접속이 없으면 "동작 확인 중"입니다.</p></section>`;
 }
 
 // ── ② 파이프라인 타임라인 ─────────────────────────────────────────────────────

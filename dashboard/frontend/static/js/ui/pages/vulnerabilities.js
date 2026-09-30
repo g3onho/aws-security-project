@@ -1,8 +1,8 @@
 // 취약점 점검: 서버×패키지 묶음, 대상·페이지·크기, CVE CSV. 이 화면 상태는 이 모듈만 바꾼다.
-import {$,api,ui} from '../context.js?v=v43';
-import {esc,cmdBlock} from '../components/format.js?v=v43';
-import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v43';
-import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v43';
+import {$,api,ui} from '../context.js?v=v44';
+import {esc,cmdBlock} from '../components/format.js?v=v44';
+import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v44';
+import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v44';
 // ── 취약점 점검 ────────────────────────────────────────────
 let vulnTarget='',vulnPage=1,vulnSize=50,vulnFilter='',vulnData=null,vulnDataKey='';
 const vulnKey=()=>panelScope()+JSON.stringify([vulnTarget,ui.refreshSerial]);
@@ -107,8 +107,9 @@ function vulnGroupMarkup(g){
  const known=g.fixable+g.partial;
  const fix=g.fixable===g.items.length?`<span class="fix-state ok">수정 버전 명시</span>`:known?`<span class="fix-state">수정 버전 일부 명시 ${known}종</span>`:`<span class="fix-state wait">수정 버전 미제공</span>`;
  const one=g.serverList.length===1?g.serverList[0]:null;
- const where=one?`<button class="link-button" data-vuln-target="${esc(one.resource)}" title="${esc(one.resource)}">${esc(one.name)}</button> · 설치 ${esc(one.installed||'—')}`
-  :`<span class="server-count">서버 ${g.serverList.length}대</span> · ${g.serverList.slice(0,3).map(s=>esc(s.name.replace(/^soar-sec-dev-/,''))).join(', ')}${g.serverList.length>3?' 외':''}`;
+ // 서버 이름은 링크가 아니라 글자로만 보여준다(서버별 보기는 묶음을 펼친 안의 '영향받는 서버'에서).
+ const where=one?`<span class="vg-host" title="${esc(one.resource)}">${esc(one.name)}</span> · 설치 ${esc(one.installed||'—')}`
+  :`<span class="server-count">서버 ${g.serverList.length}대</span> · <span class="vg-host-list">${g.serverList.slice(0,3).map(s=>esc(s.name.replace(/^soar-sec-dev-/,''))).join(', ')}${g.serverList.length>3?' 외':''}</span>`;
  return `<details class="cve-group" data-key="vg-${esc(g.key)}"><summary>
   <div class="vg-main"><strong>${esc(g.package)}</strong><small>${where}</small></div>
   <div class="vg-count"><b>${g.items.length}</b><span>CVE 종류</span></div>

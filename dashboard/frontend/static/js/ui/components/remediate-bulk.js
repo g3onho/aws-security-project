@@ -2,12 +2,12 @@
 // '직접 조치' 모드는 대시보드로 조치할 수 없는 항목을 목록으로만 보여 준다(고르기·실행 없음).
 // 각 건은 단건 조치와 같은 서버 경로(미리보기 → 실행)를 쓴다. 서버가 건마다 권한·범위·현재 상태를 다시 확인하고,
 // 실행 가능 여부는 건마다 서버가 알려 준 값만 따른다. 실행은 접수일 뿐 해결이 아니다(재검증 결과는 조치 이력).
-import {$,api} from '../context.js?v=v43';
-import {esc,shortResource} from './format.js?v=v43';
-import {badge} from './badges.js?v=v43';
-import {classify,REASON,autoAttempts} from './event-response.js?v=v43';
-import {remediationErrorText,recordTitle,automationState} from './remediation.js?v=v43';
-import {format,milliseconds} from './format.js?v=v43';
+import {$,api} from '../context.js?v=v44';
+import {esc,shortResource} from './format.js?v=v44';
+import {badge} from './badges.js?v=v44';
+import {classify,REASON,autoAttempts} from './event-response.js?v=v44';
+import {remediationErrorText,recordTitle,automationState} from './remediation.js?v=v44';
+import {format,milliseconds} from './format.js?v=v44';
 const bulk={items:[],serial:0,running:false,keys:new Map(),mode:'manual'};
 const CONCURRENCY=4;   // 미리보기(읽기) 동시 요청 수. 실행은 한 건씩 순서대로 보낸다.
 const newKey=()=>{const bytes=new Uint8Array(16);if(globalThis.crypto?.getRandomValues)globalThis.crypto.getRandomValues(bytes);else bytes.forEach((_,i)=>{bytes[i]=Math.floor(Math.random()*256);});return 'rb-'+[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');};

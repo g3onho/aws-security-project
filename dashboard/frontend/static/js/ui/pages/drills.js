@@ -1,10 +1,11 @@
 // 보안 시나리오: 시나리오 표가 화면의 뼈대이고, 선택 없이 [전부 실행] 한 번으로 준비된 모든 시나리오를 실행한다.
 // 실행은 백엔드 POST /api/drills/run-all/start(SSM)이며 WRITE_ENABLED 가 꺼져 있으면 403 이다.
-import {$,api} from '../context.js?v=v43';
-import {esc,format,milliseconds} from '../components/format.js?v=v43';
-import {loadPanel,header} from '../components/panel.js?v=v43';
-import {openReport} from '../components/report.js?v=v43';
-import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=v43';
+import {$,api} from '../context.js?v=v44';
+import {esc,format,milliseconds} from '../components/format.js?v=v44';
+import {loadPanel,header} from '../components/panel.js?v=v44';
+import {openReport} from '../components/report.js?v=v44';
+import {scenarioRoute,routeSvg,routeList,ROUTE_NOTE} from './scenario-map.js?v=v44';
+import {replayMap} from './honeypot-map.js?v=v44';
 
 // runnable 을 prep-needed 와 같은 색으로 통일한다 — 시나리오 표는 [전부 실행] 대상만 보여주므로(RUN_ALL_SECS 필터)
 // 전부 "실행 가능"이고, 이 표 밖에서는 이 색이 안 쓰인다.
@@ -71,29 +72,24 @@ function resultOf(id){
  const label=states.some(s=>s==='Failed'||s==='TimedOut')?'실패':states.some(s=>RUNNING.has(s))?'실행 중':states.every(s=>s==='Success')?'완료':states.some(s=>s==='Cancelled')?'취소':'알 수 없음';
  return `<strong>${label}</strong> <small class="muted">${mine.length}건</small>`;
 }
-let flowId=null;   // 경로 지도 팝업에 열려 있는 시나리오 ID
+let routeId='SEC-01';   // 경로 지도 카드에서 고른 시나리오 ID
 function scenarioRow(s){
  const obs=s.observation==='connected'?'연결됨':'미연결';
  return `<tr><td class="drill-scenario-main"><strong>${esc(s.id)}</strong><span>${esc(s.purpose)}</span>
-  <button type="button" class="flow-toggle" data-flow-toggle="${esc(s.id)}" aria-haspopup="dialog">경로 지도 보기</button></td>
+  <button type="button" class="flow-toggle" data-flow-toggle="${esc(s.id)}">경로 지도 보기</button></td>
   <td class="drill-scenario-evidence"><span><b>관측</b> ${s.sources.map(esc).join(' · ')}</span><span><b>대응</b> ${esc(s.response)}</span></td>
   <td class="drill-scenario-status"><div>${supportPill(s.support,s.supportLabel)}</div><small>관측 ${obs}</small></td>
   <td class="drill-scenario-result">${resultOf(s.id)}</td></tr>`;
 }
-// 경로 지도는 보안 이벤트 상세와 같은 큰 팝업으로 연다(표 안에서 펼치면 좁아서 글씨가 잘린다).
-function paintFlowDialog(){
- const box=$('#flow-dialog');if(!box)return;
- const s=flowId&&catalog?.scenarios.find(x=>x.id===flowId);
- if(!s){if(box.open)box.close();return;}
- $('#flow-dialog-content').innerHTML=`<div class="dialog-header"><div><div class="eyebrow">${esc(s.id)} / 경로 지도</div><h2 id="flow-dialog-title">${esc(s.purpose)}</h2></div><button type="button" class="dialog-close" data-flow-close aria-label="경로 지도 닫기">×</button></div>
-  <div class="dialog-body"><div id="flow-${esc(s.id)}" class="scenario-flow">${flowBlock(scenarioStages(s,run.items),FLOW_NOTE_SCENARIO)}</div></div>
-  <div class="dialog-actions"><span>읽기 전용</span><button type="button" class="cancel-button" data-flow-close>닫기</button></div>`;
- if(!box.open)box.showModal();
-}
-function closeFlow(){
- const id=flowId;flowId=null;
- const box=$('#flow-dialog');if(box&&box.open)box.close();
- const again=[...document.querySelectorAll('[data-flow-toggle]')].find(b=>b.dataset.flowToggle===id);if(again)again.focus();
+// 경로 지도: 허니팟 페이지처럼 카드 한 장에 시나리오를 골라 그린다(팝업 없음).
+function routeSection(){
+ const list=catalog.scenarios.filter(x=>RUN_ALL_SECS.includes(x.id));
+ const s=list.find(x=>x.id===routeId)||list[0];
+ if(!s)return '';
+ const m=scenarioRoute(s,run.items);
+ const picker=`<label class="hp-pick"><span>시나리오</span><select data-sc-select>${list.map(x=>`<option value="${esc(x.id)}"${x.id===s.id?' selected':''}>${esc(x.id)} · ${esc(x.purpose)}</option>`).join('')}</select></label>`;
+ const tools=`<span class="hp-map-tools">${picker}<button type="button" class="subtle-button" data-sc-replay>▶ 다시 재생</button></span>`;
+ return `<section class="panel full-panel" id="sc-map">${header(`시나리오 경로 지도 · ${esc(s.id)} ${esc(s.purpose)}`,tools)}<div class="hp-map">${routeSvg(m)}</div>${routeList(m)}<p class="muted hp-note">${esc(ROUTE_NOTE)}</p></section>`;
 }
 function scenarioTable(){
  return `<div class="table-scroll"><table class="drill-scenario-table"><caption class="sr-only">보안 시나리오 카탈로그</caption>
@@ -176,24 +172,24 @@ function openRunDialog(v){shown=v;dlgOpen=true;paintRunDialog();}
 function runsSection(){
  if(!runs||!runs.items.length){
   return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
-   <div class="run-empty"><strong>기록된 실행이 없습니다</strong><span>위의 [전부 실행]을 누르면 실행 ID·유형·SEC 항목·상태가 이곳에 남고, 줄마다 [보고서]로 그 실행의 보고서를 받을 수 있습니다.</span></div></section>`;
+   <div class="run-empty"><strong>기록된 실행이 없습니다</strong><span>위의 [전부 실행]을 누르면 실행 ID·유형·SEC 항목·상태가 이곳에 남고, 실행 ID 를 눌러 그 실행의 진행·보고서 팝업을 엽니다.</span></div></section>`;
  }
  const rows=runs.items.map(r=>{
   const secs=(r.secs&&r.secs.length)?r.secs.join(' · '):(r.type||'—');
-  return `<tr><td class="run-id">${esc(r.runId||'—')}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td><span class="run-state" data-state="${esc(String(r.state||'').toLowerCase())}">${esc(r.state||'—')}</span></td><td>${format(milliseconds(r.createdAt))}</td>
-   <td>${r.type==='run-all'&&r.runId?`<button type="button" class="link-button" data-run-report="${esc(r.runId)}" aria-haspopup="dialog">보고서</button>`:'<span class="muted">—</span>'}</td></tr>`;
+  const idCell=r.type==='run-all'&&r.runId?`<button type="button" class="link-button" data-run-report="${esc(r.runId)}" aria-haspopup="dialog" title="진행·보고서 팝업 열기">${esc(r.runId)}</button>`:esc(r.runId||'—');
+  return `<tr><td class="run-id">${idCell}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td><span class="run-state" data-state="${esc(String(r.state||'').toLowerCase())}">${esc(r.state||'—')}</span></td><td>${format(milliseconds(r.createdAt))}</td></tr>`;
  }).join('');
  return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
   <div class="table-scroll run-history"><table><caption class="sr-only">실행 이력</caption>
-  <thead><tr><th>실행 ID</th><th>유형</th><th>SEC 항목</th><th>상태</th><th>접수 시각 (KST)</th><th>보고서</th></tr></thead>
+  <thead><tr><th>실행 ID</th><th>유형</th><th>SEC 항목</th><th>상태</th><th>접수 시각 (KST)</th></tr></thead>
   <tbody>${rows}</tbody></table></div></section>`;
 }
 
 function paint(){
  return `<section class="panel full-panel drill-workspace">${header('보안 시나리오','SCENARIOS')}
-  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${runsSection()}`;
+  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${routeSection()}${runsSection()}`;
 }
-function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();if(flowId)paintFlowDialog();if(dlgOpen)paintRunDialog();}
+function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();if(dlgOpen)paintRunDialog();}
 
 async function refreshHistory(){try{runs=await api.drills();}catch(error){/* 이력 갱신 실패는 진행 표시를 막지 않는다 */}}
 async function poll(){
@@ -275,7 +271,8 @@ function onClick(e){
  const past=e.target.closest('[data-run-report]');
  if(past){openPast(past.dataset.runReport);return;}
  const toggle=e.target.closest('[data-flow-toggle]');
- if(toggle){flowId=toggle.dataset.flowToggle;paintFlowDialog();}
+ if(toggle){routeId=toggle.dataset.flowToggle;rerender();const c=$('#sc-map');if(c){c.scrollIntoView?.({block:'start',behavior:'smooth'});replayMap(c);}return;}
+ if(e.target.closest('[data-sc-replay]')){replayMap($('#sc-map'));}
 }
 
 // 새로고침 직후 한 번만: 저장된 runId 가 있으면 새로 시작하지 않고 그 실행 상태를 이어 본다.
@@ -287,13 +284,8 @@ function resumeRunAll(){
 }
 export function renderDrills(){
  const box=$('#drills');
- if(box&&!box._drillsBound){box.addEventListener('click',onClick);box._drillsBound=true;}
- const fd=$('#flow-dialog');
- if(fd&&!fd._flowBound){
-  fd._flowBound=true;
-  fd.addEventListener('click',e=>{if(e.target.closest('[data-flow-close]')||e.target===fd)closeFlow();});
-  fd.addEventListener('cancel',e=>{e.preventDefault();closeFlow();});
- }
+ if(box&&!box._drillsBound){box.addEventListener('click',onClick);
+  box.addEventListener('change',e=>{const p=e.target.closest('[data-sc-select]');if(p){routeId=p.value;rerender();replayMap($('#sc-map'));}});box._drillsBound=true;}
  const rd=$('#run-dialog');
  if(rd&&!rd._runBound){
   rd._runBound=true;
