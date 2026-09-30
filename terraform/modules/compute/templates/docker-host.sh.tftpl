@@ -171,6 +171,10 @@ StartLimitBurst=5
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/app
+# 비공개 ECR 이미지를 받으려면 docker 로그인이 필요하다(인스턴스 역할의 ecr:GetAuthorizationToken 사용).
+# 로그인이 없으면 web 이미지 pull 이 실패해 compose 가 컨테이너를 하나도 만들지 못하고, 대시보드 3계층이 모두 '비정상'이 된다.
+Environment=HOME=/root
+ExecStartPre=/bin/bash -c 'aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${split("/", ecr_repository_url)[0]}'
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down
 Restart=on-failure
