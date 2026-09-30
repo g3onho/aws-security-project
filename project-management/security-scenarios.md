@@ -141,7 +141,7 @@ Security Hub 규칙 ID 정확 일치 자동 조치 7종(EC2.2·EC2.7·EC2.182·S
 
 ### AI 허니팟(A6) 시나리오 경계
 
-AI 허니팟은 DEC-020으로 구현 범위가 확정됐다. 미끼 서버(가짜 SSH 셸)에 접속하면 `HoneypotHitCount` 알람이 ALARM이 되고, `HONEYPOT` 자동 차단이 켜진 환경에서는 `asr_trigger`가 최다 출발지 IP를 NACL로 차단한다. AI(Bedrock, 현재 Nova Lite)는 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다(DEC-037). 시연은 두 가지다. ① 전부 실행의 HONEYPOT 항목이 서울 VPC 안 공격자 EC2에서 미끼 사설 IP로 SSH 접속한다(`ATK-HoneypotProbe`). ② `ATK-HoneypotAiDemo`·`scripts/honeypot-ai-demo.sh`가 AI 응답 경로를 확인한다. 이 시나리오는 SEC-01~SEC-10 번호 체계에 넣지 않은 별도 시나리오이며, 통과·실환경 검증 상태는 [tracking.md](tracking.md)의 HNY 행에서만 판단한다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011). 구성·데이터 계약은 [honeypot-design.md](honeypot-design.md)에 둔다.
+AI 허니팟은 DEC-020으로 구현 범위가 확정됐다. 미끼 서버(가짜 SSH 셸)에 접속하면 `HoneypotHitCount` 알람이 ALARM이 되고, `HONEYPOT` 자동 차단이 켜진 환경에서는 `asr_trigger`가 최다 출발지 IP를 NACL로 차단한다. AI(Bedrock, Claude Haiku 4.5)는 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다(DEC-037·DEC-042). 시연은 두 가지다. ① 전부 실행의 HONEYPOT 항목이 서울 VPC 안 공격자 EC2에서 미끼 사설 IP로 SSH 접속한다(`ATK-HoneypotProbe`). ② `ATK-HoneypotAiDemo`·`scripts/honeypot-ai-demo.sh`가 AI 응답 경로를 확인한다. 이 시나리오는 SEC-01~SEC-10 번호 체계에 넣지 않은 별도 시나리오이며, 통과·실환경 검증 상태는 [tracking.md](tracking.md)의 HNY 행에서만 판단한다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011). 구성·데이터 계약은 [honeypot-design.md](honeypot-design.md)에 둔다.
 
 ## 6. 핵심 시나리오 상세
 

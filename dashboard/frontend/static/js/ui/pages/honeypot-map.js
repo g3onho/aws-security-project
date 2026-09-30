@@ -158,7 +158,7 @@ export function mapSvg(steps){
   ${connected?`<circle class="hp-mp-pulse" cx="1070" cy="252" r="64" fill="url(#hp-pulse)"/>`:''}
   <g class="hp-mp-gate" data-gate="${blocked?'closed':'open'}"><circle cx="841" cy="238" r="17" fill="#f3f6f5" stroke="${gateColor}" stroke-width="${blocked?2.4:1.4}"${blocked?' filter="url(#hp-glow)"':''}/>${icon('shield',841,238,20,gateColor)}</g>
   ${cut}
-  ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Nova Lite',ic:'spark',color:SOFT,active:done('analysis')})}
+  ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Claude Haiku 4.5',ic:'spark',color:SOFT,active:done('analysis')})}
   ${node({id:'logs',x:262,y:500,w:100,h:58,title:'Logs',sub:'/honeypot/*',ic:'logs',color:SOFT,active:done('alarm')})}
   ${node({id:'alarm',x:414,y:500,w:96,h:58,title:'알람',sub:'HoneypotHit',ic:'bell',color:SOFT,active:done('alarm')})}
   ${node({id:'eb',x:554,y:500,w:100,h:58,title:'EventBridge',sub:'ALARM 이벤트',ic:'bolt',color:MINT,active:done('judge')})}

@@ -125,7 +125,7 @@ variable "enable_assistant" {
 }
 variable "assistant_model" {
   type    = string
-  default = "apac.amazon.nova-pro-v1:0"
+  default = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 # --- 허니팟 화면·차단 IP 관리 (v25) ---

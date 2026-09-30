@@ -20,7 +20,7 @@
 - **탐지와 수집:** AWS Config, GuardDuty, Inspector, IAM Access Analyzer, Security Hub, CloudTrail, VPC Flow Logs, 호스트·서비스 로그, CloudWatch 지표 및 동기화 상태.
 - **SOAR와 관제:** 탐지 이벤트 라우팅, 상관분석, 자동·수동 대응, SSM 실행, DynamoDB 저장, SNS 알림, Flask 대시보드와 API.
 - **시나리오와 보증:** SEC-01~SEC-10, ZAP/Hydra 검증, 정상 기능 보존, 동일 조건 재검증, 실패·복구·감사 증거.
-- **AI 허니팟(A6):** `enable_honeypot` 토글로 Private-DB 서브넷에 미끼서버 1대를 두는 선택 구성이다(DEC-020). Amazon Bedrock(현재 Nova Lite, DEC-037)은 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다. 코드 경로는 `terraform/honeypot.tf`, `terraform/modules/honeypot/`, 대시보드 허니팟 화면·API다. 토글이 꺼진 환경에는 없으며 실환경 동작 검증은 [추적 현황](project-management/tracking.md)에서 따로 본다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011).
+- **AI 허니팟(A6):** `enable_honeypot` 토글로 Private-DB 서브넷에 미끼서버 1대를 두는 선택 구성이다(DEC-020). Amazon Bedrock(Claude Haiku 4.5, DEC-042)은 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다. 코드 경로는 `terraform/honeypot.tf`, `terraform/modules/honeypot/`, 대시보드 허니팟 화면·API다. 토글이 꺼진 환경에는 없으며 실환경 동작 검증은 [추적 현황](project-management/tracking.md)에서 따로 본다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011).
 
 대시보드는 **관제 시스템**이고, 컨테이너 서비스·시연용 DB·DVWA는 **보호 또는 시험 대상**이다. 대시보드가 서비스 MySQL에 직접 연결하지 않는다. 서비스 컨테이너 안의 MySQL과 Private-DB 서브넷의 시연 MySQL EC2도 별개 자산이다.
 
@@ -145,7 +145,7 @@ flowchart TB
   TF -. 선언한 기반 리소스 .-> Playbook
   Decoy["AI 미끼서버(허니팟) · enable_honeypot 토글 · Private-DB"]
   Decoy -. "선택 배치 · 접속 알람 → asr_trigger" .-> L2
-  Bedrock["Amazon Bedrock · Nova · 조회 전용 도우미와 허니팟 분석에만 사용"]
+  Bedrock["Amazon Bedrock · Claude Haiku 4.5 · AI 챗봇·AI 보고서·허니팟 분석에만 사용"]
   Dashboard -. "도우미 질의 · 선택" .-> Bedrock
   Decoy -. "가짜 셸 응답 · 세션 분석" .-> Bedrock
 ```
@@ -193,8 +193,10 @@ flowchart TB
 | ④ 대시보드 | Provider·Repository·integrations 구조, OpenAPI 계약, 로컬 사용자·세션·CSRF·역할·scope | AWS 원본 정규화와 접근 통제 | `dashboard/backend/soar/`, `dashboard/backend/contracts/openapi.yaml` |
 | ④ 대시보드 | SQLite(users·events·jobs·requests·audit·drills·remediations 등)와 로컬 Worker | 현재 승인·작업·감사·원클릭 조치 저장(목표 저장소와 다름, 아래 참고) | `dashboard/backend/soar/store.py`, `worker.py` |
 | ④ 대시보드 | 바닐라 JS ES module Store·API client, Tailwind, Chart.js, d3-force, GeoJSON 지도 | 화면과 상태 관리 | `dashboard/frontend/static/js/` |
-| ④ 대시보드 | Amazon Bedrock(Nova) 조회 전용 도우미 | 상태 설명. 조치·판단에 쓰지 않음 | `soar/assistant_*.py`, `modules/compute/iam.tf` |
-| 선택 | AI 허니팟: EC2(Ubuntu), `asyncssh` 가짜 SSH 셸, Bedrock(Nova Lite) 응답·세션 분석, `HoneypotHitCount` 알람 | 미끼 접속 탐지와 분석 | `terraform/modules/honeypot/`, `templates/honeypot.py.tftpl` |
+| ④ 대시보드 | AI 챗봇: Amazon Bedrock(Claude Haiku 4.5) `converse`, 조회 전용 도구 호출 | 상태 질의 응답. 조치·판단에 쓰지 않음 | `soar/assistant_service.py`, `assistant_api.py`(`/api/assistant/chat`), `modules/compute/iam.tf` |
+| ④ 대시보드 | AI 보고서 작성: Bedrock(Claude Haiku 4.5), 화면별 요약 | 숫자는 서버 집계, 모델은 문장만 작성 | `soar/report_service.py`(`/api/assistant/report`) |
+| ① IaC·배포 | IAM 역할·인스턴스 프로파일(대시보드·허니팟·Lambda·SSM), GitHub OIDC 역할 | 서비스별 최소 권한과 CI 신원 | `modules/compute/iam.tf`, `terraform/bootstrap/` |
+| 선택 | AI 허니팟: EC2(Ubuntu), `asyncssh` 가짜 SSH 셸, Bedrock(Claude Haiku 4.5) 응답·세션 분석, `HoneypotHitCount` 알람 | 미끼 접속 탐지와 분석 | `terraform/modules/honeypot/`, `templates/honeypot.py.tftpl` |
 | 선택 | 다중 리전 공격자 EC2와 SSM 문서 `ATK-WebAttack` | 승인된 격리 환경의 웹 공격 시험 | `terraform/modules/attacker/` |
 
 **구현할 기술**
@@ -210,6 +212,8 @@ flowchart TB
 | 선택 | 허니팟 세션 원문 보존·개인정보·비용 상한, 차단 정책 확장 | 보존 기간·마스킹·상한이 미정. 차단은 `HONEYPOT` 통제가 있을 때만 | OPEN-011, `project-management/honeypot-design.md` |
 | ① IaC·배포 | 로그·증거 보존·백업·복구(state PITR·복구 절차 포함) | 보존 기간·TTL 근거 없음 | OPEN-008, `terraform/infrastructure-design.md` |
 | ① IaC·배포 | 리전 이전 결정 사유와 체크리스트 | 코드 주석에만 있음 | OPEN-021 |
+| ② 보호 대상 | 저장·전송 암호화 확대(DynamoDB·S3 scan-results·Secrets Manager의 KMS 고객 관리형 키, 내부 구간 TLS) | 현재 EC2 볼륨·CloudTrail(KMS)·state 버킷만 명시 암호화. 나머지는 서비스 기본 암호화 | 추후 개선점 |
+| ② 보호 대상 | HTTPS 적용과 대시보드 접속 범위 제한 | 대시보드 ALB 8080은 HTTP이고 `dashboard_ingress_cidr` 기본값이 `0.0.0.0/0` | OPEN-010, 추후 개선점 |
 
 ## 4. 네 계층의 책임 경계
 

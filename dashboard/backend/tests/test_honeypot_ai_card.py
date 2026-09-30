@@ -15,10 +15,10 @@ def card(tmp_path, rows):
 
 
 def test_success_records_make_the_card_ok_and_show_model_and_latency(tmp_path):
-    data = card(tmp_path, with_calls([{"kind": "shell", "ok": True, "model": "apac.amazon.nova-lite-v1:0", "ms": 470, "error": ""}], AI))
+    data = card(tmp_path, with_calls([{"kind": "shell", "ok": True, "model": "global.anthropic.claude-haiku-4-5-20251001-v1:0", "ms": 470, "error": ""}], AI))
     ai = data["cards"]["ai"]
     assert ai["state"] == "ok" and "성공 1 / 실패 0" == ai["text"]
-    assert "nova-lite" in ai["detail"] and "470ms" in ai["detail"]
+    assert "claude-haiku" in ai["detail"] and "470ms" in ai["detail"]
 
 
 def test_failures_only_show_the_exception_class_not_ok(tmp_path):
