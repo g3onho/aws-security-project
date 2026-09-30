@@ -5,7 +5,7 @@
 |---|---|
 | 적용 범위 | 이 저장소 전체와 루트 `README.md`·기능별 설계 문서, 사용자가 요청한 조사·코드 제안·구현 |
 | 책임 역할 | 설계·구현·검증을 연결하는 AI 에이전트 |
-| 관련 문서 | README.md, dashboard/dashboard-design.md, terraform/infrastructure-design.md, honeypot/honeypot-design.md, project-management/security-scenarios.md, project-management/glossary.md, project-management/decisions.md, project-management/tracking.md |
+| 관련 문서 | README.md, dashboard/dashboard-design.md, terraform/infrastructure-design.md, project-management/honeypot-design.md, project-management/security-scenarios.md, project-management/glossary.md, project-management/decisions.md, project-management/tracking.md |
 | 갱신을 유발하는 변경 | 작업 경계·정본·질문 절차·코딩 규칙 변경 |
 
 ## 1. 작업 시작 순서

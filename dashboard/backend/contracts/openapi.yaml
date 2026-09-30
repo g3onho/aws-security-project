@@ -290,7 +290,7 @@ paths:
       operationId: getDrillCatalog
       x-permission: dashboard:read
       description: >-
-        공격·대응 실습(1차 관측·구조)의 실행 유형과 SEC 시나리오 카탈로그, 실행 환경 상태.
+        공격·대응 실습의 실행 유형과 SEC 시나리오 카탈로그, 실행 환경 상태.
         support 는 보안 시나리오 문서의 정적 분류이며 실행 승인이 아니다.
       responses:
         '200':
@@ -303,7 +303,7 @@ paths:
     get:
       operationId: listDrills
       x-permission: dashboard:read
-      description: 실습 실행 이력 목록. 1차 범위에는 실행 경로가 없어 비어 있다.
+      description: 실습 실행 이력 목록(web-scan·run-all 실행 기록). 실행 전에는 비어 있다.
       responses:
         '200':
           description: 실습 실행 목록
@@ -550,6 +550,136 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Envelope'}
         default: {$ref: '#/components/responses/Error'}
+  /api/drills/web-scan/start:
+    post:
+      operationId: startDrillWebScan
+      x-permission: soar:execute
+      description: >-
+        지리별 공격자 노드(태그 AttackerFor=dvwa)에서 DVWA 대상 웹보안검사를 SSM Command 로 실행한다.
+        실제 공격 트래픽을 만들므로 WRITE_ENABLED 가 꺼져 있으면 403 WRITE_DISABLED 이다.
+        접수(202)는 실행 완료가 아니며 상태는 status 로 조회한다.
+      parameters:
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sshUser: {type: string, default: victim}
+      responses:
+        '202':
+          description: 실행 접수. runId 와 리전별 SSM 명령 목록.
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrillLaunchEnvelope'}}}
+        '409': {description: 'GEO_ATTACKERS_NOT_CONFIGURED(지리 공격 미설정) 또는 GEO_ATTACKERS_NOT_FOUND(공격자 노드 미탐색).', content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/drills/web-scan/{runId}/status:
+    get:
+      operationId: getDrillWebScanStatus
+      x-permission: dashboard:read
+      parameters:
+        - {name: runId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: 리전별 SSM 실행 상태. 응답 없는 실행은 시간 초과로 종료 표기한다(표기상 종료이며 원격 실행 결과를 확인한 것은 아니다).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [runId, regions]
+                    properties:
+                      runId: {type: string}
+                      targetIp: {type: [string, 'null']}
+                      startedAt: {type: integer, description: 실행 시작 epoch ms}
+                      regions: {type: array, items: {type: object, additionalProperties: true}}
+                  meta: {$ref: '#/components/schemas/Meta'}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/drills/run-all/start:
+    post:
+      operationId: startDrillRunAll
+      x-permission: soar:execute
+      description: >-
+        준비된 모든 실습을 한 번에 SSM Command 로 실행한다: SEC-08/06B(지리별 공격자 → DVWA), SEC-02·04·07(서비스 호스트 점검),
+        SEC-10(서울 EC2 CPU·메모리 부하), HONEYPOT(내부 공격자 EC2 → 미끼서버 SSH 접속). 대상이 없는 항목은 건너뛰고 skipped 에 사유를 남긴다.
+        실제 공격·부하이므로 WRITE_ENABLED 가 꺼져 있으면 403 WRITE_DISABLED 이다.
+        직전 run-all 이 끝나지 않았으면 409 RUN_ALREADY_ACTIVE 이며(방치된 실행은 막지 않는다), 실행할 대상이 하나도 없으면 409 NOTHING_LAUNCHED 이다.
+      parameters:
+        - {$ref: '#/components/parameters/CsrfToken'}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sshUser: {type: string, default: victim}
+                durationSeconds: {type: integer, description: SEC-10 부하 지속 시간}
+                cpuTarget: {type: integer, description: SEC-10 CPU 부하 목표 %}
+                memPercent: {type: integer, description: SEC-10 메모리 부하 목표 %}
+      responses:
+        '202':
+          description: 실행 접수. 접수는 실행 완료가 아니다.
+          content: {application/json: {schema: {$ref: '#/components/schemas/DrillLaunchEnvelope'}}}
+        '409': {description: 'RUN_ALREADY_ACTIVE 또는 NOTHING_LAUNCHED.', content: {application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/drills/run-all/{runId}/status:
+    get:
+      operationId: getDrillRunAllStatus
+      x-permission: dashboard:read
+      parameters:
+        - {name: runId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: 항목(SSM 명령)별 상태. 각 항목에 sec·label 이 붙는다. 40분을 넘겨 응답 없는 항목은 종료로 표기한다.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [runId, items, skipped]
+                    properties:
+                      runId: {type: string}
+                      startedAt: {type: integer, description: 실행 시작 epoch ms}
+                      targetIp: {type: [string, 'null']}
+                      skipped: {type: array, items: {type: string}, description: 대상이 없어 건너뛴 항목과 사유}
+                      items: {type: array, items: {type: object, additionalProperties: true}}
+                  meta: {$ref: '#/components/schemas/Meta'}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/drills/run-all/{runId}/report:
+    get:
+      operationId: getDrillRunAllReport
+      x-permission: dashboard:read
+      description: SEC-08(공격) 로그를 리전별로 합친 보고서. SEC-08 항목이 없으면 regions 가 비어 있다.
+      parameters:
+        - {name: runId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: 리전별 합본 보고서
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [runId, regions]
+                    properties:
+                      runId: {type: string}
+                      regions: {type: object, additionalProperties: true}
+                  meta: {$ref: '#/components/schemas/Meta'}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
 components:
   securitySchemes:
     session: {type: apiKey, in: cookie, name: soar_session}
@@ -575,6 +705,19 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/ErrorEnvelope'}
   schemas:
+    DrillLaunchEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [runId, launched]
+          properties:
+            runId: {type: string}
+            launched: {type: array, items: {type: object, additionalProperties: true}, description: 접수한 SSM 명령(리전·인스턴스·명령 ID)}
+            skipped: {type: array, items: {type: string}, description: run-all 에서 대상이 없어 건너뛴 항목과 사유}
+            secs: {type: array, items: {type: string}, description: run-all 에서 실제 실행한 시나리오 ID}
+        meta: {$ref: '#/components/schemas/Meta'}
     AssistantStatusEnvelope:
       type: object
       required: [data, meta]

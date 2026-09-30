@@ -30,4 +30,13 @@
 - 화면: 정상 흐름(차트 6·그래프·재생·해제·기간·예외·보고서), 악성 입력 이스케이프, 읽기 전용 계정, 부분 실패, 미배포 (`frontend/tests/honeypot*.test.mjs`)
 - Lambda·SSM 문서: `test_block_expiry.py`, `test_auto_remediation.py`(차단 기록·오탐 예외), `test_asr_documents.py`(ASR-UnblockIpWithNacl)
 
+2026-09-29~30 v26~v37 변경(AI 도우미·원클릭 조치·3계층 상태·전부 실행·허니팟 AI) 테스트 파일이 다루는 범위입니다. 이 문서 작성 시 실행 결과는 확인하지 않았습니다.
+
+- AI 도우미: 도구가 읽기 전용, 알 수 없는 도구·쓰기 도구 호출 거부, 비밀 필드 제거, 공격자 문자열은 신뢰할 수 없는 데이터로 전달, 도구 호출·출력 상한, 잘못된 메시지는 모델 호출 전에 거부 (`tests/test_assistant.py`)
+- 화면별 AI 보고서: 숫자를 서버가 집계, 조회 범위·31일 창, 비밀번호 비포함, 모르는 화면 400, 비활성 503, TTL 안 캐시 (`tests/test_report.py`)
+- 원클릭 조치: 서버가 계획 생성, viewer 실행 불가, `WRITE_ENABLED` 차단, 멱등 재시도, 이미 충족은 미실행, SSM 성공만으로 해결 처리하지 않음, 재검증 읽기 실패는 통과가 아님, 태그 없는 SG·다른 리전 차단, 진행 중 중복 실행 거부 (`tests/test_remediation.py`)
+- 3계층 상태: 오래됐거나 읽지 못한 행은 `unknown`이며 정상으로 표시하지 않음, 읽기 실패 경고에 내부 오류 비노출 (`tests/test_tier_status.py`)
+- 전부 실행: 항목별 실행 분배, 지리 설정 없음·미끼 미탐색 시 건너뜀, 이전 실행이 진행 중이면 거부하고 끝났거나 방치되면 허용, 응답 없는 실행 시간 초과 표기, 허니팟 접속 시연의 출발지·대상 (`tests/test_drills_run_all.py`)
+- 허니팟 AI: 성공·실패·기록 없음에 따른 카드 판정, 악성 필드 정리, `converse` 호출과 실패 시 오류 클래스만 기록, 셸이 아닌 문장은 FALLBACK, 분석 JSON 재시도 후 규칙 판정, 명령 없는 세션은 Bedrock 미호출 (`tests/test_honeypot_ai_card.py`, `tests/test_honeypot_ai_client.py`)
+
 실제 데이터 수집·원격 조치·운영 부하 검증은 포함하지 않습니다.

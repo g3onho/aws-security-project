@@ -6,10 +6,10 @@
 |---|---|
 | 적용 범위 | 프로젝트 목표 허니팟의 격리, 미끼 상호작용, 로그·분석·대시보드 연계, 차단 정책과 검증 기준 |
 | 책임 역할 | 보안 설계자, 인프라/IAM 담당, 허니팟 구현 담당, 관제 담당, 격리환경 검증 담당 |
-| 상태 | 허니팟은 목표 범위에 포함한다. 세부 기술, AI 공급자/모델, 대화 처리 방식, 자동 차단 정책은 미결정이다. |
-| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../terraform/infrastructure-design.md`](../terraform/infrastructure-design.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`../project-management/security-scenarios.md`](../project-management/security-scenarios.md), [`../project-management/glossary.md`](../project-management/glossary.md), [`../project-management/decisions.md`](../project-management/decisions.md) |
+| 상태 | 2026-09-30 정합 점검으로 갱신: 허니팟은 DEC-020으로 구현 범위가 확정됐다(Bedrock 미끼 SSH 셸, 접속 알람 → NACL 자동 차단). 아래 "현행 구현" 절이 현행 기준이며, 그 뒤의 후보·미결정 절은 2026-09-26 조사 시점의 설계 후보다. 남은 미결정은 세션 원문 보존·개인정보·비용 상한(OPEN-011)이다. |
+| 관련 문서 | [`../README.md`](../README.md), [`../agents.md`](../agents.md), [`../terraform/infrastructure-design.md`](../terraform/infrastructure-design.md), [`../dashboard/dashboard-design.md`](../dashboard/dashboard-design.md), [`security-scenarios.md`](security-scenarios.md), [`glossary.md`](glossary.md), [`decisions.md`](decisions.md) |
 | 조사 근거 | 기존 SEC-01~SEC-10 시나리오 가이드, AI 허니팟 아키텍처 다이어그램 프롬프트, 현재 Terraform·서비스 코드의 읽기 전용 조사 |
-| 변경 이력 | 설계 선택은 `../project-management/decisions.md`, 구현·검증 근거는 `../project-management/tracking.md`에 버전으로 연결 |
+| 변경 이력 | 설계 선택은 `decisions.md`, 구현·검증 근거는 `tracking.md`에 버전으로 연결 |
 
 이 문서는 확인된 현황과 후보 설계를 구분한다. 설계 후보를 기술 채택, 구현, 배포 또는 실환경 검증이 끝난 사실처럼 표현하지 않는다. AI가 만든 분석·응답은 신뢰할 수 없는 입력과 출력으로 다루며, 어떤 모델도 인프라 변경 권한을 자동으로 얻지 않는다.
 
@@ -27,9 +27,27 @@
 
 대시보드는 관제·검토 시스템이고 허니팟은 관측 대상이다. DVWA는 사용자가 선택한 별도의 웹 공격 실습 대상이며 허니팟으로 이름을 바꾸거나 같은 기능으로 간주하지 않는다. 서비스용 Nginx–Flask–컨테이너 MySQL 역시 별도의 보호 대상이다. Private-DB 서브넷 MySQL EC2는 별도의 보안 관제/공격 재현 대상이고, 허니팟 후보 자산과도 다르다.
 
-## 조사 결과: 구현 사실과 과거 후보안
+## 현행 구현 (DEC-020·021·022·037)
 
-현재 참고 저장소에서 읽기 전용으로 확인한 결과는 다음과 같다.
+아래는 코드에서 확인한 구현이며 배포·동작·보안 효력의 검증은 [`tracking.md`](tracking.md)에서 따로 본다. 후보 절과 다르면 이 절이 우선한다.
+
+| 항목 | 현행 구현 | 코드 경로 |
+|---|---|---|
+| 배치·토글 | `enable_honeypot`이 켜진 때만 Private-DB 서브넷에 EC2 1대(t3.micro, Ubuntu 24.04). 아웃바운드에 NAT가 필요하다. | `terraform/honeypot.tf`, `modules/honeypot/main.tf` |
+| 미끼 인터페이스 | 가짜 SSH 셸(기본 포트 22, `asyncssh`). 보안 그룹은 VPC CIDR에서 리슨 포트 인바운드만 허용한다. | `modules/honeypot/templates/honeypot.py.tftpl` |
+| AI 역할 | Amazon Bedrock(기본 `apac.amazon.nova-lite-v1:0`, `converse` 호출)이 ① 가짜 셸 응답 ② 세션 사후 분석·IOC ③ 위험도·의도 분류를 생성한다. 호출 실패 시 미리 준비한 응답(FALLBACK)과 규칙 판정으로 대체하며 로깅·탐지·차단은 계속한다. `enable_ai=false`면 AI를 쓰지 않는다. AI 출력은 차단·해제 판단에 쓰지 않는다. | 같은 파일, DEC-037 |
+| 미끼 IAM | CloudWatch Logs 전송, `bedrock:InvokeModel`(리소스 `*`), SSM 관리 접속만 갖는다. 차단 권한은 없다. | `modules/honeypot/main.tf` |
+| 세션 기록 | CloudWatch Logs `/honeypot/<prefix>`(보존 기본 30일)에 JSON 한 줄씩 `connect`·`auth`·`command`·`response`·`session_end`와 `ai_call`을 남긴다. | 같은 파일 |
+| 탐지 | `connect` 이벤트를 지표 `HoneypotHitCount`로 세고, 5분 합계 1 이상이면 알람이 ALARM이 된다. 알람은 상태 전이 때만 이벤트를 낸다. | `modules/honeypot/main.tf` |
+| 차단 | `auto_remediable_controls`에 `HONEYPOT`이 있을 때만 `asr_trigger`가 허니팟 로그의 `connect` 기록에서 최다 출발지 IP 1개를 Private NACL 1~99번 Deny로 차단한다(DEC-018과 같은 조건). 없으면 "수동 대응 필요"로만 기록한다. | `modules/soar/lambda_src/asr_trigger/handler.py` |
+| 차단 목록·만료 | 차단 메타데이터는 DynamoDB `ip_blocklist`에 두고 기본 24시간 뒤 `block_expiry`(5분 주기)가 `ASR-UnblockIpWithNacl`로 해제한다(DEC-021). | `modules/soar/lambda_src/block_expiry/handler.py` |
+| 대시보드 | 허니팟 화면(동작 상태 5개 카드, 타임라인, 통계, 관계 그래프, 세션 재생)과 차단 IP 관리(오탐 해제·기간 변경·예외 등록). 조회 전용 AI 도우미는 허니팟 상태를 읽을 수 있다(DEC-022). | `dashboard/backend/soar/honeypot_*.py`, `dashboard/frontend/static/js/ui/pages/honeypot*.js` |
+
+이 절이 다루지 않는 항목(세션 원문 보존 기간·개인정보, 비용 상한, 미끼 실행 격리의 실환경 검증)은 미결정 또는 미검증으로 남는다.
+
+## 조사 결과: 구현 사실과 과거 후보안 (2026-09-26 조사 시점)
+
+2026-09-26 읽기 전용 조사 결과다. 2026-09-29 이후 허니팟 코드가 추가되어 이 표의 첫 행은 더 이상 현행이 아니다(위 "현행 구현" 참조).
 
 | 자료 | 확인한 사실 | 설계상 해석 |
 |---|---|---|
@@ -52,6 +70,8 @@
 8. **정상 기능 보존:** 미끼와 동일 서브넷 또는 같은 NACL에 있는 다른 자산의 영향을 확인한다. 테스트를 마친 후 정상 기능이 복구됐는지 같은 기준으로 검증한다.
 
 ## 후보 구성과 데이터 흐름
+
+> 이 절과 이후의 후보·미결정 절은 2026-09-26 후보 설계다. DEC-020으로 확정된 부분은 "현행 구현" 절이 우선한다.
 
 아래는 논리적 제안 흐름이다. 실선은 현재 프로젝트의 일반 관제 경계 또는 사용자 지정 배치 목표이며, 점선의 AI·차단 경로는 구성 후보로만 표시한다. 점선 경로는 현재 동작 중인 구현을 의미하지 않는다.
 

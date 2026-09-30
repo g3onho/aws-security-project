@@ -167,8 +167,13 @@ Flask 애플리케이션은 앱 구성/라우트, 미들웨어, DTO·오류 계�
 | `GET /api/infra/status` | 저장된 구성요소 상태 증거 조회. 새 점검 명령을 실행하지 않음. 상태는 `healthy/degraded/unhealthy/unknown` |
 | `GET /api/history` | 불변 이력과 현재 작업 상태 조회. 사용자·리소스 범위를 매번 재검증 |
 | `GET /api/drills/catalog` | 공격·대응 실습의 실행 유형·SEC 시나리오 카탈로그·실행 환경·지원 상태 조회. 조회 전용이며 데이터 공급자 연결과 무관 |
-| `GET /api/drills` | 실습 실행 이력 목록. 1차에는 실행 경로가 없어 비어 있음 |
+| `GET /api/drills` | 실습 실행 이력 목록(`web-scan`·`run-all` 실행 기록). 실행 전에는 비어 있고, 40분 넘게 응답 없는 SSM 호출은 종료로 표기 |
 | `GET /api/drills/{runId}` | 실습 실행 상세·타임라인 조회. 없으면 404 |
+| `POST /api/drills/web-scan/start` | 지리별 웹보안검사를 SSM으로 실행하고 `202`. `WRITE_ENABLED`가 꺼져 있으면 403 |
+| `GET /api/drills/web-scan/{runId}/status` | 웹보안검사 실행 상태 조회 |
+| `POST /api/drills/run-all/start` | 준비된 모든 실습(SEC-02·04·07·08/06B·10과 허니팟 접속 시연)을 SSM으로 실행하고 `202`. 대상이 없는 항목은 건너뛰고 사유를 응답에 남긴다. 같은 대상에 겹치는 실행은 막는다. `WRITE_ENABLED`가 꺼져 있으면 403 |
+| `GET /api/drills/run-all/{runId}/status` | 전부 실행의 항목별 상태 조회 |
+| `GET /api/drills/run-all/{runId}/report` | 전부 실행 결과 보고서 조회 |
 | `GET /api/honeypot/status` | 허니팟 동작 상태 5개 카드와 판정. 미배포만 200 `deployed=false`, 읽지 못한 원천은 `unknown` |
 | `GET /api/honeypot/sessions` | 미끼 세션 목록(기간·ip·intent 필터, 기간·필터에 결합된 cursor). 배포 안 됐으면 409 `HONEYPOT_NOT_DEPLOYED` |
 | `GET /api/honeypot/sessions/{sessionId}` | 세션 재생·로그인 시도·AI 분석. `revealPasswords=true`는 조치 담당 역할만(감사 기록) |
@@ -181,6 +186,13 @@ Flask 애플리케이션은 앱 구성/라우트, 미들웨어, DTO·오류 계�
 | `POST /api/events/{eventId}/cancel` | 작업 접수 전 허용된 승인 상태 취소. 실행 중단이나 인프라 원복을 뜻하지 않음 |
 | `POST /execute` | 유효한 승인·버전·권한을 재검증한 뒤 영속 작업을 접수하고 `202`와 작업 ID 반환 |
 | `POST /verify` | 실행된 조치의 동일 조건 재검증을 접수. 실행 성공을 해결 완료로 표시하지 않음 |
+| `GET /api/events/{eventId}/remediation` | 원클릭 조치 계획 미리보기(DEC-038). 실행하지 않음 |
+| `POST /api/events/{eventId}/remediate` | 조치 계획을 SSM으로 실행. `Idempotency-Key` 필요, `WRITE_ENABLED`가 꺼져 있으면 403 |
+| `GET /api/remediations` | 원클릭 조치 기록 목록 |
+| `POST /api/remediations/{remediationId}/recheck` | 조치 후 동일 조건 재검증. 실행 성공을 해결 완료로 표시하지 않음 |
+| `GET /api/assistant/status` | AI 도우미·보고서 사용 가능 상태 |
+| `POST /api/assistant/chat` | 조회 전용 도우미 대화(DEC-022). 도구는 읽기뿐이며 질문·답변 원문은 감사 기록에 남기지 않는다 |
+| `POST /api/assistant/report` | 화면별 AI 요약 보고서. 숫자는 서버가 집계하고 모델은 문장만 쓴다 |
 
 v23은 새 API 없이 기존 응답에 선택 필드만 더했다(기존 소비자는 무시할 수 있다): `/api/events`의 `description`·`controlId`·`findingType`·`remediation`·`guidance`·`autoRemediation`, `/api/summary`의 `automation`·`alarms`, `/api/vulnerabilities`의 CVE 설명·`fixAvailable`·`exploitAvailable`·`epss`·`updateCommand`·`rebootRequired`·`referenceUrl` 등, `/api/infra/status`의 `tiers`·`alarms`, `/api/history`의 `reason`·`controlId`·`controlTitle`·`execution`. 자동조치 기록 상태에 `NO_CHANGE`(이미 조치된 상태라 실행하지 않음)를 추가했다.
 
