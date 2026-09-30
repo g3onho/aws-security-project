@@ -72,9 +72,10 @@ function tierSummary(svc){
  if(!svc)return `<div class="overview-tier-summary"><div class="overview-tier-heading"><strong>3계층 서비스</strong><span>조회 실패</span></div></div>`;
  if(!tiers.length)return `<div class="overview-tier-summary"><div class="overview-tier-heading"><strong>3계층 서비스</strong><span>점검 자료 없음</span></div></div>`;
  const unknown=tiers.some(t=>!t.status||t.status==='unknown');
- const note=unknown?'점검 결과 자료 없음':tiers.some(t=>['degraded','unhealthy'].includes(t.status))?'확인 필요한 계층이 있습니다':'점검 결과 정상';
+ const bad=tiers.some(t=>['degraded','unhealthy'].includes(t.status));
+ const note=bad?'확인 필요한 계층이 있습니다':unknown?(tiers.every(t=>!t.observedAt)?'점검 결과 자료 없음':'일부 점검 결과가 없거나 오래됨'):'점검 결과 정상';
  return `<div class="overview-tier-summary"><div class="overview-tier-heading"><strong>3계층 서비스</strong><span>${note}</span></div>
-  <div class="overview-tier-flow">${tiers.map((tier,index)=>`${index?'<span class="overview-tier-arrow" aria-hidden="true">→</span>':''}<div class="overview-tier-node"><b>${esc(tier.name)}</b><span class="${TIER_STATE[tier.status]?.[1]||'muted'}">${TIER_STATE[tier.status]?.[0]||'확인 불가'}</span></div>`).join('')}</div></div>`;
+  <div class="overview-tier-flow">${tiers.map((tier,index)=>`${index?'<span class="overview-tier-arrow" aria-hidden="true">→</span>':''}<div class="overview-tier-node" title="${esc(tier.detail||'')}"><b>${esc(tier.name)}</b><span class="${TIER_STATE[tier.status]?.[1]||'muted'}">${TIER_STATE[tier.status]?.[0]||'확인 불가'}</span></div>`).join('')}</div></div>`;
 }
 
 // 자동 대응 현황: 자동 조치 / 수동 대응 / 직접 조치 세 갈래. 링 그래프 = 각 갈래 대상 중 조치 완료 비율.

@@ -20,6 +20,7 @@ locals {
   correlated_findings_table = "${local.name_prefix}-correlated-findings"
   remediation_actions_table = "${local.name_prefix}-remediation-actions"
   ip_blocklist_table        = "${local.name_prefix}-ip-blocklist"
+  tier_status_table         = "${local.name_prefix}-tier-status"
   scan_results_bucket       = "${local.name_prefix}-scan-results-${local.account_id}"
 
   # 탐지·취약점 적재(v21). soar 가 만들고(finding_sync), compute 대시보드가 읽는다.
@@ -107,6 +108,12 @@ module "soar" {
   ip_block_ttl_minutes_override = var.ip_block_ttl_minutes_override
   block_expiry_rate_minutes     = var.block_expiry_rate_minutes
   enable_block_expiry           = var.enable_block_expiry
+
+  # 3계층 점검 결과 저장(tier_check). 대시보드(compute)가 같은 표를 읽는다.
+  tier_status_table        = local.tier_status_table
+  enable_tier_check        = var.enable_tier_check
+  tier_check_rate_minutes  = var.tier_check_rate_minutes
+  tier_stale_after_minutes = var.tier_stale_after_minutes
 
   enable_auto_remediation  = var.enable_auto_remediation
   auto_remediable_patterns = var.auto_remediable_patterns
@@ -197,6 +204,7 @@ module "compute" {
 
   # 허니팟 화면·차단 IP 관리(v25). 허니팟이 없으면 빈 값 → 화면은 "허니팟 미배포".
   ip_blocklist_table  = local.ip_blocklist_table
+  tier_status_table   = local.tier_status_table
   honeypot_log_group  = coalesce(one(module.honeypot[*].log_group_name), "")
   honeypot_alarm_name = coalesce(one(module.honeypot[*].alarm_name), "")
   private_nacl_id     = module.network.private_nacl_id

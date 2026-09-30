@@ -52,6 +52,8 @@ locals {
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.vulnerabilities_table}/index/*",
     # 차단 IP 목록(v25, modules/soar storage.tf). 읽기는 여기서, 쓰기는 dashboard_execute 의 RecordBlocklist.
     "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.ip_blocklist_table}",
+    # 3계층 점검 결과(modules/soar tier_check.tf). 읽기 전용.
+    "arn:${var.partition}:dynamodb:${var.region}:${var.account_id}:table/${var.tier_status_table}",
   ]
 }
 

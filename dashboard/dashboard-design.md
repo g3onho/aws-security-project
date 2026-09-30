@@ -284,7 +284,7 @@ dashboard/
 | 인증 | 로컬 사용자명/암호, 세션·CSRF·역할·scope 검증 확인 | 현재 구현과 운영 목표 분리; 운영 인증 공급자·MFA·계정 lifecycle 미결정 |
 | 네트워크 접근 | Terraform의 ALB HTTP `8080` 및 SSM 포워딩 `5000` 경로, 기본 ingress CIDR `0.0.0.0/0` 확인 | 선택 경로를 기준화. 환경별 공개 CIDR 및 TLS 종단점은 위험/결정 항목 |
 | 자동조치 확인 | 자동 실행 전 별도 확인 정책 미확정 | 후속 설계 과제. 이 문서는 무승인 실행이나 제어 충분성을 승인하지 않음 |
-| 3계층 상태 증거 (v24) | `/api/infra/status`는 저장된 증거만 읽는데, Nginx·Flask·MySQL 점검 결과를 저장하는 작업이 없다 | 통합 관제 요약에서 세 계층을 `확인 불가`로 표시한다. 위치 변경은 점검 계약을 바꾸지 않는다. 점검 결과 저장 작업(대시보드가 직접 명령 실행 금지)은 Terraform·SOAR 영역의 후속 과제 |
+| 3계층 상태 증거 (v24, DEC-039) | `/api/infra/status`는 저장된 증거만 읽는다. `tier_check` Lambda가 SSM 읽기 전용 문서로 docker-host의 Nginx·Flask·MySQL을 점검해 `TIER_STATUS_TABLE`(계층당 최신 1행: `tier_id`·`status`·`detail`·`checked_at`·`source`·`stale_after_seconds`)에 저장한다 | 표 미설정·행 없음·`checked_at`이 `stale_after_seconds`보다 오래됨·미래 시각·상태 해석 불가·조회 실패는 `확인 불가`이며 정상이나 0으로 바꾸지 않는다(조회 실패는 `meta.warnings`). 저장된 `unknown`은 점검기가 남긴 사유를 `detail`로 보인다. 점검 통과는 컨테이너·포트 응답 수준이며 서비스 정상 기능이나 해결을 뜻하지 않는다. 주기 5분·기준 15분은 임시값이다(OPEN-019). 대시보드는 컨테이너에 직접 접속하거나 명령을 실행하지 않는다 |
 | 자동 조치 판정 표시 (v23) | 탐지 상세의 자동 조치 여부는 설정으로 계산한 예상이며 Lambda 규칙의 사본이다 | 실제 판정은 조치 이력 기록이 기준. Lambda 규칙 변경 시 `guidance.py`와 테스트(`test_guidance.py`)를 함께 갱신 |
 
 편차별 요구사항 ID, 실제 코드 경로, 영향, 결정 상태 및 검증 근거는 `../project-management/tracking.md`와 `../project-management/decisions.md`에 등록한다. 이 기준 문서는 확인 날짜만 갱신하여 최신성을 주장하지 않는다.

@@ -50,6 +50,8 @@ CORRELATED_FINDINGS_TABLE=${correlated_findings_table}
 REMEDIATION_ACTIONS_TABLE=${remediation_actions_table}
 # 허니팟 화면·차단 IP 관리(v25). 허니팟 로그 그룹이 비면 화면은 "허니팟 미배포"로 표시한다.
 IP_BLOCKLIST_TABLE=${ip_blocklist_table}
+# 3계층(Nginx·Flask·MySQL) 점검 결과 표(tier_check Lambda 가 저장). 비어 있으면 화면은 확인 불가로 표시한다.
+TIER_STATUS_TABLE=${tier_status_table}
 # 대시보드 도우미(챗봇, v27, 조회 전용). false 면 화면에 "사용 불가"로 표시된다.
 ASSISTANT_ENABLED=${assistant_enabled}
 ASSISTANT_MODEL_ID=${assistant_model}

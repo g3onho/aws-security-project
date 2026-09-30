@@ -433,3 +433,31 @@ variable "enable_block_expiry" {
   type        = bool
   default     = true
 }
+
+variable "enable_tier_check" {
+  description = "docker-host 의 3계층(Nginx·Flask·MySQL) 상태를 주기적으로 점검해 저장(tier_check Lambda). 끄면 대시보드는 3계층을 확인 불가로 표시한다."
+  type        = bool
+  default     = true
+}
+
+variable "tier_check_rate_minutes" {
+  description = "3계층 점검 주기(분). 임시 기본값 5 — 근거가 확정되지 않았다(decisions.md 미결정 항목)."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.tier_check_rate_minutes >= 1 && var.tier_check_rate_minutes <= 60 && floor(var.tier_check_rate_minutes) == var.tier_check_rate_minutes
+    error_message = "tier_check_rate_minutes 는 1~60 사이의 정수여야 합니다."
+  }
+}
+
+variable "tier_stale_after_minutes" {
+  description = "이 시간(분)보다 오래된 3계층 점검 결과는 확인 불가로 표시한다. 임시 기본값 15 — 근거가 확정되지 않았다. 점검 주기보다 충분히 크게 둔다."
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.tier_stale_after_minutes >= 1 && floor(var.tier_stale_after_minutes) == var.tier_stale_after_minutes
+    error_message = "tier_stale_after_minutes 는 1 이상의 정수여야 합니다."
+  }
+}

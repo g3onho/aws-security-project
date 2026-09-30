@@ -149,3 +149,9 @@ variable "vpc_cidr" {
   type    = string
   default = ""
 }
+
+# --- 3계층 점검 결과(tier_check 가 저장, 대시보드는 읽기 전용) ---
+variable "tier_status_table" {
+  type    = string
+  default = ""
+}
