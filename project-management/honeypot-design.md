@@ -35,7 +35,7 @@
 |---|---|---|
 | 배치·토글 | `enable_honeypot`이 켜진 때만 Private-DB 서브넷에 EC2 1대(t3.micro, Ubuntu 24.04). 아웃바운드에 NAT가 필요하다. | `terraform/honeypot.tf`, `modules/honeypot/main.tf` |
 | 미끼 인터페이스 | 가짜 SSH 셸(기본 포트 22, `asyncssh`). 보안 그룹은 VPC CIDR에서 리슨 포트 인바운드만 허용한다. | `modules/honeypot/templates/honeypot.py.tftpl` |
-| AI 역할 | Amazon Bedrock(기본 `apac.amazon.nova-lite-v1:0`, `converse` 호출)이 ① 가짜 셸 응답 ② 세션 사후 분석·IOC ③ 위험도·의도 분류를 생성한다. 호출 실패 시 미리 준비한 응답(FALLBACK)과 규칙 판정으로 대체하며 로깅·탐지·차단은 계속한다. `enable_ai=false`면 AI를 쓰지 않는다. AI 출력은 차단·해제 판단에 쓰지 않는다. | 같은 파일, DEC-037 |
+| AI 역할 | Amazon Bedrock(기본 `global.anthropic.claude-haiku-4-5-20251001-v1:0`, `converse` 호출, DEC-042)이 ① 가짜 셸 응답 ② 세션 사후 분석·IOC ③ 위험도·의도 분류를 생성한다. 호출 실패 시 미리 준비한 응답(FALLBACK)과 규칙 판정으로 대체하며 로깅·탐지·차단은 계속한다. `enable_ai=false`면 AI를 쓰지 않는다. AI 출력은 차단·해제 판단에 쓰지 않는다. | 같은 파일, DEC-037 |
 | 미끼 IAM | CloudWatch Logs 전송, `bedrock:InvokeModel`(리소스 `*`), SSM 관리 접속만 갖는다. 차단 권한은 없다. | `modules/honeypot/main.tf` |
 | 세션 기록 | CloudWatch Logs `/honeypot/<prefix>`(보존 기본 30일)에 JSON 한 줄씩 `connect`·`auth`·`command`·`response`·`session_end`와 `ai_call`을 남긴다. | 같은 파일 |
 | 탐지 | `connect` 이벤트를 지표 `HoneypotHitCount`로 세고, 5분 합계 1 이상이면 알람이 ALARM이 된다. 알람은 상태 전이 때만 이벤트를 낸다. | `modules/honeypot/main.tf` |

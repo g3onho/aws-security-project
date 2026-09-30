@@ -91,7 +91,7 @@ paths:
         - {$ref: '#/components/parameters/From'}
         - {$ref: '#/components/parameters/To'}
         - {$ref: '#/components/parameters/Severity'}
-        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/VulnerabilityLimit'}
         - {$ref: '#/components/parameters/Cursor'}
         - name: source
           in: query
@@ -691,6 +691,7 @@ components:
     Severity: {name: severity, in: query, schema: {$ref: '#/components/schemas/Severity'}}
     Status: {name: status, in: query, schema: {$ref: '#/components/schemas/ActionState'}}
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+    VulnerabilityLimit: {name: limit, in: query, description: '취약점 목록은 한 페이지 최대 1000건(v42). 화면이 수천 건을 묶어 보여 주므로 왕복 횟수를 줄이려고 넓혔다.', schema: {type: integer, minimum: 1, maximum: 1000, default: 50}}
     Cursor: {name: cursor, in: query, schema: {type: string, maxLength: 4096}}
     EventId: {name: eventId, in: path, required: true, schema: {type: string}}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 200}}

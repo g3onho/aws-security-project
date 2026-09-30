@@ -55,3 +55,15 @@ def assistant_report():
                                                           "cached": result["cached"], "usage": result["usage"],
                                                           "warnings": len(result["warnings"])})
     return jsonify(envelope(result, g.request_id))
+
+
+@bp.post("/api/drills/run-all/<string:run_id>/summary")
+def drills_run_summary(run_id):
+    """실행 이력에 붙는 AI 한 줄 요약. 끝난 실행에 한 번만 만들어 저장하고, 이후는 저장된 값을 돌려준다."""
+    result = reports().summarize_run_line(run_id, g.actor)
+    if result["created"]:
+        store = current_app.extensions["store"]
+        with store.connect(write=True) as db:
+            store.audit(db, g.actor, None, "run-summary-line", {"requestId": g.request_id, "role": g.role,
+                                                               "runId": run_id, "source": result["source"]})
+    return jsonify(envelope(result, g.request_id))

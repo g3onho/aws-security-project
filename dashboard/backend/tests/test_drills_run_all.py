@@ -13,9 +13,11 @@ from soar.store import Store, now_ms
 
 class FakeProvider:
     region = "ap-northeast-2"
+    name_prefix = "proj"
 
     def __init__(self):
         self.sent = []
+        self.sg_drills = []
 
     def discover_attackers(self, regions):
         return [{"regionLabel": "tokyo", "instanceId": "i-atk", "regionCode": "ap-northeast-1"}]
@@ -38,6 +40,7 @@ class FakeProvider:
     def discover_host_by_role(self, region, role, region_label="paris"):
         found = {"service-3tier": {"instanceId": "i-docker"},
                  "attack-simulation": {"instanceId": "i-atk-local"},
+                 "database": {"instanceId": "i-db", "privateIp": "10.0.2.50"},
                  "honeypot-decoy": {"instanceId": "i-decoy", "privateIp": "10.0.1.115"}}.get(role)
         return {"regionLabel": "paris", "regionCode": region, **found} if found else None
 
@@ -59,6 +62,21 @@ class FakeProvider:
         status = getattr(self, "status_override", "Success")
         return [{"regionLabel": c["regionLabel"], "status": status, "output": "ok"} for c in commands]
 
+    def discover_sg_by_name(self, region, group_name):
+        return {"proj-sec01-ssh-demo-sg": "sg-sec01",
+                "proj-db-auto-sg": "sg-auto",
+                "proj-db-manual-sg": "sg-manual"}.get(group_name)
+
+    def run_sg_violation_drill(self, region, sg_id, port, sec, title, expect_revoked, region_label="paris"):
+        self.sg_drills.append((sg_id, port, sec, region_label, expect_revoked))
+        status = getattr(self, "sg_status_override", "Success")
+        return {"sec": sec, "regionLabel": region_label, "status": status,
+                "output": f"{sg_id} 0.0.0.0/0:{port} 재현 -> asr_trigger 호출"}
+
+    def check_audit_sources(self, region):
+        status = getattr(self, "audit_status_override", "Success")
+        return {"sec": "SEC-09", "regionLabel": "paris", "status": status, "output": "ok"}
+
 
 def _service(store, provider=None):
     cfg = {"documentName": "proj-ATK-WebAttack", "targetIp": "1.2.3.4",
@@ -72,7 +90,11 @@ def test_start_all_fans_out_all_secs():
         svc = _service(Store(os.path.join(d, "t.sqlite3")))
         result = svc.start_all({}, actor="tester")
         secs = {c["sec"] for c in result["launched"]}
-        assert secs == {"SEC-02", "SEC-04", "SEC-07", "SEC-08", "SEC-10", "HONEYPOT"}, secs
+        assert secs == {"SEC-01", "SEC-02", "SEC-03", "SEC-04", "SEC-06A", "SEC-07", "SEC-08",
+                        "SEC-09", "SEC-10", "HONEYPOT"}, secs
+        # SEC-03 은 db-auto-sg(자동) · db-manual-sg(대조군)로 팬아웃 → 2건.
+        sec03 = [c for c in result["launched"] if c["sec"] == "SEC-03"]
+        assert len(sec03) == 2, sec03
         # SEC-10 은 파리 EC2(대시보드 제외) 전부로 팬아웃 → 2건.
         sec10 = [c for c in result["launched"] if c["sec"] == "SEC-10"]
         assert len(sec10) == 2, sec10
@@ -104,6 +126,77 @@ def test_step_label():
     assert _step_label({"sec": "SEC-07"}) == "SEC-07"
     assert _step_label({"sec": "SEC-08", "regionLabel": "singapore"}) == "SEC-08 · 싱가포르"
     assert _step_label({"sec": "SEC-10", "regionLabel": "db"}) == "SEC-10 · db"
+    assert _step_label({"sec": "SEC-03", "regionLabel": "auto"}) == "SEC-03 · auto"
+    assert _step_label({"sec": "SEC-03", "regionLabel": "manual"}) == "SEC-03 · manual"
+
+
+def test_mysql_bruteforce_runs_from_inner_attacker_to_db_private_ip():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        svc.start_all({}, actor="tester")
+        runs = [s for s in svc.provider.sent if s[2] == "SEC-06A"]
+        assert len(runs) == 1
+        instance, document, _, params = runs[0]
+        assert instance == "i-atk-local" and document == "ATK-MysqlBruteForce"  # 파리(홈 리전) VPC 안 공격자에서 실행
+        assert params["DbHost"] == "10.0.2.50"                                  # DB 사설 IP 를 런타임 탐색
+
+
+def test_mysql_bruteforce_skipped_without_db():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        orig = svc.provider.discover_host_by_role
+        svc.provider.discover_host_by_role = lambda r, role, region_label="paris": \
+            None if role == "database" else orig(r, role, region_label)
+        result = svc.start_all({}, actor="tester")
+        assert all(c["sec"] != "SEC-06A" for c in result["launched"])
+        assert any("SEC-06A" in s for s in result["skipped"])
+
+
+def test_sec01_reproduces_violation_on_dedicated_sg():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        svc.start_all({}, actor="tester")
+        runs = [c for c in svc.provider.sg_drills if c[2] == "SEC-01"]
+        assert len(runs) == 1
+        sg_id, port, _, region_label, expect_revoked = runs[0]
+        assert sg_id == "sg-sec01" and port == 22 and expect_revoked is True and region_label == "paris"
+
+
+def test_sec01_skipped_without_demo_sg():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        orig = svc.provider.discover_sg_by_name
+        svc.provider.discover_sg_by_name = lambda r, name: None if "sec01" in name else orig(r, name)
+        result = svc.start_all({}, actor="tester")
+        assert all(c["sec"] != "SEC-01" for c in result["launched"])
+        assert any("SEC-01" in s for s in result["skipped"])
+
+
+def test_sec03_compares_auto_and_manual_sg():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        svc.start_all({}, actor="tester")
+        runs = {(c[0], c[3]): c[4] for c in svc.provider.sg_drills if c[2] == "SEC-03"}
+        assert runs[("sg-auto", "auto")] is True      # 자동 회수 대상 — 회수돼야 성공
+        assert runs[("sg-manual", "manual")] is False  # 대조군 — 남아 있어야 성공
+
+
+def test_sec03_skipped_without_db_sgs():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        orig = svc.provider.discover_sg_by_name
+        svc.provider.discover_sg_by_name = lambda r, name: None if "db-" in name else orig(r, name)
+        result = svc.start_all({}, actor="tester")
+        assert all(c["sec"] != "SEC-03" for c in result["launched"])
+        assert any("SEC-03" in s for s in result["skipped"])
+
+
+def test_sec09_checks_audit_sources():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        result = svc.start_all({}, actor="tester")
+        sec09 = [c for c in result["launched"] if c["sec"] == "SEC-09"]
+        assert len(sec09) == 1 and sec09[0]["status"] == "Success"
 
 
 def test_honeypot_probe_runs_from_inner_attacker_to_decoy_private_ip():

@@ -1,8 +1,8 @@
 // 보안 이벤트 '대응 현황': 자동으로 처리한 것 / 대시보드에서 조치할 수 있는 미조치 건 / 대시보드로는 못 하고 직접 조치해야 하는 건.
 // 확인 기준은 재검증이 아니라 '이벤트가 아직 열려 있는가'다 — 고쳐지면 탐지가 목록에서 사라진다.
-import {$,api,summary,selectEvents} from '../context.js?v=q6-ui-1-l1';
-import {esc} from './format.js?v=q6-ui-1';
-import {patchMarkup} from './rendering.js?v=q6-ui-1';
+import {$,api,summary,selectEvents} from '../context.js?v=v45';
+import {esc} from './format.js?v=v45';
+import {patchMarkup} from './rendering.js?v=v45';
 const cache={autoRows:[],attempts:new Map(),active:new Set(),manualDone:new Set(),externalDone:new Set(),loaded:false,error:null};
 const SEV=['Critical','High','Medium','Low'];
 const AUTO_TRIED=['auto-executed','auto-skipped'];

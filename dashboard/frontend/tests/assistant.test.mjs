@@ -42,7 +42,7 @@ test('assistant panel asks, escapes hostile answers, keeps history, and recovers
  // 적대적 답변은 태그로 살아나지 않는다.
  ask('해킹?');
  await until(()=>document.querySelectorAll('#assistant-panel .as-bot:not(.as-typing)').length===2,'second answer missing');
- assert.equal(document.querySelector('#assistant-panel img'),null);assert.equal(w.__pwn,undefined);
+ assert.equal(document.querySelector('#assistant-panel .as-bot img'),null);assert.equal(w.__pwn,undefined);
  assert(document.querySelectorAll('#assistant-panel .as-bot:not(.as-typing)')[1].textContent.includes('<img src=x'));
  // 두 번째 요청에는 이전 대화가 함께 간다(user/assistant 번갈아, user 로 끝).
  assert.deepEqual(sent[1].map(m=>m.role),['user','assistant','user']);

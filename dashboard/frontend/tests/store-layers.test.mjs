@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 import {ROOT, until, makeFetchMock, appDOM, snapshot} from './dom-test-support.mjs';
 
 // v20.3 (PR-5): Store 계층(설계 2.1·2.2) — client 재시도, 어댑터 행 단위 오류, Store 폴링, UI 경계.
-const js=file=>pathToFileURL(path.join(ROOT,'static/js',file)).href+'?v=q6-local-2';
+const js=file=>pathToFileURL(path.join(ROOT,'static/js',file)).href+'?v=v45';
 const {adaptEvents}=await import(js('store/adapters/events.js'));
 const {adaptVulnerabilities}=await import(js('store/adapters/vulnerabilities.js'));
 const {adaptHistory}=await import(js('store/adapters/history.js'));
@@ -83,7 +83,7 @@ test('Store modules never touch the DOM; event CSV is built by the screen',async
  const dir=path.join(ROOT,'static/js/store');
  const files=fs.readdirSync(dir,{recursive:true}).filter(f=>f.endsWith('.js'));
  for(const file of files)assert.doesNotMatch(fs.readFileSync(path.join(dir,file),'utf8'),/\bdocument\.(createElement|body|querySelector)|\.click\(\)|createObjectURL/,file);
- const {eventCsv}=await import(pathToFileURL(path.join(ROOT,'static/js/ui/components/downloads.js')).href+'?v=ui-1');
+ const {eventCsv}=await import(pathToFileURL(path.join(ROOT,'static/js/ui/components/downloads.js')).href+'?v=v45');
  const csv=eventCsv([{id:'E1',observedAt:iso,title:'=cmd()',severity:'HIGH',region:'ap-northeast-2',resource:'i-1',source:'GuardDuty',actionState:'PENDING_APPROVAL'}]);
  assert(csv.startsWith('\uFEFF"ID","발생 시각"'));
  assert(csv.includes('"\'=cmd()"'),'formula-looking cells are neutralised');

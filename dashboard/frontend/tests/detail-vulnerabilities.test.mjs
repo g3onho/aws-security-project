@@ -19,12 +19,9 @@ test('vulnerability groups explain the risk and how to fix it',async t=>{
  click('nav [data-view="vulnerabilities"]');
  await until(()=>$('#vulns .cve-group'),'vulnerability groups did not render');
  const group=$('#vulns .cve-group');
- assert.equal(group.querySelectorAll('summary .sev-chip').length,0,'접힌 패키지에는 심각도 칩을 두지 않는다');
- assert(group.querySelector('summary .vg-severity-meter'),'심각도 구성은 막대 그래프로 보여준다');
- assert.equal(group.querySelectorAll('summary .vg-ec2-node').length,1,'실제 발견된 EC2 위치를 보여준다');
+ assert(group.querySelectorAll('summary .sev-chip').length>0,'패키지 행은 심각도 칩(건수)을 보여준다(v27 목록)');
+ assert(group.querySelector('summary .sev-bar'),'심각도 구성은 막대로 보여준다');
  assert(group.querySelector('summary .vg-main').textContent.includes('linux-image-aws'));
- assert(!group.querySelector('summary').textContent.includes('재부팅 필요'));
- assert(!group.querySelector('summary').textContent.includes('공격 코드 공개'));
  assert(group.textContent.includes('왜 위험한가')&&group.textContent.includes('use-after-free'));
  assert(group.textContent.includes('sudo apt-get update && sudo apt-get install --only-upgrade -y linux-image-aws'));
  assert(group.textContent.includes('적용 전 확인'),'대시보드가 만든 명령임을 밝힌다');

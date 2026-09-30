@@ -1,8 +1,8 @@
 // 대시보드 도우미(챗봇, v27) — 조회 전용. 화면 어디서나 오른쪽 아래 버튼으로 연다.
 // UI 는 Store action(api.assistant*)만 부른다. 답변·도구 이름은 서버·모델이 만든 문자열이므로 전부 esc() 를 거쳐 텍스트로만 그린다
 // (마크다운·HTML 해석 없음). 도우미는 변경 도구가 없다 — 조치는 화면의 기존 버튼(권한·CSRF·멱등키 검증)으로만 한다.
-import {$,api,state} from '../context.js?v=q6-ui-1-l1';
-import {esc} from './format.js?v=q6-ui-1';
+import {$,api,state} from '../context.js?v=v45';
+import {esc} from './format.js?v=v45';
 
 const SUGGEST={
  overview:['지금 가장 심각한 보안 이벤트가 뭐야?','자동 조치는 얼마나 됐어?','열린 취약점 요약해줘'],
@@ -20,8 +20,10 @@ const TOOL_KO={overview:'요약',list_events:'이벤트',list_vulnerabilities:'�
 
 const S={open:false,busy:false,turns:[],status:null,error:'',mounted:false};
 
-const spark='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.2 6.3L21 10l-6.3 2.2L12 19l-2.2-6.8L3 10l6.8-1.7z"/><path d="M19 3v4M17 5h4"/></svg>';
+const spark='<svg class="as-mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><g fill="#E9825A"><circle cx="21" cy="12" r="2.4"/><circle cx="18.4" cy="18.4" r="2.4"/><circle cx="12" cy="21" r="2.4"/><circle cx="5.6" cy="18.4" r="2.4"/><circle cx="3" cy="12" r="2.4"/><circle cx="5.6" cy="5.6" r="2.4"/><circle cx="12" cy="3" r="2.4"/><circle cx="18.4" cy="5.6" r="2.4"/><circle cx="12" cy="12" r="8.4"/></g><g fill="#F7B39B" opacity=".85"><circle cx="7.6" cy="14.2" r="1.4"/><circle cx="16.4" cy="14.2" r="1.4"/></g><g fill="#3B1F14"><ellipse cx="9.3" cy="11.2" rx="1.1" ry="1.5"/><ellipse cx="14.7" cy="11.2" rx="1.1" ry="1.5"/></g><path d="M10.3 14.3q1.7 1.7 3.4 0" fill="none" stroke="#3B1F14" stroke-width="1.2" stroke-linecap="round"/></svg>';   // 귀여운 Claude 마스코트(자체 제작 아이콘)
 
+const LOGO_SRC='/static/img/claude-mark.svg';   // 공식 Claude 마크(사용자가 직접 배치). 없거나 로드 실패 시 위 마스코트로 대체
+const logo=`<img class="as-logo" src="${LOGO_SRC}" width="26" height="26" alt="" aria-hidden="true">`;
 function toolChips(tools){
  const seen=new Set();
  return (tools||[]).map(t=>{
@@ -86,14 +88,19 @@ export function resetAssistant(){S.turns=[];S.error='';paint();}
 export function initAssistant(){
  if(S.mounted||!document.body)return;
  S.mounted=true;
- document.body.insertAdjacentHTML('beforeend',`<button type="button" id="assistant-fab" class="as-fab" aria-controls="assistant-panel" aria-expanded="false" aria-label="AI 도우미 열기">${spark}<span>AI</span></button>
+ document.body.insertAdjacentHTML('beforeend',`<button type="button" id="assistant-fab" class="as-fab" aria-controls="assistant-panel" aria-expanded="false" aria-label="AI 도우미 열기" title="AI 도우미">${logo}</button>
  <section id="assistant-panel" class="as-panel" role="dialog" aria-label="AI 도우미" hidden>
-  <header class="as-head"><span class="as-title">${spark}<b>AI 도우미</b><em>조회 전용</em></span>
+  <header class="as-head"><span class="as-title">${logo}<b>AI 도우미</b><em>조회 전용</em></span>
    <span><button type="button" class="as-icon" data-as-reset title="새 대화" aria-label="새 대화">↺</button><button type="button" class="as-icon" data-as-close title="닫기" aria-label="닫기">✕</button></span></header>
   <div class="as-scroll"><div class="as-body"></div></div>
   <form class="as-form"><textarea class="as-input" rows="2" maxlength="2000" placeholder="예: 10.0.2.55 는 뭘 했어?" aria-label="질문"></textarea><button type="submit" class="as-send">보내기</button></form>
-  <p class="as-foot">답변은 참고용입니다. 질문과 조회 결과는 AWS Bedrock 으로 전송됩니다. 비밀번호·키는 조회하지 않습니다.</p>
+  <p class="as-foot">답변은 참고용입니다. 질문과 조회 결과는 AWS Bedrock(Claude Haiku 4.5)으로 전송됩니다. 비밀번호·키는 조회하지 않습니다.</p>
  </section>`);
+ const useFallback=img=>{const t=document.createElement('template');t.innerHTML=spark;img.replaceWith(t.content.firstChild);};
+ document.querySelectorAll('img.as-logo').forEach(img=>{
+  img.addEventListener('error',()=>useFallback(img),{once:true});
+  if(img.complete&&img.naturalWidth===0)useFallback(img);
+ });
  const panel=$('#assistant-panel');
  $('#assistant-fab').addEventListener('click',()=>toggleAssistant());
  panel.addEventListener('click',e=>{

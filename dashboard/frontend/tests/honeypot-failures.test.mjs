@@ -15,7 +15,7 @@ test('a failing source only marks its own section as unreadable and warnings sta
  const {dom,w,$,click,charts,errors}=appDOM(network);t.after(()=>dom.window.close());
  loadD3Force(w);
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
- const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=q6-local-2');client.setTimers({sleep:async()=>{}});
+ const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=v45');client.setTimers({sleep:async()=>{}});
  await until(()=>$('#content .event-trend-widget'));
  click('nav [data-view="honeypot"]');
  await until(()=>$('[data-block]')&&$('.hp-steps'),'honeypot did not render');

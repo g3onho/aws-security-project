@@ -3,7 +3,7 @@
 // 그림의 선·번호 배지에 옮길 뿐이다. AI 가 그림을 만들지 않는다(없는 경로를 그럴듯하게 그리는 위험을 피한다).
 // 단계의 상태(done/missing/failed/pending/unknown)를 색뿐 아니라 배지 글자(✓ – ✕ … ?)로도 표기한다.
 // 공격자가 조종할 수 있는 문자열(단계 detail)은 esc() 를 거쳐 <title>·텍스트로만 넣는다. 고정 라벨만 원문 그대로 쓴다.
-import {esc} from '../components/format.js?v=q6-ui-1';
+import {esc} from '../components/format.js?v=v45';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const STATE={done:['완료','✓',MINT],missing:['기록 없음','–',GRAY],failed:['실패','✕',RED],pending:['진행 중','…',AMBER],unknown:['읽지 못함','?',AMBER]};
@@ -154,11 +154,11 @@ export function mapSvg(steps){
 
  <g class="hp-mp-main">
   ${node({id:'inner',x:706,y:214,w:124,h:66,title:'내부 공격자',sub:'EC2 · 침투 가정',ic:'attacker',color:RED,active:connected||steps===null?connected:false})}
-  ${node({id:'honeypot',x:1070,y:252,w:142,h:70,title:'허니팟(미끼)',sub:hpDetail,ic:'spark',color:AMBER,active:connected})}
+  ${node({id:'honeypot',x:1070,y:252,w:142,h:70,title:'허니팟',sub:hpDetail,ic:'spark',color:AMBER,active:connected})}
   ${connected?`<circle class="hp-mp-pulse" cx="1070" cy="252" r="64" fill="url(#hp-pulse)"/>`:''}
   <g class="hp-mp-gate" data-gate="${blocked?'closed':'open'}"><circle cx="841" cy="238" r="17" fill="#f3f6f5" stroke="${gateColor}" stroke-width="${blocked?2.4:1.4}"${blocked?' filter="url(#hp-glow)"':''}/>${icon('shield',841,238,20,gateColor)}</g>
   ${cut}
-  ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Nova Lite',ic:'spark',color:SOFT,active:done('analysis')})}
+  ${node({id:'bedrock',x:1150,y:500,w:110,h:58,title:'Bedrock',sub:'Claude Haiku 4.5',ic:'spark',color:SOFT,active:done('analysis')})}
   ${node({id:'logs',x:262,y:500,w:100,h:58,title:'Logs',sub:'/honeypot/*',ic:'logs',color:SOFT,active:done('alarm')})}
   ${node({id:'alarm',x:414,y:500,w:96,h:58,title:'알람',sub:'HoneypotHit',ic:'bell',color:SOFT,active:done('alarm')})}
   ${node({id:'eb',x:554,y:500,w:100,h:58,title:'EventBridge',sub:'ALARM 이벤트',ic:'bolt',color:MINT,active:done('judge')})}

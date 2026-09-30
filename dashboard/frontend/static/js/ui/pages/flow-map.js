@@ -3,8 +3,8 @@
 // 시나리오 카탈로그(sources·response)와 실습 실행 상태만 그림에 옮긴다. 기록이 없는 단계를 성공으로 그리지 않는다.
 // 상태: done 완료 · pending 진행/대기 · failed 실패 · missing 기록 없음 · unknown 읽지 못함 · design 설계 경로(관측 근거 없음).
 // 이벤트 필드는 AWS·공격자가 조종할 수 있는 문자열이므로 esc() 를 거쳐 텍스트·툴팁으로만 넣는다.
-import {esc} from '../components/format.js?v=q6-ui-1';
-import {icon,node,setFont} from './honeypot-map.js?v=q6-ui-1-l1';
+import {esc} from '../components/format.js?v=v45';
+import {icon,node,setFont} from './honeypot-map.js?v=v45';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 export const FLOW_STATE={done:['완료','✓',MINT],pending:['진행·대기','…',AMBER],failed:['실패','✕',RED],missing:['기록 없음','–',GRAY],

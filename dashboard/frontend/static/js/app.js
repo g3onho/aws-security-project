@@ -1,28 +1,28 @@
 // 대시보드 시작점: 화면 조립(render)·새로고침(refresh)·사용자 입력 연결만 한다.
 // 화면별 표시는 ui/pages, 공통 부품은 ui/components, 차트는 ui/charts, 지도는 ui/map, 주소창은 ui/router(설계 2.1).
-import {regions,sources,statuses,periodStops} from './ui/constants.js?v=q6-ui-1-l1';
-import {periodTrackMarkup} from './ui/components/period-track.js?v=q6-ui-3-l1';
-import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=q6-ui-1-l1';
-import {esc,format} from './ui/components/format.js?v=q6-ui-1';
-import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=q6-ui-1';
-import {cleanCharts} from './ui/charts/charts.js?v=q6-ui-1-l1';
-import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=q6-ui-1-l1';
-import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=q6-ui-1-l1';
-import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=q6-ui-1';
-import {titles,syncUrl,applyUrl} from './ui/router.js?v=q6-ui-2';
-import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=q6-ui-6-l1';
-import {overviewCharts,responseCard} from './ui/pages/overview.js?v=q6-ui-11';
-import {patchMarkup} from './ui/components/rendering.js?v=q6-ui-1';
-import {table,eventTrendWidget,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=q6-ui-11-l1';
-import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=q6-ui-4-l1';
-import './ui/components/remediate-bulk.js?v=q6-ui-11';
-import {loadEventResponse,eventResponseCard} from './ui/components/event-response.js?v=q6-ui-11';
-import {renderAudit} from './ui/pages/history.js?v=q6-ui-11';
-import {renderDrills} from './ui/pages/drills.js?v=v39-5';
-import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=q6-ui-1-l1';
-import {initAssistant} from './ui/components/assistant.js?v=q6-ui-1';
-import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=q6-ui-1-l1';
-import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=q6-ui-6-l1';
+import {regions,sources,statuses,periodStops} from './ui/constants.js?v=v45';
+import {periodTrackMarkup} from './ui/components/period-track.js?v=v45';
+import {$,$$,api,activity,storeApi,state,summary,config,selectors,selectEvents,setFilters,notifications,ui,hooks} from './ui/context.js?v=v45';
+import {esc,format} from './ui/components/format.js?v=v45';
+import {header,renderContent,resetTableScroll,panelScope,toast} from './ui/components/panel.js?v=v45';
+import {cleanCharts} from './ui/charts/charts.js?v=v45';
+import {eventCsv,downloadCsv} from './ui/components/downloads.js?v=v45';
+import {eventDialog,closeDialog,dialogAction} from './ui/components/dialog.js?v=v45';
+import {renderNotifications,applyNotification} from './ui/components/shortcuts.js?v=v45';
+import {titles,syncUrl,applyUrl} from './ui/router.js?v=v45';
+import {loadMap,isMapReady,updateSelectedCountry,updateCamera,chooseRegion,mapRender,cancelCamera,closeRegionPanel,openRegionPanel,zoomIn,zoomOut,zoomReset,bindMap} from './ui/map/view.js?v=v45';
+import {overviewCharts,responseCard} from './ui/pages/overview.js?v=v45';
+import {patchMarkup} from './ui/components/rendering.js?v=v45';
+import {table,eventTrendWidget,visibleRows,clearSelection,toggleEventGroup} from './ui/pages/events.js?v=v45';
+import {infrastructure,drawInfrastructureChart,selectHost,hostViews} from './ui/pages/infrastructure.js?v=v45';
+import './ui/components/remediate-bulk.js?v=v45';
+import {loadEventResponse,eventResponseCard} from './ui/components/event-response.js?v=v45';
+import {renderAudit} from './ui/pages/history.js?v=v45';
+import {renderDrills} from './ui/pages/drills.js?v=v45';
+import {renderHoneypot,honeypotTimes} from './ui/pages/honeypot.js?v=v45';
+import {initAssistant} from './ui/components/assistant.js?v=v45';
+import {initPageExports,syncPageExports} from './ui/components/page-exports.js?v=v45';
+import {renderVulnerabilities,selectVulnTarget,selectVulnFilter,stepVulnPage,setVulnSize,resetVulnerabilityView,exportVulnerabilities} from './ui/pages/vulnerabilities.js?v=v45';
 function render({loadPanels=false}={}){
  const pending=[];
 
@@ -97,10 +97,12 @@ function renderTrack(end=rangeEnd()){
 const periodIndex=()=>Math.max(0,periodStops.findIndex(stop=>stop.hours===state.hours));
 function syncTimeRange(){if(state.endOffset)setFilters({endOffset:0});}
 function applyModeLabels(){
- // 정상(실데이터 연결·AWS 연동)일 때는 표시하지 않고, 연결되지 않았을 때만 경고로 보인다.
- const mode=$('#data-mode'),aws=$('#aws-state'),dataOk=!!config().dataSourceConnected,awsOk=!!summary.health?.aws_connected;
+ // v42: 상단 우측에 AWS 연동 상태를 항상 보인다(연동 중 · 미연동). 아직 상태를 받지 못했으면 '확인 중'으로 두고 연동됨으로 단정하지 않는다.
+ const mode=$('#data-mode'),aws=$('#aws-state'),dataOk=!!config().dataSourceConnected,known=summary.health!=null,awsOk=!!summary.health?.aws_connected;
  mode.textContent=dataOk?'':'데이터 소스 미연결';mode.hidden=dataOk;
- aws.textContent=awsOk?'':'AWS 미연결';aws.hidden=awsOk;
+ const state=!known?'unknown':awsOk?'on':'off';
+ aws.hidden=false;aws.dataset.state=state;
+ aws.textContent={unknown:'AWS 확인 중',on:'AWS 연동 중',off:'AWS 미연동'}[state];
 }
 function setAuto(on){
  const button=$('#auto-refresh');
@@ -126,6 +128,14 @@ function syncControls(){
  ['severity','status','source','search'].forEach(key=>{const el=$('#'+key);if(el)el.value=state[key];});
  updateSelectedCountry(state.region);
 }
+// v42: 취약점은 수천 건이라 처음 열 때 가장 오래 걸린다. 첫 화면을 다 그린 뒤 한 번만 뒤에서 미리 받아 두면 탭을 열 때 캐시를 쓴다.
+// 실패해도 조용히 넘어간다(탭을 열면 그때 다시 받고 오류를 보인다). 첫 화면 요청과 겹치지 않게 잠시 뒤에 시작한다.
+let vulnWarmed=false;
+function warmVulnerabilities(){
+ if(vulnWarmed||state.view==='vulnerabilities')return;
+ vulnWarmed=true;
+ setTimeout(()=>{Promise.resolve(storeApi.vulnerabilities({})).catch(()=>{vulnWarmed=false;});},1500);
+}
 async function refresh(options={}){
  clearTimeout(searchTimer);
  syncTimeRange();
@@ -141,6 +151,7 @@ async function refresh(options={}){
   if(state.view==='drills'||state.view==='honeypot'){
    await api.init();
    if(serial!==ui.refreshSerial||scope!==panelScope())return;
+   await api.refreshHealth().catch(()=>{});   // 실패해도 화면은 계속 그린다(연동 표시는 '확인 중')
    await render({loadPanels:true});
    if(serial!==ui.refreshSerial)return;
    box.hidden=true;content.removeAttribute('data-stale');
@@ -159,6 +170,7 @@ async function refresh(options={}){
   $('#updated').textContent=`갱신 ${format(summary.collectedAt,true)} KST`;
   $('#session-user').textContent=config().user.name;
   applyModeLabels();
+  warmVulnerabilities();
   // v23: '조치 실행 비활성 · 조회 전용' 고정 문구는 뺐다(대시보드는 조회 전용이고 자동 조치는 SOAR 가 한다). 경고만 보인다.
   $('#worker-state').textContent=summary.warnings?.length?'⚠ '+summary.warnings.join(' · '):'';
  }catch(e){

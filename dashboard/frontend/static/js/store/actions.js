@@ -1,19 +1,19 @@
 // UI 가 Store 에 요청하는 유일한 경로(설계 2.1-1·4). 통신은 api/client, 변환은 adapters 가 맡는다.
-import {request as send} from './api/client.js?v=q6-local-2';
-import {endpoints} from './api/endpoints.js?v=q6-local-2-l1';
-import {envelope,listEnvelope,requireContract,isObject,warningsOf} from './api/validators.js?v=q6-local-2';
-import {adaptEvents,ACTION_LABELS} from './adapters/events.js?v=q6-local-2-l1';
-import {adaptVulnerabilities} from './adapters/vulnerabilities.js?v=q6-local-2-l1';
-import {adaptHistory} from './adapters/history.js?v=q6-local-2';
-import {createPoller} from './polling.js?v=q6-local-2';
-import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=q6-local-2';
+import {request as send} from './api/client.js?v=v45';
+import {endpoints} from './api/endpoints.js?v=v45';
+import {envelope,listEnvelope,requireContract,isObject,warningsOf} from './api/validators.js?v=v45';
+import {adaptEvents,ACTION_LABELS} from './adapters/events.js?v=v45';
+import {adaptVulnerabilities} from './adapters/vulnerabilities.js?v=v45';
+import {adaptHistory} from './adapters/history.js?v=v45';
+import {createPoller} from './polling.js?v=v45';
+import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=v45';
 
 // 취약점 4933건을 200건씩 25페이지 순차 요청하면 매번 수 초가 걸린다. 백엔드는 5분 캐시가
 // 있어 그동안 데이터가 안 바뀌니, 탭을 다시 열거나 자동 새로고침이 돌 때마다 25번을 처음부터
 // 다시 받지 않게 여기서도 짧게(60초, 백엔드 TTL보다 짧게) 캐시한다. 검색어(search)는 캐시된
 // 전체 목록에 매번 새로 걸러서 최신 검색 결과를 보장한다.
 let vulnCache={key:null,at:0,items:null,warnings:[]};
-const VULN_CACHE_MS=60000;
+const VULN_CACHE_MS=300000;   // v42: 60초 → 5분. 취약점은 천천히 바뀌고, 새로고침 버튼·r 키·다시 시도에서는 invalidateVulnerabilities 로 비운다
 
 const listeners=new Set();
 export function subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener);}
@@ -37,10 +37,11 @@ export function query(){
  const status=Object.keys(ACTION_LABELS).find(key=>ACTION_LABELS[key]===filters.status);if(status)q.set('status',status);
  return q;
 }
-async function pages(path,q,signal){
+// limit: 한 번에 받는 건수. 기본 200(계약 상한). 취약점만 1000 을 쓴다(v42) — 수천 건을 25번이 아니라 5번 왕복으로 받는다.
+async function pages(path,q,signal,limit=200){
  const items=[];let cursor=null,meta=null,extra={},warnings=[];
  do{
-  const params=new URLSearchParams(q);params.set('limit','200');if(cursor)params.set('cursor',cursor);
+  const params=new URLSearchParams(q);params.set('limit',String(limit));if(cursor)params.set('cursor',cursor);
   const response=listEnvelope(await request(path+'?'+params,{signal}));
   items.push(...response.data.items);warnings.push(...warningsOf(response));
   cursor=response.data.nextCursor||null;meta=response.meta;extra=response.data;
@@ -95,6 +96,13 @@ export const actions={
    setConfig({mode:'live',writeEnabled:false,role:payload.user.role,user:payload.user,dataSourceConnected:false});
   })().catch(error=>{session.initializing=null;throw error;});
   return session.initializing;
+ },
+ // v42: 보안 시나리오·허니팟은 공용 load() 를 타지 않는다. 상단 AWS 연동 표시만 /health 로 채운다(실패하면 '확인 중'으로 둔다).
+ async refreshHealth(){
+  await this.init();
+  const healthData=envelope(await request(endpoints.health)).data;
+  Object.assign(summary,{health:{aws_connected:healthData.dataSourceConnected,checks:{worker:'disabled'}}});
+  setConfig({...config,dataSourceConnected:healthData.dataSourceConnected});
  },
  async load(){
   await this.init();const current=++session.generation;session.controller?.abort();
@@ -193,7 +201,7 @@ export const actions={
   }else{
    markRequest('vulnerabilities',{status:'loading'});
    try{
-    const result=await pages(endpoints.vulnerabilities,q);const adapted=adaptVulnerabilities(result.items);
+    const result=await pages(endpoints.vulnerabilities,q,undefined,1000);const adapted=adaptVulnerabilities(result.items);
     items=adapted.rows;warnings=unique([...result.warnings,...adapted.warnings]);
     vulnCache={key:cacheKey,at:Date.now(),items,warnings};
     markRequest('vulnerabilities',{status:'success',lastUpdated:milliseconds(result.meta?.asOf),requestId:result.meta?.requestId||null,error:null});
@@ -254,6 +262,10 @@ export const actions={
    markRequest('startRunAll',{status:'success',lastUpdated:Date.now(),error:null});
    return result;
   }catch(error){markRequest('startRunAll',{status:'error',error:error.message});throw error;}
+ },
+ // 끝난 실행의 AI 한 줄 요약(서버가 한 번만 만들어 저장한다. 이미 있으면 저장된 값). 조회 전용 역할은 403 이라 호출 쪽이 무시한다.
+ async runSummary(runId){
+  return envelope(await request(endpoints.drillRunSummary(runId),{method:'POST',body:'{}'})).data;
  },
  async runAllStatus(runId){
   const result=envelope(await request(endpoints.drillRunAllStatus(runId))).data;

@@ -31,7 +31,7 @@ class FakeBedrock:
 def hp(monkeypatch):
     source = TEMPLATE.read_text(encoding="utf-8")
     for key, value in {"region": "ap-northeast-2", "log_group": "g", "ai_enabled": "true",
-                       "ai_model_id": "apac.amazon.nova-lite-v1:0", "listen_port": "22"}.items():
+                       "ai_model_id": "global.anthropic.claude-haiku-4-5-20251001-v1:0", "listen_port": "22"}.items():
         source = source.replace("${" + key + "}", value)
     ast.parse(source)
     boto3 = types.ModuleType("boto3")
@@ -57,12 +57,12 @@ def test_uses_converse_with_model_neutral_request_and_reports_success(hp, capsys
     seen = []
     assert hp._bedrock_text("$ whoami", "sys", 400, seen.append, "shell") == "root"
     call = fake.calls[0]
-    assert call["modelId"] == "apac.amazon.nova-lite-v1:0" and call["system"] == [{"text": "sys"}]
+    assert call["modelId"] == "global.anthropic.claude-haiku-4-5-20251001-v1:0" and call["system"] == [{"text": "sys"}]
     assert call["messages"] == [{"role": "user", "content": [{"text": "$ whoami"}]}]
     assert call["inferenceConfig"] == {"maxTokens": 400, "temperature": 0.2}
     assert "anthropic_version" not in call and "body" not in call
-    assert seen[0]["ok"] is True and seen[0]["kind"] == "shell" and seen[0]["model"].startswith("apac.amazon.nova")
-    assert "bedrock_ok model=apac.amazon.nova-lite-v1:0" in capsys.readouterr().out
+    assert seen[0]["ok"] is True and seen[0]["kind"] == "shell" and seen[0]["model"].startswith("global.anthropic.claude")
+    assert "bedrock_ok model=global.anthropic.claude-haiku-4-5-20251001-v1:0" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("code", ["ValidationException", "AccessDeniedException", "ThrottlingException"])

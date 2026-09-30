@@ -130,6 +130,12 @@ variable "enable_override_demo_sg" {
   default     = false
 }
 
+variable "enable_sec01_demo_sg" {
+  description = "SEC-01([전부 실행]) 시연용 SG. AutoRemediation=enabled 태그를 붙이고 어디에도 붙이지 않는다 — 실행할 때 22 를 전체 공개해 위반을 재현하고 즉시 자동 회수한다."
+  type        = bool
+  default     = false
+}
+
 variable "enable_geo_attackers" {
   description = <<-EOT
     지리별 공격 시연 fleet(미국·싱가포르·시드니·뭄바이·도쿄 5개 리전에 공인
@@ -382,9 +388,9 @@ variable "enable_honeypot_ai" {
 }
 
 variable "honeypot_ai_model_id" {
-  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Lite(파리 eu 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다. 2026-09-30 서울(apac)→파리(eu) 이전 — 프로파일 리전 접두어를 반드시 같이 바꿔야 한다(apac 프로파일은 파리에서 호출 불가)."
+  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 기본값 Claude Haiku 4.5(global 추론 프로파일, converse 호출). 대시보드 도우미·보고서(dashboard_assistant_model_id)와 같은 모델로 통일했다. 서울(apac)→파리 이전 후에는 프로파일 접두어가 리전에 맞아야 한다(apac 프로파일은 파리에서 호출 불가)."
   type        = string
-  default     = "eu.amazon.nova-lite-v1:0"
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 # --- 대시보드 도우미(챗봇, v27) ---
@@ -395,9 +401,9 @@ variable "enable_dashboard_assistant" {
 }
 
 variable "dashboard_assistant_model_id" {
-  description = "대시보드 도우미·AI 요약 보고서가 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Pro(파리 eu 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다. 미끼서버 AI(honeypot_ai_model_id)는 6초 제한 때문에 Nova Lite 를 유지한다. 2026-09-30 서울(apac)→파리(eu) 이전."
+  description = "대시보드 도우미·AI 요약 보고서가 쓸 Bedrock 모델 ID. 기본값 Claude Haiku 4.5(global 추론 프로파일, converse 호출). 미끼서버 AI(honeypot_ai_model_id)도 같은 모델을 쓴다."
   type        = string
-  default     = "eu.amazon.nova-pro-v1:0"
+  default     = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 # --- IP 차단 기간·만료 (v25, DEC-021) ---

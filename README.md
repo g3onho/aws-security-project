@@ -20,7 +20,7 @@
 - **탐지와 수집:** AWS Config, GuardDuty, Inspector, IAM Access Analyzer, Security Hub, CloudTrail, VPC Flow Logs, 호스트·서비스 로그, CloudWatch 지표 및 동기화 상태.
 - **SOAR와 관제:** 탐지 이벤트 라우팅, 상관분석, 자동·수동 대응, SSM 실행, DynamoDB 저장, SNS 알림, Flask 대시보드와 API.
 - **시나리오와 보증:** SEC-01~SEC-10, ZAP/Hydra 검증, 정상 기능 보존, 동일 조건 재검증, 실패·복구·감사 증거.
-- **AI 허니팟(A6):** `enable_honeypot` 토글로 Private-DB 서브넷에 미끼서버 1대를 두는 선택 구성이다(DEC-020). Amazon Bedrock(현재 Nova Lite, DEC-037)은 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다. 코드 경로는 `terraform/honeypot.tf`, `terraform/modules/honeypot/`, 대시보드 허니팟 화면·API다. 토글이 꺼진 환경에는 없으며 실환경 동작 검증은 [추적 현황](project-management/tracking.md)에서 따로 본다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011).
+- **AI 허니팟(A6):** `enable_honeypot` 토글로 Private-DB 서브넷에 미끼서버 1대를 두는 선택 구성이다(DEC-020). Amazon Bedrock(Claude Haiku 4.5, DEC-042)은 가짜 셸 응답과 세션 분석에만 쓰고 차단 판단에는 쓰지 않는다. 코드 경로는 `terraform/honeypot.tf`, `terraform/modules/honeypot/`, 대시보드 허니팟 화면·API다. 토글이 꺼진 환경에는 없으며 실환경 동작 검증은 [추적 현황](project-management/tracking.md)에서 따로 본다. 세션 원문 보존·개인정보·비용 상한은 아직 미결정이다(OPEN-011).
 
 대시보드는 **관제 시스템**이고, 컨테이너 서비스·시연용 DB·DVWA는 **보호 또는 시험 대상**이다. 대시보드가 서비스 MySQL에 직접 연결하지 않는다. 서비스 컨테이너 안의 MySQL과 Private-DB 서브넷의 시연 MySQL EC2도 별개 자산이다.
 
@@ -76,7 +76,9 @@ flowchart TB
     Db[Private-DB · 시연 MySQL EC2]
     SG[db-auto-sg + db-manual-sg]
     SSM[SSM 관리 경로 · 포트 포워딩]
+    WAF[WAFv2 웹 ACL · 선택]
     Internet --> IGW --> ALB
+    WAF -. ALB 연결 .- ALB
     ALB --> Web
     ALB --> App
     ALB --> Dash
@@ -110,11 +112,12 @@ flowchart TB
     Auto[asr_trigger · 자동 정책 판정]
     Human[관제자 · 검토·수동 승인]
     Playbook[SSM Automation / Command]
-    Tables[(DynamoDB: findings · vulnerabilities · correlations · actions)]
+    Tables[(DynamoDB: findings · vulnerabilities · correlations · actions · tier_status)]
     Dashboard[Flask API · Store · 화면]
     SNS[SNS 운영 알림]
     Sync --> Tables
     Tier[tier_check · 3계층 상태 증거] --> Tables
+    Tier -. TIER-Check Run Command .-> SSM
     Blocklist[(DynamoDB ip_blocklist)]
     Expiry[block_expiry · 5분 주기 만료 해제]
     Auto --> Blocklist
@@ -142,6 +145,9 @@ flowchart TB
   TF -. 선언한 기반 리소스 .-> Playbook
   Decoy["AI 미끼서버(허니팟) · enable_honeypot 토글 · Private-DB"]
   Decoy -. "선택 배치 · 접속 알람 → asr_trigger" .-> L2
+  Bedrock["Amazon Bedrock · Claude Haiku 4.5 · AI 챗봇·AI 보고서·허니팟 분석에만 사용"]
+  Dashboard -. "도우미 질의 · 선택" .-> Bedrock
+  Decoy -. "가짜 셸 응답 · 세션 분석" .-> Bedrock
 ```
 
 **읽는 법:** 첫 계층은 코드와 환경에 따라 리소스를 정의하고 plan을 제시한다. 두 번째는 인터넷 경계와 Private 서브넷 안의 보호·관제 자산을 구분한다. 세 번째는 설정·행위·취약점·로그를 관측해 finding 또는 알람을 제공한다. 네 번째는 탐지 자료를 영속 이력에 연결하고 자동 경로 또는 사람 승인 경로를 통해 SSM에 요청한다. 실행 종료와 보안 문제 해결은 같은 사건이 아니며, 해결 판정에는 별도의 같은 기준 재검증이 필요하다.
@@ -161,11 +167,61 @@ flowchart TB
 | SSM → 상태 저장 / 재검증 | 실행 종료·같은 조건으로 다시 측정한 자료 | 조치 이력·감사 행·검증 판정·증거 위치 | SSM 성공은 해결 완료가 아니다. 동일 기준 재검증 통과 전 해결 상태로 바꾸지 않는다. |
 | CloudWatch/SOAR → SNS | 알람·운영 알림 | 토픽 발행 및 구독 전달 결과 | 발행 성공과 수신 확인을 구분한다. 구독 미설정·전달 실패는 별도 운영 상태다. |
 
+### 기술 구성 — 구현한 기술과 구현할 기술
+
+분류 기준: **구현한 기술**은 저장소 코드에서 선언·연결이 확인된 기술이다. 실환경 배포·동작·검증 여부는 뜻하지 않으며 [추적 현황](project-management/tracking.md)에서 따로 본다. **구현할 기술**은 설계·결정 문서에 목표나 후보로 있으나 코드에 아직 없거나 목표와 다르게 구현된 것이다. 기술이 코드에 들어오면 구현한 기술 표로 옮긴다. 이 표에는 날짜·커밋·진행률을 쓰지 않는다.
+
+**구현한 기술**
+
+| 계층 | 기술 | 역할 | 근거 경로 |
+|---|---|---|---|
+| ① IaC·배포 | Terraform (`>= 1.6`, aws provider `~> 6.0`), CI 실행 버전 1.9.8 | 인프라 선언, 공용 backend 작업 버전 고정 | `terraform/versions.tf`, `.github/workflows/terraform-plan.yml` |
+| ① IaC·배포 | 루트 module `network`·`security`·`compute`·`soar`, 선택 module `honeypot`, 다중 리전 `attacker` | 리소스 책임 분리와 토글 | `terraform/main.tf`, `terraform/honeypot.tf`, `terraform/attacker.tf` |
+| ① IaC·배포 | S3 원격 state + DynamoDB 잠금, `bootstrap`(state 버킷·잠금 표·GitHub OIDC plan/apply 역할) | state 협업, CI 신원 | `terraform/backend.tf`, `terraform/bootstrap/` |
+| ① IaC·배포 | GitHub Actions (OIDC, fmt·validate·plan 전용) | plan 준비. apply는 사람이 수행 | `.github/workflows/terraform-plan.yml` |
+| ② 보호 대상 | VPC, Public-Web(2 AZ)·Private-App·Private-DB 서브넷, IGW, NAT, VPC endpoint(SSM·monitoring interface, S3 gateway), 공용·사설 NACL, 보안 그룹 8종 | 네트워크 경계와 접근 통제 | `terraform/modules/network/` |
+| ② 보호 대상 | ALB(서비스 80·443, 대시보드 8080, DVWA 8081), WAFv2 웹 ACL | 진입 경로와 웹 방어. 443은 `acm_certificate_arn`이 있을 때만 | `terraform/modules/compute/alb.tf` |
+| ② 보호 대상 | EC2: docker-host(Docker Compose로 Nginx 1.27 + Flask 서비스 이미지 + MySQL 8.4), DVWA, 시연 MySQL, 관제 대시보드, 선택적 내부 공격자 | 보호·시험 대상과 관제 서버 | `terraform/modules/compute/`, `templates/*.tftpl` |
+| ② 보호 대상 | ECR(서비스 이미지), Secrets Manager(DB 자격증명), CloudWatch Agent(Nginx 로그·메모리 지표) | 이미지·비밀·호스트 관측 | `modules/compute/ecr.tf`, `secrets.tf`, `templates/docker-host.sh.tftpl` |
+| ③ 탐지·수집 | AWS Config(관리형 규칙 4종), GuardDuty, Inspector2, IAM Access Analyzer, Security Hub(AWS FSBP), CloudTrail(S3·KMS) | 설정·행위·취약점·감사 탐지 | `terraform/modules/security/` |
+| ③ 탐지·수집 | VPC Flow Logs, CloudWatch Logs·metric filter·Alarm(CPU·메모리·MySQL 인증 실패·SSH 거부·WAF 차단·finding_sync 오류), CloudWatch dashboard | 로그·지표·알람 | `modules/network/flowlogs.tf`, `modules/soar/cloudwatch.tf` |
+| ④ SOAR | Lambda(Python 3.12) 6종: `asr_trigger`, `correlator`, `finding_sync`, `waf_finding`, `block_expiry`, `tier_check` | 판정·상관·적재·알람 변환·차단 만료·3계층 점검 | `terraform/modules/soar/lambda_src/` |
+| ④ SOAR | EventBridge 규칙(GuardDuty·Security Hub·Inspector2·CloudWatch Alarm·SSM 종료·스케줄), SQS DLQ(finding_sync), SNS | 이벤트 라우팅과 알림 | `modules/soar/eventbridge.tf`, `finding_sync.tf`, `sns.tf` |
+| ④ SOAR | SSM 문서: Automation(`ASR-*` 조치 문서), Command(`ASR-HardenNginx`, `SCAN-*`, `LOAD-Stress`, `TIER-Check`, `ATK-*`) | 조치·점검·시험 실행 | `modules/soar/documents/`, `modules/soar/ssm.tf` |
+| ④ SOAR | DynamoDB 6종(findings, vulnerabilities, correlated-findings, remediation-actions, ip-blocklist, tier-status), S3 scan-results | 탐지·조치·차단·점검 상태 저장 | `modules/soar/storage.tf` |
+| ④ 대시보드 | Flask ≥3.1 + waitress, boto3, systemd 서비스(포트 5000), 코드는 S3 zip으로 배포 | 관제 서버와 API | `dashboard/backend/`, `modules/compute/deploy.tf`, `templates/dashboard.sh.tftpl` |
+| ④ 대시보드 | Provider·Repository·integrations 구조, OpenAPI 계약, 로컬 사용자·세션·CSRF·역할·scope | AWS 원본 정규화와 접근 통제 | `dashboard/backend/soar/`, `dashboard/backend/contracts/openapi.yaml` |
+| ④ 대시보드 | SQLite(users·events·jobs·requests·audit·drills·remediations 등)와 로컬 Worker | 현재 승인·작업·감사·원클릭 조치 저장(목표 저장소와 다름, 아래 참고) | `dashboard/backend/soar/store.py`, `worker.py` |
+| ④ 대시보드 | 바닐라 JS ES module Store·API client, Tailwind, Chart.js, d3-force, GeoJSON 지도 | 화면과 상태 관리 | `dashboard/frontend/static/js/` |
+| ④ 대시보드 | AI 챗봇: Amazon Bedrock(Claude Haiku 4.5) `converse`, 조회 전용 도구 호출 | 상태 질의 응답. 조치·판단에 쓰지 않음 | `soar/assistant_service.py`, `assistant_api.py`(`/api/assistant/chat`), `modules/compute/iam.tf` |
+| ④ 대시보드 | AI 보고서 작성: Bedrock(Claude Haiku 4.5), 화면별 요약 | 숫자는 서버 집계, 모델은 문장만 작성 | `soar/report_service.py`(`/api/assistant/report`) |
+| ① IaC·배포 | IAM 역할·인스턴스 프로파일(대시보드·허니팟·Lambda·SSM), GitHub OIDC 역할 | 서비스별 최소 권한과 CI 신원 | `modules/compute/iam.tf`, `terraform/bootstrap/` |
+| 선택 | AI 허니팟: EC2(Ubuntu), `asyncssh` 가짜 SSH 셸, Bedrock(Claude Haiku 4.5) 응답·세션 분석, `HoneypotHitCount` 알람 | 미끼 접속 탐지와 분석 | `terraform/modules/honeypot/`, `templates/honeypot.py.tftpl` |
+| 선택 | 다중 리전 공격자 EC2와 SSM 문서 `ATK-WebAttack` | 승인된 격리 환경의 웹 공격 시험 | `terraform/modules/attacker/` |
+
+**구현할 기술**
+
+| 계층 | 기술·과제 | 목표와 현재 차이 | 근거 문서 |
+|---|---|---|---|
+| ④ 대시보드 | 승인·작업·감사·조치 이력의 DynamoDB 저장 | 목표는 DynamoDB이며 현재는 SQLite다. 전환 순서·병행 기간은 미결정 | `dashboard/dashboard-design.md`, OPEN-007 |
+| ④ 대시보드 | 운영 인증 공급자·MFA·계정 수명주기 | 현재는 로컬 사용자명·암호 | OPEN-001 |
+| ② 보호 대상 | 웹 전송 암호화(TLS 종단·인증서 발급·Nginx 443 경로) | ALB 443은 인증서 입력이 있을 때만 생성. Nginx 443·인증서 배치는 미정 | OPEN-010, OPEN-002 |
+| ④ SOAR | 자동조치 공통 확인 단계·통제 정책, 이벤트 중복 억제·멱등 키·재시도 | 현재 SG·IAM 경로별 적용 조건이 다르고 정책은 미확정 | OPEN-003, OPEN-004 |
+| ④ SOAR | 위험 수용·오탐 억제·finding 재발·종결 기준 | 원본 서비스 상태와 내부 해결 상태가 다를 수 있으며 정책 없음 | OPEN-013 |
+| ② 보호 대상 | 서비스 web 이미지의 빌드·push 절차 | ECR만 생성하고, 이미지는 최소 대체 앱(`modules/compute/app-image/`)만 있음 | OPEN-020, DEC-040 |
+| 선택 | 허니팟 세션 원문 보존·개인정보·비용 상한, 차단 정책 확장 | 보존 기간·마스킹·상한이 미정. 차단은 `HONEYPOT` 통제가 있을 때만 | OPEN-011, `project-management/honeypot-design.md` |
+| ① IaC·배포 | 로그·증거 보존·백업·복구(state PITR·복구 절차 포함) | 보존 기간·TTL 근거 없음 | OPEN-008, `terraform/infrastructure-design.md` |
+| ① IaC·배포 | 리전 이전 결정 사유와 체크리스트 | 코드 주석에만 있음 | OPEN-021 |
+| ② 보호 대상 | 저장·전송 암호화 확대(DynamoDB·S3 scan-results·Secrets Manager의 KMS 고객 관리형 키, 내부 구간 TLS) | 현재 EC2 볼륨·CloudTrail(KMS)·state 버킷만 명시 암호화. 나머지는 서비스 기본 암호화 | 추후 개선점 |
+| ② 보호 대상 | HTTPS 적용과 대시보드 접속 범위 제한 | 대시보드 ALB 8080은 HTTP이고 `dashboard_ingress_cidr` 기본값이 `0.0.0.0/0` | OPEN-010, 추후 개선점 |
+
 ## 4. 네 계층의 책임 경계
 
 ### 4.1 IaC · 배포 제어 계층
 
 Terraform 루트는 공유 리소스 이름과 의존성을 연결한다. 목표 module 책임은 `network`, `compute`, `security`, `soar`로 나뉘고, 루트에서 선택 module `honeypot`(`enable_honeypot`)과 시연용 다중 리전 `attacker`를 별도로 호출한다. 선택적 `bootstrap`은 원격 state와 CI 연동을 준비하는 선행 관리 영역이다. GitHub Actions의 OIDC plan과 사람이 수행하는 실제 apply는 구분한다. 코드 저장소의 CI 통과를 AWS 실환경 상태의 증거로 간주하지 않는다.
+
+배포 리전은 루트 `region` 변수로 정하며 코드 기본값은 `eu-west-3`이다. 원격 state는 리전별 key로 분리하고 버킷·잠금 테이블은 별도 리전에 둔다(`terraform/backend.tf`). 리전 이전의 결정 사유와 이전 체크리스트는 결정 문서에서 미결정으로 관리한다(OPEN-021).
 
 NACL 규칙과 SOAR 실행 소유권, Terraform이 덮어쓸 수 있는 리소스 속성, Secrets Manager 초기값과 로테이션 충돌을 하나의 변경 경계에서 검토한다. 구체 모듈·입력·권한·배포·비용 계약은 [Terraform 설계](terraform/infrastructure-design.md)에 둔다.
 
@@ -199,6 +255,8 @@ MySQL 무차별 대입은 시연 MySQL의 로그와 CloudWatch 메트릭 경로�
 추가 검증 단계나 공통 자동조치 게이트 정책은 이번 기준에서 확정하지 않고 후속 설계 과제로 둔다. 자동화를 넓히거나 새 자산을 포함하기 전에 조치 대상·복구·중복·감사 요구를 결정 문서에서 해소해야 한다(위 두 확장은 DEC-017~019에서 대상·게이트·멱등 조건을 정했다). 코드에 이미 있는 조치 분기의 실제 실행 여부와 실증 검증은 별도 추적한다.
 
 관제용 Flask 앱은 프런트엔드 Store·응답 어댑터·API·업무 계약·Provider/Repository를 통해 AWS를 조회한다. AWS 원본과 작업 이력은 서로 다른 읽기 자료다. 승인·작업 접수·감사 저장에 대한 설계 표준은 DynamoDB를 목표로 삼고, 현재 SQLite 구현과의 차이는 **구현 수정 대상**으로 기록한다. 실 조치와 실 재검증 Provider가 활성화됐다고 추정하지 않는다. DTO·인증·오류·데이터 계약은 [대시보드 설계](dashboard/dashboard-design.md)에 둔다. 관제 대시보드에는 승인된 모의 공격·부하 시험을 고르고 탐지·대응·재검증 흐름을 확인하는 ‘공격·대응 실습’ 화면이 있다. 백엔드에는 지리별 웹보안검사(`web-scan`)와 전부 실행(`run-all`) API가 있어 SSM으로 실행하며 `WRITE_ENABLED`로 막을 수 있다. 화면의 `전부 실행` 버튼이 `run-all`을 호출한다(DEC-034). 상세와 미결정은 대시보드 설계와 결정 기록에 둔다.
+
+대시보드 원클릭 조치(DEC-038)는 `/api/events/<id>/remediate`로 대시보드가 지원하는 SSM Automation 문서를 시작하고, 조치 계획·요청 키·SSM 실행 ID·전후 값·재검증 상태를 로컬 SQLite `remediations`에 보존한다. 이 경로는 자동 판정 경로(`asr_trigger`)와 별개이며, 실행 접수와 해결 완료는 여전히 다른 판정이다.
 
 AI 허니팟은 미끼 접속 알람(`HoneypotHitCount`)이 ALARM이 되면 `asr_trigger`가 허니팟 로그의 최다 출발지 IP를 Private NACL 1~99번 Deny로 차단하는 경로를 가진다(HONEYPOT 목록 시, DEC-020). 대시보드는 허니팟 화면(동작 상태·타임라인·통계·세션)과 차단 IP 관리(오탐 해제·기간 변경·예외 등록)를 제공하고(DEC-021), 조회 전용 AI 도우미가 상태를 설명한다(DEC-022). AI 분석은 참고용이며 차단·해제 판단에 쓰지 않는다. 단순 공격·조치 가이드는 허니팟 구현 증거가 아니다.
 
@@ -262,7 +320,7 @@ aws-security-project/
     └── tracking.md
 ```
 
-`README.md`는 목표와 상위 시스템 아키텍처를 소유한다. `agents.md`와 세 자동 인식 지침은 AI의 작업 행동을 소유한다. 기능별 `*-design.md`는 그 기능의 책임·상세 구조·자료/API 계약·실패·검증을 소유한다. 시나리오 문서는 검증 순서·안전 범위·증적을 소유한다. 용어집은 공통 개념·상태를 정의한다. 결정 기록부는 승인된 선택·근거·미결정 질문을 보관한다. 추적 문서는 코드 경로와 관측 시점별 구현·검증 근거를 보관한다. 발표용 이미지 제작 규칙은 `design-standards.md`에만 둔다. 설계 본문에는 Mermaid와 Markdown 표를 사용한다. 이 트리 밖의 `terraform/docs/`, `dashboard/backend/docs/`, `scripts/`, `atk_render.sh`는 정본이 아닌 운영 보조 자료다. 내용이 정본과 충돌하면 위 정본 문서를 따른다.
+`README.md`는 목표와 상위 시스템 아키텍처를 소유한다. `agents.md`와 세 자동 인식 지침은 AI의 작업 행동을 소유한다. 기능별 `*-design.md`는 그 기능의 책임·상세 구조·자료/API 계약·실패·검증을 소유한다. 시나리오 문서는 검증 순서·안전 범위·증적을 소유한다. 용어집은 공통 개념·상태를 정의한다. 결정 기록부는 승인된 선택·근거·미결정 질문을 보관한다. 추적 문서는 코드 경로와 관측 시점별 구현·검증 근거를 보관한다. 발표용 이미지 제작 규칙은 `design-standards.md`에만 둔다. 설계 본문에는 Mermaid와 Markdown 표를 사용한다. 이 트리 밖의 `terraform/docs/`, `dashboard/backend/docs/`, `scripts/`(`atk_render.sh` 포함)는 정본이 아닌 운영 보조 자료다. 내용이 정본과 충돌하면 위 정본 문서를 따른다.
 
 ## 8. 개발·문서 완료 기준
 

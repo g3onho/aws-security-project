@@ -185,14 +185,18 @@ def test_infrastructure_facts_are_computed_by_code():
 def test_drills_facts_judge_failed_and_missing_scenarios():
     _, r = make("drills")
     f = r["facts"]
-    assert f["시나리오별 최근 결과"] == {"SEC-02": "완료", "SEC-04": "실패", "SEC-07": "기록 없음", "SEC-08": "완료", "SEC-06B": "완료", "SEC-10": "실행 중"}
-    assert f["필수 항목 값"] == {"실패 시나리오": ["SEC-04"], "기록 없음 시나리오": ["SEC-07"]}
+    assert f["시나리오별 최근 결과"] == {"SEC-01": "기록 없음", "SEC-02": "완료", "SEC-03": "기록 없음", "SEC-04": "실패",
+                                  "SEC-06A": "기록 없음", "SEC-07": "기록 없음", "SEC-08": "완료", "SEC-06B": "완료",
+                                  "SEC-09": "기록 없음", "SEC-10": "실행 중"}
+    assert f["필수 항목 값"] == {"실패 시나리오": ["SEC-04"],
+                            "기록 없음 시나리오": ["SEC-01", "SEC-03", "SEC-06A", "SEC-07", "SEC-09"]}
     assert f["기간 내 실행 수"] == 1 and f["시나리오 수"] == 2
 
 
 def test_drills_without_any_run_reports_every_scenario_as_no_record():
     _, r = make("drills", drills=FakeDrills(missing_run=True))
-    assert r["facts"]["필수 항목 값"]["기록 없음 시나리오"] == ["SEC-02", "SEC-04", "SEC-07", "SEC-08", "SEC-06B", "SEC-10"]
+    assert r["facts"]["필수 항목 값"]["기록 없음 시나리오"] == ["SEC-01", "SEC-02", "SEC-03", "SEC-04", "SEC-06A",
+                                                       "SEC-07", "SEC-08", "SEC-06B", "SEC-09", "SEC-10"]
 
 
 def test_honeypot_facts_match_source_and_carry_no_password():
@@ -349,7 +353,7 @@ def test_model_is_called_without_tools_at_low_temperature_and_with_output_cap():
     model = FakeModel("<thinking>내부 추론</thinking>## 1. 요약\n본문")
     _, r = make("events", model=model)
     call = model.calls[0]
-    assert call["tool_config"] is None and call["temperature"] == 0.1 and call["max"] == 1500 and call["system"] == SYSTEM_PROMPT
+    assert call["tool_config"] is None and call["temperature"] == 0.2 and call["max"] == 2500 and call["system"] == SYSTEM_PROMPT
     assert "내부 추론" not in r["markdown"] and r["markdown"].startswith("## 1. 요약")
     assert r["model"] == "fake-nova-pro" and r["usage"] == {"inputTokens": 30, "outputTokens": 10}
 
