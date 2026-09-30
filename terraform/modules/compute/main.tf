@@ -27,6 +27,9 @@ resource "aws_instance" "docker_host" {
   subnet_id              = var.private_app_subnet_id
   vpc_security_group_ids = [var.sg_docker_host_id]
   iam_instance_profile   = aws_iam_instance_profile.docker_host.name
+  # 상세 모니터링(1분 간격) — 기본(5분)이면 SEC-10 부하 알람(period=60·2분 연속)이 데이터
+  # 자체가 없어서 절대 못 뜬다(2026-09-30: CPU 96%까지 찍혀도 알람 OK로 남았던 원인).
+  monitoring = true
 
   metadata_options {
     http_endpoint               = local.common_metadata.http_endpoint
@@ -71,6 +74,7 @@ resource "aws_instance" "db" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.db_instance_type
   subnet_id     = var.private_db_subnet_id
+  monitoring    = true # 1분 간격 — SEC-10 부하 알람(period=60)이 쓸 데이터가 있어야 한다.
 
   # 보안 그룹 2개를 함께 붙입니다. Config 는 SG 단위로 평가하므로
   # 태그가 있는 db-auto-sg 만 자동 회수되고 db-manual-sg 는 알림만 갑니다.
@@ -121,6 +125,7 @@ resource "aws_instance" "dashboard" {
   instance_type          = var.instance_type
   subnet_id              = var.private_app_subnet_id
   vpc_security_group_ids = [var.sg_dashboard_id]
+  monitoring             = true # 1분 간격 — SEC-10 부하 알람(period=60)이 쓸 데이터가 있어야 한다.
   iam_instance_profile   = aws_iam_instance_profile.dashboard.name
 
   metadata_options {
@@ -193,6 +198,7 @@ resource "aws_instance" "web_dvwa" {
   instance_type          = var.instance_type
   subnet_id              = var.public_web_subnet_id
   vpc_security_group_ids = [var.sg_web_dvwa_id]
+  monitoring             = true # 1분 간격 — SEC-10 부하 알람(period=60)이 쓸 데이터가 있어야 한다.
   iam_instance_profile   = aws_iam_instance_profile.web_dvwa[0].name
 
   metadata_options {
@@ -236,6 +242,7 @@ resource "aws_instance" "attacker" {
   instance_type          = var.instance_type
   subnet_id              = var.private_app_subnet_id
   vpc_security_group_ids = [var.sg_attacker_id]
+  monitoring             = true # 1분 간격 — SEC-10 부하 알람(period=60)이 쓸 데이터가 있어야 한다.
   iam_instance_profile   = aws_iam_instance_profile.attacker[0].name
 
   metadata_options {

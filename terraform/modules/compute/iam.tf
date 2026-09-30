@@ -165,6 +165,14 @@ data "aws_iam_policy_document" "db" {
     actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
     resources = [local.secret_arn_prefix]
   }
+
+  # 파리 리전 이전용 mysqldump 백업 업로드(2026-09-30). migration-backup/ 경로로만 한정한다 —
+  # scan_bucket_arn 전체(트리비/스캔 결과 등)에는 쓰기 권한을 안 준다.
+  statement {
+    sid       = "UploadMigrationBackup"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.scan_bucket_arn}/migration-backup/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "db" {
@@ -313,14 +321,14 @@ data "aws_iam_policy_document" "dashboard_execute" {
     resources = [
       # 지리별 웹 공격 문서(SEC-08/06B) — 공격자 리전마다 등록되므로 리전 와일드카드.
       "arn:${var.partition}:ssm:*:${var.account_id}:document/${var.name_prefix}-ATK-WebAttack",
-      # 서울 로컬 실습 문서(SEC-02/07/10).
+      # 파리(홈 리전) 로컬 실습 문서(SEC-02/07/10).
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-PortAndWeb",
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-ContainerImage",
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/SCAN-Secrets",
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/LOAD-Stress",
       # 내부 침투 시연(공격자 EC2 → 미끼서버 SSH, HONEYPOT).
       "arn:${var.partition}:ssm:${var.region}:${var.account_id}:document/ATK-HoneypotProbe",
-      # 대상 인스턴스(공격자·서울 실습 대상). 실행 시 태그로 탐색하므로 계정 내 인스턴스로 한정.
+      # 대상 인스턴스(공격자·파리 실습 대상). 실행 시 태그로 탐색하므로 계정 내 인스턴스로 한정.
       "arn:${var.partition}:ec2:*:${var.account_id}:instance/*",
     ]
   }

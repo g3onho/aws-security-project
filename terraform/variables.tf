@@ -29,7 +29,7 @@ variable "owner" {
 variable "region" {
   description = "배포 리전"
   type        = string
-  default     = "ap-northeast-2"
+  default     = "eu-west-3" # 2026-09-30 서울(ap-northeast-2)→파리 이전. 데이터는 migration-backup/ 에 백업됨.
 }
 
 ############################################
@@ -45,13 +45,13 @@ variable "vpc_cidr" {
 variable "az_primary" {
   description = "주 가용영역. 모든 자원이 여기 배치됩니다."
   type        = string
-  default     = "ap-northeast-2a"
+  default     = "eu-west-3a"
 }
 
 variable "az_secondary" {
   description = "보조 가용영역. ALB 2 AZ 요건을 위해서만 사용합니다."
   type        = string
-  default     = "ap-northeast-2c"
+  default     = "eu-west-3b"
 }
 
 variable "subnet_cidrs" {
@@ -376,9 +376,9 @@ variable "enable_honeypot_ai" {
 }
 
 variable "honeypot_ai_model_id" {
-  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Lite(서울 apac 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다."
+  description = "미끼서버 AI 응답에 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Lite(파리 eu 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다. 2026-09-30 서울(apac)→파리(eu) 이전 — 프로파일 리전 접두어를 반드시 같이 바꿔야 한다(apac 프로파일은 파리에서 호출 불가)."
   type        = string
-  default     = "apac.amazon.nova-lite-v1:0"
+  default     = "eu.amazon.nova-lite-v1:0"
 }
 
 # --- 대시보드 도우미(챗봇, v27) ---
@@ -389,9 +389,9 @@ variable "enable_dashboard_assistant" {
 }
 
 variable "dashboard_assistant_model_id" {
-  description = "대시보드 도우미·AI 요약 보고서가 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Pro(서울 apac 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다. 미끼서버 AI(honeypot_ai_model_id)는 6초 제한 때문에 Nova Lite 를 유지한다."
+  description = "대시보드 도우미·AI 요약 보고서가 쓸 Bedrock 모델 ID. 기본값 Amazon Nova Pro(파리 eu 추론 프로파일, converse 호출). 이 계정은 Claude 를 쓰려면 Marketplace 구독 권한이 필요해 Nova 를 쓴다. 미끼서버 AI(honeypot_ai_model_id)는 6초 제한 때문에 Nova Lite 를 유지한다. 2026-09-30 서울(apac)→파리(eu) 이전."
   type        = string
-  default     = "apac.amazon.nova-pro-v1:0"
+  default     = "eu.amazon.nova-pro-v1:0"
 }
 
 # --- IP 차단 기간·만료 (v25, DEC-021) ---

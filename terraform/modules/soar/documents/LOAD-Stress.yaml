@@ -1,6 +1,6 @@
 schemaVersion: '2.2'
 description: |
-  서울 리전 대상 EC2 에 CPU·메모리 부하를 주어 운영 경보(SEC-10)를 검증한다.
+  파리(홈 리전) 대상 EC2 에 CPU·메모리 부하를 주어 운영 경보(SEC-10)를 검증한다.
   stress-ng 로 지정 시간 동안만 부하를 걸고 자동 종료한다. 자동 조치는 없다.
   CloudWatch CPU/메모리 알람 → SNS 전이를 확인하기 위한 팀 소유 실습이다.
 parameters:
@@ -26,7 +26,7 @@ parameters:
     description: 실행 마커를 올릴 S3 버킷
   RegionLabel:
     type: String
-    default: seoul
+    default: paris
 mainSteps:
   - action: 'aws:runShellScript'
     name: stressLoad

@@ -1,7 +1,7 @@
 ############################################
 # 지리별 공격자 fleet — 5개 리전에 공인 공격자 EC2 1대씩
 #
-# 대상은 서울 DVWA 공인 IP(module.compute.web_dvwa_public_ip).
+# 대상은 파리(홈 리전) DVWA 공인 IP(module.compute.web_dvwa_public_ip).
 # enable_geo_attackers = true 이고 DVWA 인스턴스가 켜져 있을 때만 생성된다.
 # 비용: 리전당 t3.micro 1대 상시 과금 → 시연 후 false 로 되돌려 제거.
 #

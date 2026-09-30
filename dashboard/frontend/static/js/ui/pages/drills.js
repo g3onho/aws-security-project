@@ -14,8 +14,8 @@ const RUN_METHODS=[
  ['SEC-04','이미지 CVE','Trivy 로 컨테이너 이미지의 알려진 취약점(CVE)을 스캔'],
  ['SEC-07','비밀값 스캔','코드·이미지에 합성 테스트 비밀값이 남아 있는지 스캔'],
  ['SEC-08/06B','지리 공격','5개 리전 공격자 EC2 가 nmap 스캔 → hydra SSH·웹 무차별 대입 → ZAP·sqlmap 으로 DVWA 공격'],
- ['SEC-10','부하','stress-ng 로 서울 EC2(대시보드 제외)에 CPU·메모리 부하'],
- ['HONEYPOT','내부 침투','서울 공격자 EC2 에서 미끼 서버로 SSH 접속 시도, 자동 차단 시연']];
+ ['SEC-10','부하','stress-ng 로 파리 EC2(대시보드 제외)에 CPU·메모리 부하'],
+ ['HONEYPOT','내부 침투','파리(홈 리전) 공격자 EC2 에서 미끼 서버로 SSH 접속 시도, 자동 차단 시연']];
 const RUN_SEC_OF={'SEC-06B':'SEC-08'};
 // 새로고침해도 진행 중인 실행을 잃지 않도록 runId 만 저장한다(진행표는 서버에서 다시 받는다). 저장소 접근은 항상 try/catch.
 const RUN_ALL_LS_KEY='drills-run-all-id';
