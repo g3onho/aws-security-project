@@ -9,11 +9,12 @@ import {openReport} from '../components/report.js?v=v39-3';
 
 const SUPPORT_COLOR={runnable:'#bcfbf1','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#93a7b7'};
 // 백엔드 DrillService.start_all 이 한 번에 실행하는 시나리오(SEC-06B 는 SEC-08 지리 공격 실행에 함께 들어 있다).
-const RUN_ALL_SECS=['SEC-02','SEC-04','SEC-07','SEC-08','SEC-06B','SEC-10'];
+const RUN_ALL_SECS=['SEC-02','SEC-04','SEC-06A','SEC-07','SEC-08','SEC-06B','SEC-10'];
 // [전부 실행] 카드에 보여줄 시나리오별 공격·점검 방법(백엔드 DrillService.start_all 이 쓰는 도구 기준).
 const RUN_METHODS=[
  ['SEC-02','포트·헤더 점검','nmap 으로 열린 포트를 스캔하고 curl 로 응답 보안 헤더를 확인'],
  ['SEC-04','이미지 CVE','Trivy 로 컨테이너 이미지의 알려진 취약점(CVE)을 스캔'],
+ ['SEC-06A','DB 무차별 대입','파리 내부 공격자 EC2 에서 hydra 로 테스트 DB 계정에 반복 로그인 시도, 자동 차단 시연'],
  ['SEC-07','비밀값 스캔','코드·이미지에 합성 테스트 비밀값이 남아 있는지 스캔'],
  ['SEC-08/06B','지리 공격','5개 리전 공격자 EC2 가 nmap 스캔 → hydra SSH·웹 무차별 대입 → ZAP·sqlmap 으로 DVWA 공격'],
  ['SEC-10','부하','stress-ng 로 파리 EC2(대시보드 제외)에 CPU·메모리 부하'],
@@ -54,7 +55,6 @@ function environmentStrip(env){
 
 // 시나리오별 실행 결과: 이번 [전부 실행]에서 해당 SEC 항목들의 상태를 하나로 요약한다.
 function resultOf(id){
- if(!RUN_ALL_SECS.includes(id))return '<span class="muted">전부 실행 대상 아님</span>';
  const sec=RUN_SEC_OF[id]||id;
  const mine=run.items.filter(item=>item.sec===sec);
  if(!mine.length){
@@ -92,7 +92,7 @@ function closeFlow(){
 function scenarioTable(){
  return `<div class="table-scroll"><table class="drill-scenario-table"><caption class="sr-only">보안 시나리오 카탈로그</caption>
   <thead><tr><th>시나리오</th><th>확인 자료와 대응</th><th>지원 상태</th><th>실행 결과</th></tr></thead>
-  <tbody>${catalog.scenarios.map(scenarioRow).join('')}</tbody></table></div>`;
+  <tbody>${catalog.scenarios.filter(s=>RUN_ALL_SECS.includes(s.id)).map(scenarioRow).join('')}</tbody></table></div>`;
 }
 
 function runPanel(){

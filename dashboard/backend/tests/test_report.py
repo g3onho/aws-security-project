@@ -185,14 +185,14 @@ def test_infrastructure_facts_are_computed_by_code():
 def test_drills_facts_judge_failed_and_missing_scenarios():
     _, r = make("drills")
     f = r["facts"]
-    assert f["시나리오별 최근 결과"] == {"SEC-02": "완료", "SEC-04": "실패", "SEC-07": "기록 없음", "SEC-08": "완료", "SEC-06B": "완료", "SEC-10": "실행 중"}
-    assert f["필수 항목 값"] == {"실패 시나리오": ["SEC-04"], "기록 없음 시나리오": ["SEC-07"]}
+    assert f["시나리오별 최근 결과"] == {"SEC-02": "완료", "SEC-04": "실패", "SEC-06A": "기록 없음", "SEC-07": "기록 없음", "SEC-08": "완료", "SEC-06B": "완료", "SEC-10": "실행 중"}
+    assert f["필수 항목 값"] == {"실패 시나리오": ["SEC-04"], "기록 없음 시나리오": ["SEC-06A", "SEC-07"]}
     assert f["기간 내 실행 수"] == 1 and f["시나리오 수"] == 2
 
 
 def test_drills_without_any_run_reports_every_scenario_as_no_record():
     _, r = make("drills", drills=FakeDrills(missing_run=True))
-    assert r["facts"]["필수 항목 값"]["기록 없음 시나리오"] == ["SEC-02", "SEC-04", "SEC-07", "SEC-08", "SEC-06B", "SEC-10"]
+    assert r["facts"]["필수 항목 값"]["기록 없음 시나리오"] == ["SEC-02", "SEC-04", "SEC-06A", "SEC-07", "SEC-08", "SEC-06B", "SEC-10"]
 
 
 def test_honeypot_facts_match_source_and_carry_no_password():

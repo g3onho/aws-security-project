@@ -165,6 +165,7 @@ locals {
     "TIER-Check"          = "${path.module}/documents/TIER-Check.yaml"
     "ATK-HoneypotProbe"   = "${path.module}/documents/ATK-HoneypotProbe.yaml"
     "ATK-HoneypotAiDemo"  = "${path.module}/documents/ATK-HoneypotAiDemo.yaml"
+    "ATK-MysqlBruteForce" = "${path.module}/documents/ATK-MysqlBruteForce.yaml"
   }
   # 주: ATK-WebAttack 문서는 공격자 노드가 있는 각 리전에 등록해야 한다
   #     (SSM Command 문서는 리전별 리소스). → modules/attacker 에서 등록한다.

@@ -57,8 +57,8 @@ SCENARIOS = [
      "sources": ["GuardDuty", "Access Analyzer", "CloudTrail"], "response": "Access Key 비활성화(자동)",
      "support": "observe-only", "note": "테스트 키만 사용. 최소권한 수정은 수동."},
     {"id": "SEC-06A", "purpose": "MySQL 무차별 대입 인증 실패", "types": [],
-     "sources": ["CloudWatch Logs/Alarm"], "response": "수동",
-     "support": "prep-needed", "note": "MySQL은 CloudWatch 경로(DEC-005). 외부 Hydra 도구 연결 필요."},
+     "sources": ["CloudWatch Logs/Alarm"], "response": "Private NACL 자동 차단(코드 존재)",
+     "support": "runnable", "note": "MySQL은 CloudWatch 경로(DEC-005). 파리 내부 공격자 EC2에서 ATK-MysqlBruteForce(hydra)로 실행."},
     {"id": "SEC-06B", "purpose": "SSH 무차별 대입 시도", "types": [],
      "sources": ["GuardDuty"], "response": "수동",
      "support": "prep-needed", "note": "SSH는 GuardDuty 경로(DEC-005). 자동 조치 연결 없음."},
@@ -190,6 +190,7 @@ class DrillService:
         - SEC-02: 서비스 HTTP·포트/헤더 점검(SCAN-PortAndWeb)
         - SEC-07: 코드/설정 비밀값 점검(SCAN-Secrets)
         - SEC-10: 파리 서비스 호스트 CPU·메모리 부하(LOAD-Stress) → 운영 경보 검증
+        - SEC-06A: 파리(홈 리전) VPC 안 공격자 EC2 → DB EC2 MySQL 무차별 대입(ATK-MysqlBruteForce) → 탐지·자동 차단
         - HONEYPOT: 파리(홈 리전) VPC 안 공격자 EC2 → 미끼서버 SSH 접속(ATK-HoneypotProbe) → 탐지·자동 차단"""
         active = self._active_run_all()
         if active:
@@ -250,10 +251,23 @@ class DrillService:
         else:
             skipped.append("SEC-10(부하 대상 미탐색)")
 
+        # 파리(홈 리전) VPC 안 내부 공격자 EC2(Role=attack-simulation). SEC-06A·HONEYPOT 이 함께 쓴다.
+        inner = self.provider.discover_host_by_role(region, "attack-simulation") if region else None
+
+        # SEC-06A: MySQL 무차별 대입 시연. inner 공격자 EC2 → DB EC2(Role=database, db-manual-sg 경유)
+        # root 계정에 사전 단어 목록으로 로그인을 반복 시도한다(ATK-MysqlBruteForce). 전부 실패해도
+        # CloudWatch 알람(mysql-bruteforce) → asr_trigger 의 Private NACL 자동 차단으로 이어진다(DEC-018).
+        db = self.provider.discover_host_by_role(region, "database") if region else None
+        if inner and db and db.get("privateIp"):
+            launched.extend(self.provider.send_commands(inner, [
+                {"sec": "SEC-06A", "documentName": "ATK-MysqlBruteForce",
+                 "parameters": {"DbHost": db["privateIp"], "RegionLabel": "paris"}}]))
+        else:
+            skipped.append("SEC-06A(공격자 EC2 또는 DB 미탐색)")
+
         # HONEYPOT: 내부 침투 시연. 파리(홈 리전) VPC 안 공격자 EC2(Role=attack-simulation)가 미끼서버(Role=honeypot-decoy)
         # 사설 IP 로 SSH 접속한다. 인터넷 경유 공격(SEC-08)과 달리 "이미 안으로 들어온" 출발지라야 미끼에 닿는다.
         # 두 인스턴스 중 하나라도 없으면 건너뛴다(enable_attacker_instance·enable_honeypot).
-        inner = self.provider.discover_host_by_role(region, "attack-simulation") if region else None
         decoy = self.provider.discover_host_by_role(region, "honeypot-decoy") if region else None
         if inner and decoy and decoy.get("privateIp"):
             launched.extend(self.provider.send_commands(inner, [

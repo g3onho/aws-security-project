@@ -38,6 +38,7 @@ class FakeProvider:
     def discover_host_by_role(self, region, role, region_label="paris"):
         found = {"service-3tier": {"instanceId": "i-docker"},
                  "attack-simulation": {"instanceId": "i-atk-local"},
+                 "database": {"instanceId": "i-db", "privateIp": "10.0.2.50"},
                  "honeypot-decoy": {"instanceId": "i-decoy", "privateIp": "10.0.1.115"}}.get(role)
         return {"regionLabel": "paris", "regionCode": region, **found} if found else None
 
@@ -72,7 +73,7 @@ def test_start_all_fans_out_all_secs():
         svc = _service(Store(os.path.join(d, "t.sqlite3")))
         result = svc.start_all({}, actor="tester")
         secs = {c["sec"] for c in result["launched"]}
-        assert secs == {"SEC-02", "SEC-04", "SEC-07", "SEC-08", "SEC-10", "HONEYPOT"}, secs
+        assert secs == {"SEC-02", "SEC-04", "SEC-06A", "SEC-07", "SEC-08", "SEC-10", "HONEYPOT"}, secs
         # SEC-10 은 파리 EC2(대시보드 제외) 전부로 팬아웃 → 2건.
         sec10 = [c for c in result["launched"] if c["sec"] == "SEC-10"]
         assert len(sec10) == 2, sec10
@@ -104,6 +105,28 @@ def test_step_label():
     assert _step_label({"sec": "SEC-07"}) == "SEC-07"
     assert _step_label({"sec": "SEC-08", "regionLabel": "singapore"}) == "SEC-08 · 싱가포르"
     assert _step_label({"sec": "SEC-10", "regionLabel": "db"}) == "SEC-10 · db"
+
+
+def test_mysql_bruteforce_runs_from_inner_attacker_to_db_private_ip():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        svc.start_all({}, actor="tester")
+        runs = [s for s in svc.provider.sent if s[2] == "SEC-06A"]
+        assert len(runs) == 1
+        instance, document, _, params = runs[0]
+        assert instance == "i-atk-local" and document == "ATK-MysqlBruteForce"  # 파리(홈 리전) VPC 안 공격자에서 실행
+        assert params["DbHost"] == "10.0.2.50"                                  # DB 사설 IP 를 런타임 탐색
+
+
+def test_mysql_bruteforce_skipped_without_db():
+    with tempfile.TemporaryDirectory() as d:
+        svc = _service(Store(os.path.join(d, "t.sqlite3")))
+        orig = svc.provider.discover_host_by_role
+        svc.provider.discover_host_by_role = lambda r, role, region_label="paris": \
+            None if role == "database" else orig(r, role, region_label)
+        result = svc.start_all({}, actor="tester")
+        assert all(c["sec"] != "SEC-06A" for c in result["launched"])
+        assert any("SEC-06A" in s for s in result["skipped"])
 
 
 def test_honeypot_probe_runs_from_inner_attacker_to_decoy_private_ip():

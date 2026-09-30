@@ -34,9 +34,9 @@ test('security scenarios run everything with one button and no selection control
  assert.equal($('nav .sidebar-nav-bottom [data-view="drills"]')?.textContent.includes('보안 시나리오'),true);
  assert.equal($('#drills select'),null,'시나리오·도구·대상 선택 컨트롤은 없다');
  assert.equal($('#drills [data-drill-scenario]'),null);
- assert(text.includes('전부 실행')&&text.includes('SEC-01')&&text.includes('SEC-10'));
+ assert(text.includes('전부 실행')&&text.includes('SEC-02')&&text.includes('SEC-10'));
  assert(text.includes('실행 결과'),'시나리오 표에 실행 결과 열');
- assert.equal($('#drills .drill-scenario-table tbody').children.length,5);
+ assert.equal($('#drills .drill-scenario-table tbody').children.length,4);
  assert(text.includes('실행 가능')&&text.includes('전부 실행 가능'));
  assert(text.includes('기록된 실행이 없습니다'),'예시 이력 없이 빈 상태를 표시');
  assert.equal($('.filters').hidden,true);assert.equal($('.timeline').hidden,true);
@@ -51,6 +51,6 @@ test('security scenarios run everything with one button and no selection control
  assert(text.includes('SEC-04: 대상 없음'),'건너뜀 사유 표시');
  const rows=[...$('#drills .drill-scenario-table tbody').children].map(tr=>tr.textContent);
  assert(rows.find(r=>r.includes('SEC-02')).includes('실행 중'),'시작 직후 접수 항목은 실행 중으로 표시');
- assert(rows.find(r=>r.includes('SEC-01')).includes('전부 실행 대상 아님'));
+ assert.equal(rows.some(r=>r.includes('SEC-01')),false,'전부 실행 대상이 아닌 시나리오는 표에서 뺀다');
  assert.deepEqual(errors,[]);
 });
