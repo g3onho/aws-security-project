@@ -45,6 +45,18 @@ def _error_code(error):
     return type(error).__name__
 
 
+
+# v37.1: 0.0.0.0/0 회수(원클릭 조치)를 허용하는 보안그룹.
+#   AutoRemediation=enabled  -> 자동 조치 대상(db-auto-sg)
+#   RemediationGroup=manual  -> 대조군(db-manual-sg). 자동으로는 안 고치지만 사람이 승인하면 고친다.
+# 둘 다 없는 보안그룹은 ALB·웹처럼 원래 전체 공개여야 하는 서비스용이라, 회수하면 사이트가 끊겨 막는다.
+SERVICE_GROUP_BLOCKED = ("서비스용 보안그룹(AutoRemediation=enabled 또는 RemediationGroup=manual 태그 없음)이라 "
+                         "조치하지 않습니다. 공개 규칙을 회수하면 서비스가 끊길 수 있습니다.")
+
+
+def revocable_group(tags):
+    return tags.get("AutoRemediation") == "enabled" or tags.get("RemediationGroup") == "manual"
+
 class UnconfiguredProvider:
     connected = False
     regions = ()
@@ -247,8 +259,8 @@ class AwsProvider:
                 blocked = "대상 보안그룹을 찾을 수 없습니다."
             elif doc == "ASR-RemoveDefaultSgRules" and (group["name"] != "default" or group["vpc"] != params["VpcId"]):
                 blocked = "프로젝트 VPC 의 기본 보안그룹이 아니어서 조치하지 않습니다."
-            elif doc == "ASR-RevokeSecurityGroupIngress" and group["tags"].get("AutoRemediation") != "enabled":
-                blocked = "보안그룹에 AutoRemediation=enabled 태그가 없어(대조군·서비스용) 조치하지 않습니다."
+            elif doc == "ASR-RevokeSecurityGroupIngress" and not revocable_group(group["tags"]):
+                blocked = SERVICE_GROUP_BLOCKED
         return {"blocked": blocked, "state": None if blocked else gateway.measure(doc, params)}
 
     def remediation_measure(self, plan):
@@ -311,6 +323,15 @@ class AwsProvider:
                              "runToken": run_token})
         return launched
 
+    @staticmethod
+    def _command_status(ssm, command_id):
+        """명령 레벨 상태(Command.Status). 조회 자체가 실패하면 None — 호출측 판정을 유지한다."""
+        try:
+            commands = ssm.list_commands(CommandId=command_id).get("Commands", [])
+        except Exception:
+            return None
+        return commands[0].get("Status") if commands else None
+
     def attack_command_status(self, commands):
         """commands: [{regionCode, instanceId, commandId, regionLabel}] -> 리전별 진행상태·출력 요약."""
         self.require_ready()
@@ -326,6 +347,11 @@ class AwsProvider:
                 # 리전 미활성화 등을 Pending 으로 삼키면 화면이 영영 "실행 중"에 묶인다.
                 code = _error_code(error)
                 status = "Pending" if code in PENDING_ERROR_CODES else "Failed"
+                if status == "Pending":
+                    # invocation 이 없는 게 "아직"인지 "영영 배달 안 됨"인지는 명령 레벨 상태가 안다.
+                    # 에이전트가 죽어 배달 실패한 명령은 Command.Status 가 Failed 다(2026-09-29 뭄바이·도쿄)
+                    # — 여기서 읽어야 40분 방치 판정을 기다리지 않고 바로 실패로 보인다.
+                    status = self._command_status(ssm, c["commandId"]) or status
                 out.append({"regionLabel": c["regionLabel"], "status": status, "detail": code})
         return out
 

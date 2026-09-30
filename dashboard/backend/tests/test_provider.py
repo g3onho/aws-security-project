@@ -150,6 +150,54 @@ def test_remote_ip_reads_guardduty_slash_keys_for_map_arcs():
     assert remote_ip({"aws/securityhub/ProductName": "Config"})["sourceIp"] is None
 
 
+# --- 지리별 공격 명령 상태(2026-09-29 뭄바이·도쿄: 에이전트 다운으로 배달 실패) ---------------
+
+class FakeSsm:
+    """get_command_invocation 이 없는 명령. 명령 레벨 상태만 진실을 안다."""
+
+    def __init__(self, command_status, invocation_error="InvocationDoesNotExist"):
+        self.command_status = command_status
+        self.invocation_error = invocation_error
+
+    def get_command_invocation(self, **kwargs):
+        error = Exception("no invocation")
+        error.response = {"Error": {"Code": self.invocation_error}}
+        raise error
+
+    def list_commands(self, **kwargs):
+        return {"Commands": [{"Status": self.command_status}] if self.command_status else []}
+
+
+def _status_for(ssm):
+    session = FakeSession("ap-northeast-2")
+    session.client = lambda name, **kw: ssm if name == "ssm" else FakeSession.client(session, name)
+    provider = AwsProvider("ap-northeast-2", session_factory=lambda region: session)
+    return provider.attack_command_status(
+        [{"regionCode": "ap-south-1", "instanceId": "i-x", "commandId": "c-1", "regionLabel": "mumbai"}])[0]
+
+
+def test_undelivered_command_reports_failure_instead_of_waiting():
+    # 에이전트가 죽어 배달되지 않은 명령 — 40분 방치 판정을 기다리지 않고 바로 실패로 보여야 한다.
+    assert _status_for(FakeSsm("Failed"))["status"] == "Failed"
+
+
+def test_just_registered_command_still_reports_pending():
+    # 명령 레벨이 아직 진행 중이면 invocation 이 없는 건 "아직"이라는 뜻이다.
+    assert _status_for(FakeSsm("InProgress"))["status"] == "InProgress"
+
+
+def test_command_lookup_failure_keeps_pending():
+    # 명령 조회조차 안 되면(권한 등) 기존 판정을 유지한다 — 실패로 단정하지 않는다.
+    ssm = FakeSsm(None)
+    ssm.list_commands = lambda **kw: (_ for _ in ()).throw(RuntimeError("denied"))
+    assert _status_for(ssm)["status"] == "Pending"
+
+
+def test_unexpected_error_is_failure_not_pending():
+    # AccessDenied 같은 건 대기가 아니라 실패다(화면이 영영 '실행 중'에 묶이지 않도록).
+    assert _status_for(FakeSsm("Success", invocation_error="AccessDeniedException"))["status"] == "Failed"
+
+
 def test_classify_names_the_real_detector_instead_of_security_hub():
     assert classify({"ProductName": "GuardDuty"}) == {"source": "GuardDuty", "scenario": "위협 탐지"}
     assert classify({"ProductName": "Default", "GeneratorId": "soar-waf-alarm"})["scenario"] == "SEC-08 웹 공격 차단"
