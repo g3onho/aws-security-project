@@ -353,7 +353,7 @@ def test_model_is_called_without_tools_at_low_temperature_and_with_output_cap():
     model = FakeModel("<thinking>내부 추론</thinking>## 1. 요약\n본문")
     _, r = make("events", model=model)
     call = model.calls[0]
-    assert call["tool_config"] is None and call["temperature"] == 0.1 and call["max"] == 1500 and call["system"] == SYSTEM_PROMPT
+    assert call["tool_config"] is None and call["temperature"] == 0.2 and call["max"] == 2500 and call["system"] == SYSTEM_PROMPT
     assert "내부 추론" not in r["markdown"] and r["markdown"].startswith("## 1. 요약")
     assert r["model"] == "fake-nova-pro" and r["usage"] == {"inputTokens": 30, "outputTokens": 10}
 

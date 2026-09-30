@@ -1423,3 +1423,44 @@ body.view-events .timeline{margin-bottom:var(--space)}
 #replay-dialog .hp-ai{margin:8px 20px}
 #replay-dialog .hp-pad{padding:10px 20px}
 .hp-close-row{display:flex;justify-content:flex-end}
+/* v43: 시나리오 실행 진행·보고서 팝업 */
+#run-dialog{width:min(920px,calc(100% - 40px));background:#f1f6f4}
+#run-dialog .dialog-header{background:#fff;border-bottom:3px solid #0a7a6d}
+#run-dialog .dialog-header h2{font-size:22px;line-height:1.35}
+#run-dialog .run-id-line{margin:4px 0 0;font-size:12.5px;font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+#run-dialog .dialog-body{background:#f1f6f4;padding:18px 25px 20px}
+#run-dialog .dialog-actions{background:#fff}
+#run-dialog .dialog-actions button[disabled]{opacity:.5;cursor:not-allowed}
+.run-meter{height:10px;border-radius:999px;background:#d9e5df;overflow:hidden}
+.run-meter i{display:block;height:100%;background:#0b8577;border-radius:999px;transition:width .4s ease}
+.run-meter-text{margin:8px 0 2px;font-size:14px;color:#26382b}
+.run-state[data-state=inprogress],.run-state[data-state=pending],.run-state[data-state=delayed],.run-state[data-state=cancelling]{background:#e5f0fb;border-color:#9cc3ea;color:#0c4f8f}
+.run-state[data-state=timedout],.run-state[data-state=cancelled]{background:#fdf0dc;border-color:#e6b96a;color:#8a5a06}
+.run-report-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.run-report-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border:1px solid #d1ded5;border-radius:6px;background:#fff;font-size:13.5px}
+.ok-text{color:#1b7a3a;font-weight:700}
+@media(max-width:600px){#run-dialog .dialog-body{padding:14px 16px}}
+/* v43: 패키지별 취약점 — 머리글 행과 묶음 행이 같은 칸 나눔을 쓴다(수평 정렬) */
+.cve-groups{--vg-cols:minmax(0,1.5fr) 84px minmax(0,2fr) 210px;--vg-gap:16px}
+.cve-groups .vg-head{display:grid;grid-template-columns:var(--vg-cols);gap:var(--vg-gap);padding:0 15px 2px;font-size:12.5px;font-weight:700;color:#4f5b58;letter-spacing:.01em}
+.cve-groups .vg-head>span:nth-child(2){text-align:center}
+.cve-groups .vg-head>span:last-child{cursor:help}
+.cve-groups .cve-group>summary{grid-template-columns:var(--vg-cols);gap:var(--vg-gap);padding:12px 14px;align-items:center}
+.cve-groups .cve-group>summary>.vg-meta{align-items:flex-start;justify-self:stretch;gap:5px}
+.cve-groups .vg-meta .vg-score{display:flex;align-items:baseline;gap:5px;color:#4f5b58;font-size:13px;cursor:help}
+.cve-groups .vg-meta .vg-score b{font-size:17px;color:#161d1b;font-variant-numeric:tabular-nums}
+.cve-groups .vg-meta .vg-score em{font-style:normal;font-size:11.5px;color:#6b7873}
+.cve-groups .vg-meta .fix-state{align-self:flex-start}
+.cve-groups .vg-main strong{overflow-wrap:anywhere}
+@media(max-width:1100px){.cve-groups{--vg-cols:minmax(0,1.3fr) 70px minmax(0,1.6fr) 180px;--vg-gap:10px}}
+@media(max-width:720px){.cve-groups .vg-head{display:none}.cve-groups .cve-group>summary{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px}.cve-groups .cve-group>summary>.vg-sev,.cve-groups .cve-group>summary>.vg-meta{grid-column:1/-1}}
+/* v43: AI 보고서 종합 판단 띠 */
+.rp-verdict{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:14px 16px;border:1px solid var(--vc,#9fd3c9);border-left:5px solid var(--vc,#0b8577);border-radius:8px;background:var(--vb,#eaf6f3)}
+.rp-verdict p{margin:0;font-size:15.5px;line-height:1.65;font-weight:600;color:#14241d}
+.rp-verdict-tag{flex:none;padding:3px 9px;border-radius:999px;background:var(--vc,#0b8577);color:#fff;font-size:12px;font-weight:800;letter-spacing:.02em;white-space:nowrap}
+.rp-verdict[data-tone=urgent]{--vc:#c0392b;--vb:#fdecea}
+.rp-verdict[data-tone=warn]{--vc:#b7791f;--vb:#fdf4e1}
+.rp-verdict[data-tone=ok]{--vc:#1b7a3a;--vb:#e8f6ee}
+@media print{.rp-verdict{break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.cve-groups .cve-group>summary>.vg-meta{flex-direction:row;flex-wrap:wrap;align-items:center;gap:5px 6px}
+.cve-groups .vg-meta .vg-score{flex:1 0 100%}

@@ -46,8 +46,8 @@ test('security scenarios run everything with one button and no selection control
  const call=network.calls.find(c=>c.pathname==='/api/drills/run-all/start');
  assert.equal(call.options.method,'POST');
  assert.deepEqual(JSON.parse(call.options.body),{},'선택값 없이 빈 본문으로 전부 실행');
- await until(()=>$('#drills').textContent.includes('실행 ID: run-1'),'progress did not render');
- text=$('#drills').textContent;
+ await until(()=>$('#run-dialog').open&&$('#run-dialog-content').textContent.includes('실행 ID: run-1'),'progress popup did not open');
+ text=$('#drills').textContent+$('#run-dialog-content').textContent;
  assert(text.includes('SEC-04: 대상 없음'),'건너뜀 사유 표시');
  const rows=[...$('#drills .drill-scenario-table tbody').children].map(tr=>tr.textContent);
  assert(rows.find(r=>r.includes('SEC-02')).includes('실행 중'),'시작 직후 접수 항목은 실행 중으로 표시');

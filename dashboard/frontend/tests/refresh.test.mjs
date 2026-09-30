@@ -8,7 +8,7 @@ test('refresh keeps previous content on failure and accepts the next canonical r
  const network=makeFetchMock(),{dom,$,click,errors}=appDOM(network);t.after(()=>dom.window.close());
  await import(pathToFileURL(path.join(ROOT,'static/js/app.js')).href);
  // v20.3: GET 은 네트워크 오류 시 백오프 재시도한다. 테스트는 대기 없이 돌린다(app 과 같은 모듈 URL).
- const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=v42');
+ const client=await import(pathToFileURL(path.join(ROOT,'static/js/store/api/client.js')).href+'?v=v43');
  client.setTimers({sleep:async()=>{}});
  await until(()=>$('#content .event-trend-widget'));
  const before=network.count('/api/events');

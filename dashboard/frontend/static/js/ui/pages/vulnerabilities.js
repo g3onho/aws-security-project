@@ -1,8 +1,8 @@
 // 취약점 점검: 서버×패키지 묶음, 대상·페이지·크기, CVE CSV. 이 화면 상태는 이 모듈만 바꾼다.
-import {$,api,ui} from '../context.js?v=v42';
-import {esc,cmdBlock} from '../components/format.js?v=v42';
-import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v42';
-import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v42';
+import {$,api,ui} from '../context.js?v=v43';
+import {esc,cmdBlock} from '../components/format.js?v=v43';
+import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v43';
+import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v43';
 // ── 취약점 점검 ────────────────────────────────────────────
 let vulnTarget='',vulnPage=1,vulnSize=50,vulnFilter='',vulnData=null,vulnDataKey='';
 const vulnKey=()=>panelScope()+JSON.stringify([vulnTarget,ui.refreshSerial]);
@@ -113,10 +113,10 @@ function vulnGroupMarkup(g){
   <div class="vg-main"><strong>${esc(g.package)}</strong><small>${where}</small></div>
   <div class="vg-count"><b>${g.items.length}</b><span>CVE 종류</span></div>
   <div class="vg-sev">${sevBar(g.counts,g.items.length)}<div class="vg-chips">${SEV_ORDER.filter(s=>g.counts[s]).map(s=>sevChip(s,g.counts[s])).join('')}</div></div>
-  <div class="vg-meta"><span>최고 CVSS <b>${g.maxCvss??'—'}</b></span>${fix}${g.items.some(v=>v.rebootRequired===true)?'<span class="fix-state reboot">재부팅 필요</span>':''}${g.items.some(v=>v.exploitAvailable==='YES')?'<span class="fix-state exploit">공격 코드 공개</span>':''}</div></summary>
+  <div class="vg-meta"><span class="vg-score" title="CVSS = 취약점 위험 점수(0~10, 높을수록 위험). 이 패키지 안에서 가장 높은 값입니다.">위험 점수 <b>${g.maxCvss??'—'}</b><em>CVSS 최고</em></span>${fix}${g.items.some(v=>v.rebootRequired===true)?'<span class="fix-state reboot">재부팅 필요</span>':''}${g.items.some(v=>v.exploitAvailable==='YES')?'<span class="fix-state exploit">공격 코드 공개</span>':''}</div></summary>
  ${fixPanel(g)}
   ${one?'':`<div class="vg-servers"><h3>영향받는 서버 ${g.serverList.length}대</h3><ul>${g.serverList.map(s=>`<li><button class="link-button" data-vuln-target="${esc(s.resource)}" title="${esc(s.resource)}">${esc(s.name)}</button><span>설치 ${esc(s.installed||'—')}</span><span>CVE ${s.count}건</span>${s.fixable?`<span class="fix-state ok">수정 버전 명시 ${s.fixable}건</span>`:'<span class="fix-state wait">수정 버전 미제공</span>'}</li>`).join('')}</ul></div>`}
-  <div class="table-scroll"><table><thead><tr><th>심각도</th><th>CVSS</th><th>EPSS</th><th>CVE</th><th>공격 코드</th><th>Inspector 수정 버전</th><th>영향 서버</th></tr></thead><tbody>${top.map(v=>`<tr><td>${sevChip(v.severity)}</td><td>${v.cvss??'—'}</td><td>${pctScore(v.epss)}</td><td title="${esc(v.title||'')}">${cveLink(v)}</td><td>${v.exploitAvailable==='YES'?'<span class="bad-text">공개됨</span>':v.exploitAvailable==='NO'?'없음':'—'}</td><td>${esc(fixedVersionText(v))}</td><td class="cve-hosts">${v.hosts.sort().map(h=>`<span>${esc(h)}</span>`).join('')}</td></tr>`).join('')}</tbody></table></div>
+  <div class="table-scroll"><table><thead><tr><th>심각도</th><th title="CVSS = 취약점 위험 점수(0~10, 높을수록 위험)">위험 점수(CVSS)</th><th>EPSS</th><th>CVE</th><th>공격 코드</th><th>Inspector 수정 버전</th><th>영향 서버</th></tr></thead><tbody>${top.map(v=>`<tr><td>${sevChip(v.severity)}</td><td>${v.cvss??'—'}</td><td>${pctScore(v.epss)}</td><td title="${esc(v.title||'')}">${cveLink(v)}</td><td>${v.exploitAvailable==='YES'?'<span class="bad-text">공개됨</span>':v.exploitAvailable==='NO'?'없음':'—'}</td><td>${esc(fixedVersionText(v))}</td><td class="cve-hosts">${v.hosts.sort().map(h=>`<span>${esc(h)}</span>`).join('')}</td></tr>`).join('')}</tbody></table></div>
   ${g.items.length>VULN_PREVIEW?`<p class="muted vg-more">CVSS 상위 ${VULN_PREVIEW}종만 표시 · 나머지 ${g.items.length-VULN_PREVIEW}종은 CVE CSV로 확인</p>`:''}
  </details>`;
 }
@@ -130,7 +130,7 @@ export function vulnerabilityMarkup(data){
  <div class="vuln-summary" role="group" aria-label="취약점 위험도 필터">${['CRITICAL','HIGH','MEDIUM','LOW'].map(sev=>summaryButton(sev,totals[sev],allStats.unique)).join('')}</div>
  <section class="panel full-panel">${header('패키지별 취약점',`<label class="page-size">표시 <select id="vuln-size">${[25,50,100,200,0].map(n=>`<option value="${n}"${n===vulnSize?' selected':''}>${n?n+'개씩':'전체'}</option>`).join('')}</select></label><button id="export-vulns" class="text-button">↓ CVE CSV 내보내기</button>`)}
  ${vulnTarget?`<div class="vuln-toolbar"><button class="text-button" data-vuln-target="">전체 서버 보기 ←</button></div>`:''}
- ${page.length?`<div class="cve-groups">${page.map(vulnGroupMarkup).join('')}</div>`:empty(vulnFilter?'선택한 조건에 맞는 취약점이 없습니다.':hiddenRows?`긴급~낮음 취약점이 없습니다 (그 밖의 finding ${hiddenRows}건은 표시하지 않음).`:'현재 열린 취약점이 없습니다.')}
+ ${page.length?`<div class="cve-groups"><div class="vg-head" aria-hidden="true"><span>패키지 · 영향 서버</span><span>취약점</span><span>위험도 구성</span><span title="CVSS = 취약점 위험 점수(0~10, 높을수록 위험)">위험 점수(CVSS) · 조치 정보</span></div>${page.map(vulnGroupMarkup).join('')}</div>`:empty(vulnFilter?'선택한 조건에 맞는 취약점이 없습니다.':hiddenRows?`긴급~낮음 취약점이 없습니다 (그 밖의 finding ${hiddenRows}건은 표시하지 않음).`:'현재 열린 취약점이 없습니다.')}
  <div class="table-pager"><button data-vuln-page="prev" ${vulnPage<=1?'disabled':''}>← 이전</button><span>${vulnPage} / ${pages}</span><button data-vuln-page="next" ${vulnPage>=pages?'disabled':''}>다음 →</button></div></section>`;
 }
 export function selectVulnTarget(target){if(vulnTarget===target)return;vulnTarget=target;vulnPage=1;renderVulnerabilities();}

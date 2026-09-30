@@ -1,8 +1,8 @@
 // 통합 관제: 인프라 상태·자원 표본·자동 대응·최근 보안 이벤트.
-import {summary,metricsFor,servicesOf} from '../context.js?v=v42';
-import {header} from '../components/panel.js?v=v42';
-import {esc} from '../components/format.js?v=v42';
-import {responseStats} from '../components/event-response.js?v=v42';
+import {summary,metricsFor,servicesOf} from '../context.js?v=v43';
+import {header} from '../components/panel.js?v=v43';
+import {esc} from '../components/format.js?v=v43';
+import {responseStats} from '../components/event-response.js?v=v43';
 
 function highestLatest(metric,key){
  const values=(metric?.series||[]).filter(s=>s.metric===key).map(s=>{

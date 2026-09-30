@@ -1,9 +1,10 @@
 // 보안 시나리오: 시나리오 표가 화면의 뼈대이고, 선택 없이 [전부 실행] 한 번으로 준비된 모든 시나리오를 실행한다.
 // 실행은 백엔드 POST /api/drills/run-all/start(SSM)이며 WRITE_ENABLED 가 꺼져 있으면 403 이다.
-import {$,api} from '../context.js?v=v42';
-import {esc,format,milliseconds} from '../components/format.js?v=v42';
-import {loadPanel,header} from '../components/panel.js?v=v42';
-import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=v42';
+import {$,api} from '../context.js?v=v43';
+import {esc,format,milliseconds} from '../components/format.js?v=v43';
+import {loadPanel,header} from '../components/panel.js?v=v43';
+import {openReport} from '../components/report.js?v=v43';
+import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=v43';
 
 // runnable 을 prep-needed 와 같은 색으로 통일한다 — 시나리오 표는 [전부 실행] 대상만 보여주므로(RUN_ALL_SECS 필터)
 // 전부 "실행 가능"이고, 이 표 밖에서는 이 색이 안 쓰인다.
@@ -37,6 +38,8 @@ let catalog=null,runs=null;
 const run={runId:null,items:[],skipped:[],busy:false,error:null,timer:null,done:false};
 // [보고서 추출] 상태. 누를 때마다 서버에서 리전별 SEC-08 로그를 읽어 파일 하나로 바로 내려받는다(아직 안 끝난 리전은 빠지고, 다시 누르면 채워진다).
 const report={runId:null,regions:null,loading:false,error:null};
+// 진행 팝업: 실행을 시작하면 열리고, 닫아도 실행은 계속된다(버튼 [실행 중 · 진행 보기]로 다시 연다). 실행 이력의 [보고서]는 같은 팝업에 그 실행을 연다.
+let shown=null,dlgOpen=false;   // shown = 팝업이 보여주는 실행(진행 중인 run 이거나 이력에서 연 past)
 function downloadJson(filename,obj){
  const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
  const url=URL.createObjectURL(blob);
@@ -105,56 +108,92 @@ function runPanel(){
  const elig=ready?`<div class="drill-eligibility"><span class="drill-elig-dot" style="background:#0b8577"></span>실행 가능 · ${esc(geoLine)}</div>`
   :`<div class="drill-eligibility"><span class="drill-elig-dot"></span>실행 불가 · 데이터 소스 미연결</div>`;
  const attr=ready&&!run.busy?'data-run-all-start':'disabled';
- // 이번 실행에 SEC-08 이 하나라도 잡혔으면 보고서 버튼을 켠다(완료 전이라도 눌러서 확인 가능 — 끝난 리전만 링크가 뜬다).
- const hasAtk=run.items.some(item=>item.sec==='SEC-08');
- const reportAttr=run.runId&&hasAtk&&!report.loading?'data-report-extract':'disabled';
  return `<div class="drill-config"><h3>전부 실행</h3>
-  <p class="muted">준비된 시나리오를 한 번에 실행합니다. 대상이 없으면 건너뛰고 사유를 남깁니다.</p>
+  <p class="muted">준비된 시나리오를 한 번에 실행합니다. 대상이 없으면 건너뛰고 사유를 남깁니다. 진행과 보고서는 팝업에서 봅니다.</p>
   <ul class="drill-run-list">${RUN_METHODS.map(([id,name,how])=>`<li><b>${esc(id)}</b><span><em>${esc(name)}</em><small>${esc(how)}</small></span></li>`).join('')}</ul>
   ${elig}
   <div class="drill-actions">
-   <button type="button" class="primary-button" ${attr}>${run.busy?'실행 중…':'전부 실행'}</button>
-   <button type="button" class="cancel-button" ${reportAttr} title="SEC-08 공격 로그를 리전 구분 없이 파일 하나(atk-report-*.json)로 바로 내려받습니다. 아직 끝나지 않은 리전은 이번 파일에서 빠지니, 끝난 뒤 다시 누르세요.">${report.loading?'추출 중…':'보고서 추출'}</button>
+   ${run.busy
+    ?`<button type="button" class="primary-button" data-run-open aria-haspopup="dialog">실행 중 · 진행 보기</button>`
+    :`<button type="button" class="primary-button" ${attr}>전부 실행</button>${run.runId?`<button type="button" class="cancel-button" data-run-open aria-haspopup="dialog">최근 실행 보기</button>`:''}`}
   </div>
   ${run.error?`<p class="panel-error" role="alert">${esc(run.error)}</p>`:''}
-  ${report.error?`<p class="panel-error" role="alert">${esc(report.error)}</p>`:''}</div>`;
+</div>`;
 }
 
-function progressSection(){
- if(!run.runId&&!run.items.length)return '';
- const rows=run.items.map(item=>{
-  const state=RUN_STATUS_KO[item.status]||esc(item.status||'—');
-  const out=item.output?`<details><summary>출력 보기</summary><pre class="drill-attack-output">${esc(item.output)}</pre></details>`:(item.detail?`<small class="muted">${esc(item.detail)}</small>`:'');
-  return `<tr><td>${esc(item.label||item.sec||'—')}</td><td>${state}</td><td>${out}</td></tr>`;
- }).join('');
- const skipped=run.skipped.length?`<p class="muted">건너뜀: ${run.skipped.map(esc).join(', ')}</p>`:'';
- return `<section class="panel full-panel">${header('실행 진행','RUN ALL')}
-  ${run.runId?`<p class="muted">실행 ID: ${esc(run.runId)}${run.done?' · 모든 항목 종료':' · 진행 중(자동 갱신)'}</p>`:''}${skipped}
-  <div class="table-scroll"><table><caption class="sr-only">실행 진행</caption>
-  <thead><tr><th>항목</th><th>상태</th><th>결과</th></tr></thead>
-  <tbody>${rows||'<tr><td colspan="3" class="muted">실행 항목을 기다리는 중입니다.</td></tr>'}</tbody></table></div></section>`;
+// ── 진행 팝업 ──────────────────────────────────────────────
+const isAtk=v=>v.items.some(item=>item.sec==='SEC-08');
+function progressBar(v){
+ const total=v.items.length,done=v.items.filter(item=>TERMINAL.has(item.status)).length;
+ const failed=v.items.filter(item=>item.status==='Failed'||item.status==='TimedOut').length;
+ const pct=total?Math.round(done/total*100):0;
+ return `<div class="run-meter" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-label="실행 진행률"><i style="width:${pct}%"></i></div>
+  <p class="run-meter-text"><b>${done}/${total}</b> 항목 종료${failed?` · <span class="bad-text">실패·시간초과 ${failed}</span>`:''}</p>`;
 }
+function reportBlock(v){
+ if(report.runId!==v.runId||!report.regions)return '';
+ const entries=Object.entries(report.regions);
+ if(!entries.length)return `<div class="detail-section"><h3>공격 보고서</h3><p class="muted">이 실행에는 SEC-08 공격 로그가 없습니다.</p></div>`;
+ return `<div class="detail-section"><h3>공격 보고서(리전별)</h3><ul class="run-report-list">${entries.map(([label,r])=>
+  `<li><b>${esc(label)}</b><span class="${r.ready?'ok-text':'muted'}">${r.ready?'✓ 로그 확보':esc(r.reason||'준비 안 됨')}</span></li>`).join('')}</ul></div>`;
+}
+function runDialogHtml(v){
+ const active=v===run,live=active&&run.busy&&!run.done;
+ const rows=v.items.map((item,i)=>{
+  const state=RUN_STATUS_KO[item.status]||esc(item.status||'—');
+  const out=item.output?`<details data-k="${i}"><summary>출력 보기</summary><pre class="drill-attack-output">${esc(item.output)}</pre></details>`:(item.detail?`<small class="muted">${esc(item.detail)}</small>`:'');
+  return `<tr><td>${esc(item.label||item.sec||'—')}</td><td><span class="run-state" data-state="${esc(String(item.status||'').toLowerCase())}">${state}</span></td><td>${out}</td></tr>`;
+ }).join('');
+ const skipped=v.skipped.length?`<p class="muted">건너뜀: ${v.skipped.map(esc).join(', ')}</p>`:'';
+ const note=v.loading?'불러오는 중…':live?'진행 중 · 5초마다 자동 갱신합니다. 창을 닫아도 실행은 계속됩니다.':(v.items.length&&v.items.every(item=>TERMINAL.has(item.status))?'모든 항목이 종료됐습니다.':'');
+ const canReport=isAtk(v)&&!report.loading&&!v.loading;
+ return `<div class="dialog-header"><div><div class="eyebrow">RUN ALL / ${active?'실험 진행':'실행 보고서'}</div><h2 id="run-dialog-title">${active?'실험 진행':'실행 보고서'}</h2>
+   <p class="muted run-id-line">실행 ID: ${esc(v.runId||'발급 중…')}</p></div><button type="button" class="dialog-close" data-run-close aria-label="팝업 닫기">×</button></div>
+  <div class="dialog-body run-dialog-body">${progressBar(v)}<p class="muted">${esc(note)}</p>${skipped}
+   <div class="table-scroll"><table><caption class="sr-only">실행 항목</caption><thead><tr><th>항목</th><th>상태</th><th>결과</th></tr></thead>
+   <tbody>${rows||`<tr><td colspan="3" class="muted">${v.loading?'불러오는 중…':'실행 항목을 기다리는 중입니다.'}</td></tr>`}</tbody></table></div>
+   ${reportBlock(v)}
+   ${v.error?`<p class="panel-error" role="alert">${esc(v.error)}</p>`:''}${report.runId===v.runId&&report.error?`<p class="panel-error" role="alert">${esc(report.error)}</p>`:''}</div>
+  <div class="dialog-actions"><span>${isAtk(v)?'보고서는 SEC-08 공격 로그를 리전 구분 없이 파일 하나(atk-report-*.json)로 내려받습니다. 끝나지 않은 리전은 빠지니, 끝난 뒤 다시 누르세요.':'이 실행에는 SEC-08 공격 로그가 없어 받을 보고서가 없습니다.'}</span>
+   <button type="button" class="cancel-button" data-run-refresh ${v.loading?'disabled':''}>상태 새로고침</button>
+   <button type="button" class="subtle-button accent" data-run-ai ${v.loading||!v.runId?'disabled':''} title="이 실행의 결과를 AI 가 요약한 보고서(PDF 저장 가능)">AI 요약 보고서</button>
+   <button type="button" class="primary-button" data-report-extract ${canReport?'':'disabled'}>${report.loading&&report.runId===v.runId?'추출 중…':'보고서 추출'}</button>
+   <button type="button" class="cancel-button" data-run-close>닫기</button></div>`;
+}
+function paintRunDialog(){
+ const box=$('#run-dialog');if(!box)return;
+ if(!dlgOpen||!shown){if(box.open)box.close();return;}
+ const body=box.querySelector('.dialog-body'),top=body?body.scrollTop:0;
+ const opened=[...box.querySelectorAll('details[open]')].map(d=>d.dataset.k);
+ $('#run-dialog-content').innerHTML=runDialogHtml(shown);
+ opened.forEach(k=>{const d=box.querySelector(`details[data-k="${k}"]`);if(d)d.open=true;});
+ const nb=box.querySelector('.dialog-body');if(nb)nb.scrollTop=top;
+ if(!box.open)box.showModal();
+}
+function closeRunDialog(){dlgOpen=false;const box=$('#run-dialog');if(box&&box.open)box.close();}
+function openRunDialog(v){shown=v;dlgOpen=true;paintRunDialog();}
 
 function runsSection(){
  if(!runs||!runs.items.length){
   return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
-   <div class="run-empty"><strong>기록된 실행이 없습니다</strong><span>위의 [전부 실행]을 누르면 실행 ID·유형·SEC 항목·상태가 이곳에 남습니다.</span></div></section>`;
+   <div class="run-empty"><strong>기록된 실행이 없습니다</strong><span>위의 [전부 실행]을 누르면 실행 ID·유형·SEC 항목·상태가 이곳에 남고, 줄마다 [보고서]로 그 실행의 보고서를 받을 수 있습니다.</span></div></section>`;
  }
  const rows=runs.items.map(r=>{
   const secs=(r.secs&&r.secs.length)?r.secs.join(' · '):(r.type||'—');
-  return `<tr><td class="run-id">${esc(r.runId||'—')}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td><span class="run-state" data-state="${esc(String(r.state||'').toLowerCase())}">${esc(r.state||'—')}</span></td><td>${format(milliseconds(r.createdAt))}</td></tr>`;
+  return `<tr><td class="run-id">${esc(r.runId||'—')}</td><td>${esc(r.title||r.type||'—')}</td><td>${esc(secs)}</td><td><span class="run-state" data-state="${esc(String(r.state||'').toLowerCase())}">${esc(r.state||'—')}</span></td><td>${format(milliseconds(r.createdAt))}</td>
+   <td>${r.type==='run-all'&&r.runId?`<button type="button" class="link-button" data-run-report="${esc(r.runId)}" aria-haspopup="dialog">보고서</button>`:'<span class="muted">—</span>'}</td></tr>`;
  }).join('');
  return `<section class="panel full-panel">${header('실행 이력','RUN HISTORY')}
   <div class="table-scroll run-history"><table><caption class="sr-only">실행 이력</caption>
-  <thead><tr><th>실행 ID</th><th>유형</th><th>SEC 항목</th><th>상태</th><th>접수 시각 (KST)</th></tr></thead>
+  <thead><tr><th>실행 ID</th><th>유형</th><th>SEC 항목</th><th>상태</th><th>접수 시각 (KST)</th><th>보고서</th></tr></thead>
   <tbody>${rows}</tbody></table></div></section>`;
 }
 
 function paint(){
  return `<section class="panel full-panel drill-workspace">${header('보안 시나리오','SCENARIOS')}
-  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${progressSection()}${runsSection()}`;
+  ${environmentStrip(catalog.environment)}${runPanel()}${scenarioTable()}</section>${runsSection()}`;
 }
-function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();if(flowId)paintFlowDialog();}
+function rerender(){const box=$('#drills');if(box)box.innerHTML=paint();if(flowId)paintFlowDialog();if(dlgOpen)paintRunDialog();}
 
 async function refreshHistory(){try{runs=await api.drills();}catch(error){/* 이력 갱신 실패는 진행 표시를 막지 않는다 */}}
 async function poll(){
@@ -177,7 +216,7 @@ async function start(){
  if(run.busy)return;
  run.busy=true;run.error=null;run.done=false;run.items=[];run.skipped=[];run.runId=null;
  report.runId=null;report.regions=null;report.error=null;   // 새 실행이면 이전 보고서는 버린다
- rerender();
+ rerender();openRunDialog(run);
  try{
   const result=await api.startRunAll({});
   run.runId=result.runId;saveRunAllId(result.runId);
@@ -185,26 +224,56 @@ async function start(){
   run.items=(result.launched||[]).map(item=>({sec:item.sec,label:null,status:'Pending'}));
   await refreshHistory();rerender();
   run.timer=setTimeout(poll,3000);
- }catch(error){run.busy=false;run.error=error.message;rerender();}
+ }catch(error){run.busy=false;run.error=error.message;closeRunDialog();rerender();}
 }
 async function extractReport(){
- if(!run.runId||report.loading)return;
- report.loading=true;report.error=null;rerender();
+ const id=shown&&shown.runId;if(!id||report.loading)return;
+ report.loading=true;report.runId=id;report.regions=null;report.error=null;rerender();
  try{
-  const result=await api.runAllReport(run.runId);
-  report.runId=run.runId;report.regions=result.regions||{};
+  const result=await api.runAllReport(id);
+  report.regions=result.regions||{};
   const readyCount=Object.values(report.regions).filter(r=>r.ready).length;
   if(readyCount>0){
-   downloadJson(`atk-report-${run.runId}.json`,{runId:run.runId,generatedAt:new Date().toISOString(),...result});
+   downloadJson(`atk-report-${id}.json`,{runId:id,generatedAt:new Date().toISOString(),...result});
   }else{
-   report.error='아직 완료된 리전이 없습니다 — 공격이 끝난 뒤 다시 눌러주세요.';
+   report.error=Object.keys(report.regions).length?'아직 완료된 리전이 없습니다 — 공격이 끝난 뒤 다시 눌러주세요.':'이 실행에는 SEC-08 공격 로그가 없습니다.';
   }
  }catch(error){report.error=error.message;}
  report.loading=false;rerender();
 }
+// 이력에서 연 지난 실행: 상태를 한 번 읽어 와서 같은 팝업에 보여준다(진행 중인 실행이면 그 객체를 그대로 연다).
+async function loadPast(v){
+ v.loading=true;v.error=null;if(shown===v)paintRunDialog();
+ try{
+  const status=await api.runAllStatus(v.runId);
+  v.items=status.items||[];v.skipped=status.skipped||[];
+  v.done=v.items.length>0&&v.items.every(item=>TERMINAL.has(item.status));
+ }catch(error){v.error=error.message;}
+ v.loading=false;if(shown===v)paintRunDialog();
+}
+async function openPast(runId){
+ if(run.runId===runId){openRunDialog(run);return;}
+ if(report.runId!==runId){report.runId=null;report.regions=null;report.error=null;}
+ const past={runId,items:[],skipped:[],done:false,loading:true,error:null};
+ openRunDialog(past);
+ await loadPast(past);
+}
+function refreshShown(){
+ if(!shown)return;
+ if(shown===run){if(run.timer){clearTimeout(run.timer);run.timer=null;}poll();}else loadPast(shown);
+}
+function onRunDialogClick(e){
+ const box=e.currentTarget;
+ if(e.target.closest('[data-run-ai]')){if(shown&&shown.runId)openReport('drill-run',{runId:shown.runId});return;}
+ if(e.target===box||e.target.closest('[data-run-close]')){closeRunDialog();return;}
+ if(e.target.closest('[data-run-refresh]')){refreshShown();return;}
+ if(e.target.closest('[data-report-extract]')){extractReport();}
+}
 function onClick(e){
  if(e.target.closest('[data-run-all-start]')){start();return;}
- if(e.target.closest('[data-report-extract]')){extractReport();return;}
+ if(e.target.closest('[data-run-open]')){openRunDialog(run);return;}
+ const past=e.target.closest('[data-run-report]');
+ if(past){openPast(past.dataset.runReport);return;}
  const toggle=e.target.closest('[data-flow-toggle]');
  if(toggle){flowId=toggle.dataset.flowToggle;paintFlowDialog();}
 }
@@ -224,6 +293,12 @@ export function renderDrills(){
   fd._flowBound=true;
   fd.addEventListener('click',e=>{if(e.target.closest('[data-flow-close]')||e.target===fd)closeFlow();});
   fd.addEventListener('cancel',e=>{e.preventDefault();closeFlow();});
+ }
+ const rd=$('#run-dialog');
+ if(rd&&!rd._runBound){
+  rd._runBound=true;
+  rd.addEventListener('click',onRunDialogClick);
+  rd.addEventListener('close',()=>{dlgOpen=rd.open;});   // Esc 로 닫아도 상태를 맞춘다(close 는 비동기라, 그 사이 다시 열렸으면 열린 채로 둔다)
  }
  resumeRunAll();
  return loadPanel(box,

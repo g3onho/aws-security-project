@@ -1,5 +1,5 @@
 // 화면은 이 함수들이 돌려주는 화면 모델만 읽는다(설계 2.1-2).
-import {data,filters,summary,requests,config,DATA_AS_OF} from './state.js?v=v42';
+import {data,filters,summary,requests,config,DATA_AS_OF} from './state.js?v=v43';
 export const selectors=Object.freeze({
  events:({ignoreRegion=false}={})=>ignoreRegion?data.regional:data.rows,
  metrics:()=>data.metric,

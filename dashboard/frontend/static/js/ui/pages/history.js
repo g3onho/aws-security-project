@@ -1,10 +1,10 @@
 // 조치 이력(v32): 조치를 '시도'한 기록을 시간순 한 목록으로 보여준다. 줄마다 [방식]·[실행] 칩.
 // 고쳐졌는지는 여기서 판정하지 않는다 — 보안 이벤트 목록에서 이벤트가 사라지는지로 확인한다(실행 성공 ≠ 해결).
 // 아직 조치하지 않은 취약 항목은 여기 넣지 않는다 — 보안 이벤트 화면의 '수동 대응' 버튼(팝업)에서 확인한다.
-import {$,api} from '../context.js?v=v42';
-import {esc,format,milliseconds,shortResource} from '../components/format.js?v=v42';
-import {loadPanel} from '../components/panel.js?v=v42';
-import {recordTitle,DECISION_KO,AUTOMATION_KO,REMEDIATION_STATE} from '../components/remediation.js?v=v42';
+import {$,api} from '../context.js?v=v43';
+import {esc,format,milliseconds,shortResource} from '../components/format.js?v=v43';
+import {loadPanel} from '../components/panel.js?v=v43';
+import {recordTitle,DECISION_KO,AUTOMATION_KO,REMEDIATION_STATE} from '../components/remediation.js?v=v43';
 // ── 분류 ───────────────────────────────────────────────────
 export const WHO={auto:['자동','who'],dashboard:['대시보드','who'],external:['외부 해결(추정)','muted']};
 export const EXEC={success:['실행 성공','ok'],failed:['실행 실패','bad'],running:['실행 중','run'],skipped:['실행 안 함','muted']};

@@ -1,10 +1,10 @@
 // 화면별 AI 요약 보고서 대화상자(v28) — 조회 전용.
 // 서버가 수치를 집계하고 모델은 문장만 쓴다. 이 파일은 서버가 준 문자열(모델 본문·이벤트 제목 등 공격자가 조종할 수 있는 값 포함)을
 // 전부 esc() 를 거쳐 텍스트로만 그린다. 본문 마크다운은 제목(##)·목록·표·굵게(**)만 해석하고 링크·HTML·이미지는 해석하지 않는다.
-import {$,api} from '../context.js?v=v42';
-import {esc} from './format.js?v=v42';
-import {downloadFile,stampedName} from './downloads.js?v=v42';
-import {toast} from './panel.js?v=v42';
+import {$,api} from '../context.js?v=v43';
+import {esc} from './format.js?v=v43';
+import {downloadFile,stampedName} from './downloads.js?v=v43';
+import {toast} from './panel.js?v=v43';
 
 const NAME={events:'보안 이벤트',vulnerabilities:'취약점 점검',infrastructure:'인프라 모니터링',drills:'보안 시나리오',honeypot:'허니팟','drill-run':'보안 시나리오 실행 결과'};
 const NOTE='문장은 AI가 작성했고, 수치는 원천 데이터 집계 기준입니다. 조치 전에 화면의 원본 자료로 확인하세요.';
@@ -90,7 +90,20 @@ function kpis(d){
     return `<div class="rp-kpi" role="listitem" style="--k:${tone}"><span>${esc(k)}</span><b${v===0?' class="zero"':''}>${esc(v)}</b></div>`;
   }).join('')}</div>`;
 }
+// 본문 첫 줄(종합 판단 한 문장)을 눈에 띄는 띠로 올린다. 긴급·주의·안정 중 하나가 들어 있을 때만 떼어 낸다(없으면 본문 그대로).
+export function splitVerdict(markdown){
+  const md=String(markdown||'').replace(/\r/g,'');
+  const m=/(^|\n)(##\s*1\.[^\n]*\n)[ \t]*([^\n]+)\n?/.exec(md);
+  if(!m)return {verdict:null,tone:'',md};
+  const line=m[3].trim();
+  if(/^([-*]\s|\||#|\d+[.)]\s)/.test(line))return {verdict:null,tone:'',md};
+  const word=/긴급|주의|안정/.exec(line);
+  if(!word)return {verdict:null,tone:'',md};
+  const start=m.index+m[1].length+m[2].length;
+  return {verdict:line,tone:{긴급:'urgent',주의:'warn',안정:'ok'}[word[0]],md:md.slice(0,start)+md.slice(m.index+m[0].length)};
+}
 export function reportDocHtml(d){
+  const {verdict,tone,md}=splitVerdict(d.markdown);
   const filters=Object.entries(d.filters||{}).filter(([,v])=>v).map(([k,v])=>`${esc(k)} ${esc(v)}`).join(' · ')||'필터 없음';
   const meta=[['화면',NAME[d.view]||d.view],['기간(KST)',`${kst(d.period?.from)} ~ ${kst(d.period?.to)}`],['생성(KST)',kst(d.generatedAt)+(d.cached?' · 캐시됨':'')]];
   return `<article class="rp" data-view="${esc(d.view)}">
@@ -105,7 +118,8 @@ export function reportDocHtml(d){
       ${kpis(d)}
       ${(d.warnings||[]).length?`<div class="report-warn" role="status"><strong>확인 필요</strong><ul>${d.warnings.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>`:''}
       ${(d.unavailable||[]).length?`<p class="panel-error" role="status">읽지 못한 원천: ${d.unavailable.map(esc).join(', ')}</p>`:''}
-      <div class="report-md">${sections(markdownHtml(d.markdown))}</div>
+      ${verdict?`<div class="rp-verdict" data-tone="${tone}" role="note"><span class="rp-verdict-tag">종합 판단</span><p>${inline(verdict)}</p></div>`:''}
+      <div class="report-md">${sections(markdownHtml(md))}</div>
       <footer class="rp-foot"><p>${esc(NOTE)}</p><p class="rp-gen"><img src="${CLAUDE_LOGO}" width="14" height="14" alt=""> Generated with Claude · 모델 ${esc(d.model||'')} · 토큰 입력 ${esc(d.usage?.inputTokens??0)} / 출력 ${esc(d.usage?.outputTokens??0)}</p></footer>
     </div></article>`;
 }

@@ -75,10 +75,30 @@ VPC 내부의 서브넷은 좌우 수평으로 나란히 배치한다. 현재 �
 
 **VPC, 서브넷, EC2는 아이콘이 아니라 테두리로 표현한다.** VPC 테두리 안에 서브넷 테두리를, 서브넷 테두리 안에 EC2 인스턴스 테두리를 중첩하고, 각 테두리의 좌측 상단에 이름 라벨을 붙인다. EC2 안에서 동작하는 제3자 소프트웨어(Docker, Nginx, Flask, MySQL 등)는 일반 EC2 아이콘이나 글자만 있는 상자로 나타내지 않고, **해당 제품의 공식 로고를 EC2 테두리 안쪽에 배치**해 무엇이 동작하는지 바로 식별되게 한다(“EC2 테두리 안에 앱 서비스 로고가 들어 있는” 형태). 로고 아래에는 제품명을 한 줄로 쓴다. Docker Compose 구성(Nginx → Flask → MySQL)은 Docker 로고가 붙은 그룹 테두리 안에 세 로고를 나란히 둔다. 공식 로고가 없는 소프트웨어(예: DVWA, asyncssh)는 제품명을 쓴 중립 라벨 상자를 같은 위치에 둔다. **AI 기능은 Claude 로고로 표기한다.** 관제 대시보드 EC2 테두리 안의 AI 챗봇·AI 보고서 작성과 허니팟 EC2 안의 AI 분석은 Claude 로고와 기능명 라벨로 그리고, Bedrock 호출 선은 그대로 Bedrock 아이콘으로 잇는다(Claude 로고는 호출 대상이 아니라 AI 기능 표식이다). VPC·서브넷·EC2에는 서비스 아이콘 노드를 따로 두지 않으며, 이 세 가지의 연결선은 해당 테두리의 접속 지점에 잇는다. 실제로 서로 다른 EC2 인스턴스는 각각 별도 테두리로 그린다.
 
+**서브넷 구분은 README와 `terraform/infrastructure-design.md` 기준으로 철저히 지킨다.** 각 EC2는 자기 서브넷 테두리 안에만 그리며, 두 서브넷에 걸치거나 다른 서브넷으로 옮기지 않는다. 서브넷 테두리 라벨은 Public-Web, Public-Web B, Private-App, Private-DB 표기를 쓴다. 서로 다른 EC2는 같은 서브넷 안이라도 각각 별도 테두리로 그리고, 테두리 안에는 해당 EC2에서 동작하는 앱의 공식 로고만 넣는다.
+
+| 서브넷 | 안에 그리는 것 | EC2 테두리 안의 앱 |
+|---|---|---|
+| Public-Web | DVWA EC2, ALB(두 Public 서브넷에 걸치는 자원이므로 아이콘 하나를 Public-Web과 Public-Web B 경계 위에 둔다), 선택 NAT Gateway | DVWA(로고가 없으면 제품명 라벨 상자) |
+| Public-Web B | ALB 보조 AZ용. EC2 없음 | — |
+| Private-App | docker-host EC2, 관제 대시보드 EC2, 선택 내부 공격자 EC2, SSM VPC endpoint | docker-host: Docker 그룹 안에 Nginx·Flask·MySQL 로고. 대시보드: Flask 로고와 Claude 로고(AI 챗봇·AI 보고서 작성). 공격자: 제품명 라벨 |
+| Private-DB | 시연 MySQL EC2, 선택 허니팟 EC2 | 시연 MySQL: MySQL 로고. 허니팟: 제품명 라벨과 Claude 로고(AI 분석) |
+| VPC 밖 | 다중 리전 공격자 EC2(`attacker` 모듈, 각 리전 기본 VPC) | 제품명 라벨. 프로젝트 VPC 안에 넣지 않는다 |
+
+Private 서브넷의 자원을 인터넷 진입점처럼 그리거나 Public 서브넷에 넣지 않는다. 서비스용 docker-host의 MySQL과 Private-DB의 시연 MySQL EC2는 서로 다른 자산이므로 같은 테두리에 합치지 않는다.
+
+**WAF는 ALB에 붙는 보호 요소로 02에 그린다.** WAFv2 웹 ACL은 ALB에 연결되는 선택 리소스(`enable_waf`)다. 02의 인터넷 쪽 경계와 ALB 사이에 WAF 아이콘 하나를 두고 ALB와 “연결” 라벨의 중립 선으로 잇는다. WAF를 03·04 영역이나 공통·보안 서비스 박스에 두지 않는다. WAF 차단 신호가 finding이 되는 경로(CloudWatch 알람 → `waf_finding` → Security Hub)는 아래 Security Hub 통합 규칙에 따라 그린다.
+
 **누락하지 않을 항목.** README 표의 모든 행 외에 특히 다음을 반드시 그린다: Amazon Bedrock, IAM 역할, GitHub OIDC, Secrets Manager, KMS, 그리고 관제 대시보드의 **AI 챗봇**과 **AI 보고서 작성** 기능. 04의 관제 대시보드 테두리 안에는 대시보드 기능 라벨 상자(AI 챗봇, AI 보고서 작성, 원클릭 조치 등)를 두고, AI 챗봇과 AI 보고서 작성 상자에서 Bedrock 아이콘으로 선을 각각 그린다. 모델 표기는 코드의 모델 ID 변수에 있는 모델만 쓴다. 코드에 없는 모델은 채택이 결정 문서에 확정되기 전에는 그리지 않는다.
 
 **Amazon Bedrock은 모든 아키텍처 페이지에 표기한다.** 연결선은 그 페이지의 범위에서 실제로 Bedrock을 호출하는 기능(대시보드 AI 챗봇, AI 보고서 작성, 허니팟)에만 그린다.
 
+
+**수집한 탐지 결과는 Security Hub로 통합해 그린다.** 03의 Security Hub 아이콘 하나를 집계 지점으로 두고, AWS Config, GuardDuty, Inspector, IAM Access Analyzer에서 Security Hub로 finding 선을 각각 그린다. WAF는 02의 WAF → CloudWatch 알람 → `waf_finding` → Security Hub 순서로 잇는다(`waf_finding`은 Lambda 아이콘 하나에서 나가는 선이다). Security Hub에서 나가는 선(EventBridge를 거쳐 `finding_sync`, `asr_trigger`로)도 아이콘 하나에서 대상마다 각각 그린다. 이 집계 선은 처리 체인이 아니며 아래의 “탐지 소스는 병렬” 규칙을 깨지 않는다. 다음 세 가지는 섞지 않는다.
+
+- CloudTrail, VPC Flow Logs, 호스트·서비스 로그는 finding이 아니므로 Security Hub로 직접 잇지 않는다. 이들은 CloudWatch Logs·S3로 가고, GuardDuty·Config 등의 입력이 된다.
+- GuardDuty와 Inspector는 README 기준으로 Security Hub 외에 EventBridge 경로(`correlator`, `finding_sync`)로도 직접 나가므로 그 선도 별도로 그린다.
+- Security Hub는 이 계정·리전의 AWS Foundational Security Best Practices 기준 집계다. 다른 계정 집계나 타사 제품 연동을 그리지 않는다.
 
 03 안의 탐지 소스는 병렬 관계로 좌우에 나란히 두고 순차 처리 체인으로 연결하지 않는다. 04 안의 구성요소는 03에서 들어오는 방향(EventBridge·Lambda)에서 저장·알림·관제 방향으로 좌→우 순서를 따른다. 배치 순서만으로 새 처리 관계를 만들지 않는다.
 
@@ -168,6 +188,9 @@ VPC 내부의 서브넷은 좌우 수평으로 나란히 배치한다. 현재 �
 - 전체 시스템도는 3행 배치. 행 1은 01 IaC·배포 제어(낮은 가로 띠), 행 2는 02 보호 대상 인프라(가장 큰 영역), 행 3은 좌측 03 탐지·수집과 우측 04 SOAR·상태·조치·관제를 같은 높이로 나란히 두고 좌→우로 연결. 영역 헤더는 좌측 상단에 01~04 번호와 이름.
 - VPC, 서브넷, EC2는 아이콘이 아닌 얇은 테두리와 좌측 상단 이름 라벨로 표현. VPC ⊃ 서브넷 ⊃ EC2 순서로 중첩하고, EC2 안의 컨테이너·프로세스는 라벨 상자. VPC 내부 서브넷은 좌우 수평 배치. 실제 서브넷 경계와 자원 위치를 유지. 보안 그룹·NACL 프레임은 그리지 않음.
 - 반드시 포함: Amazon Bedrock, IAM 역할, GitHub OIDC, Secrets Manager, KMS(행 2 오른쪽 “공통·보안 서비스” 박스에 모음), 관제 대시보드의 AI 챗봇과 AI 보고서 작성(04의 관제 대시보드 테두리 안 라벨 상자, 각각 Bedrock 아이콘으로 선 연결). Bedrock은 모든 아키텍처 페이지에 표기. 모델 표기는 코드의 모델 ID와 일치하는 것만.
+- 서브넷 구분 엄수: Public-Web(DVWA, ALB, 선택 NAT), Public-Web B(ALB 보조 AZ, EC2 없음), Private-App(docker-host, 관제 대시보드, 선택 내부 공격자), Private-DB(시연 MySQL, 선택 허니팟). 다중 리전 공격자는 VPC 밖. 각 EC2는 자기 서브넷 테두리 안에만 두고 EC2마다 별도 테두리, 그 안에 앱 공식 로고.
+- WAF는 02에서 ALB에 연결된 아이콘 하나로 그리고 03·04에 두지 않음.
+- Security Hub 통합: 03의 Security Hub 아이콘 하나로 Config, GuardDuty, Inspector, IAM Access Analyzer finding과 WAF(알람 → waf_finding)가 모이게 각각 선을 그림. 로그 원천(CloudTrail, Flow Logs, 호스트 로그)은 Security Hub에 직접 잇지 않음. Security Hub에서 EventBridge를 거쳐 finding_sync·asr_trigger로 나가는 선은 아이콘 하나에서 각각.
 - 영역 간 연결은 01→02 배포, 02→03 로그·finding, 03→04 finding·알람, 04→02 조치·조회만 표시. 흐름은 묶지 않고, 한 서비스 아이콘에서 여러 대상으로 이어지면 아이콘 하나에서 대상마다 선을 각각 그림.
 - 선 색은 4가지만: 정상 네이비 실선, 자동 조치 오렌지 실선, 공격 빨간 점선, 로그 회색 실선, 조회 회색 점선. 각 흐름 라벨은 한국어 단어 하나(2~4자), 문장 금지. 번호 콜아웃은 원형 배지 1~8번까지만 사용.
 - 글자 최소화: 노드 라벨은 서비스명만(역할 설명 없음). ID 태그, 각주, 문장 설명, 보조 패널, 하단 설명 문장을 넣지 않음.
@@ -216,6 +239,9 @@ VPC 내부의 서브넷은 좌우 수평으로 나란히 배치한다. 현재 �
 - [ ] EC2 안의 Docker·Nginx·Flask·MySQL은 공식 로고가 EC2 테두리 안에 있고, AI 기능은 Claude 로고로 표기되며 Bedrock 호출 선은 유지된다. 로고는 공식 에셋이다.
 - [ ] 탐지 → 관제 → 조치 주 흐름이 단계 태그·배지·굵은 선으로 한눈에 읽히며, 자동(오렌지)과 수동 승인(네이비) 조치가 구분된다.
 - [ ] VPC, 서브넷, EC2는 아이콘이 아닌 테두리이며 VPC ⊃ 서브넷 ⊃ EC2 순으로 중첩되어 있다.
+- [ ] 각 EC2가 README·infrastructure-design의 서브넷(Public-Web, Public-Web B, Private-App, Private-DB, VPC 밖 공격자)에 정확히 들어 있고, 두 서브넷에 걸친 EC2가 없다.
+- [ ] WAF가 02의 ALB에 연결되어 있고 03·04에 없다.
+- [ ] Config, GuardDuty, Inspector, IAM Access Analyzer, WAF(알람 → waf_finding)의 finding이 Security Hub 하나로 각각 선을 그어 모이고, 로그 원천은 Security Hub에 직접 연결되어 있지 않다.
 - [ ] 구성요소 이름·소유 계층·네트워크 위치가 기준 문서와 일치한다.
 - [ ] 각 화살표의 출발점·도착점·방향·의미가 근거 문서에서 확인된다.
 - [ ] 조건부 요소, 자동·수동 경로, 제안·미결정 상태가 눈에 띄게 구분된다.

@@ -1,13 +1,13 @@
 // 이벤트 상세 창. 열린 이벤트 ID 는 ui.activeId(주소창 동기화와 공유).
 // v23: 무엇이 문제인지(팀 설명) → 왜 위험한지 → 어떻게 고치는지 → AWS 원문 → 자동 조치 여부 → 조치 기록 순서.
-import {$,api,notifications,ui} from '../context.js?v=v42';
-import {esc,format,milliseconds,withCode} from './format.js?v=v42';
-import {badge} from './badges.js?v=v42';
-import {patchMarkup} from './rendering.js?v=v42';
-import {syncUrl} from '../router.js?v=v42';
-import {autoChip} from './remediation.js?v=v42';
-import {flowBlock,eventStages,FLOW_NOTE_EVENT} from '../pages/flow-map.js?v=v42';
-import {remediationSection,loadRemediation,stopRemediation} from './remediate.js?v=v42';
+import {$,api,notifications,ui} from '../context.js?v=v43';
+import {esc,format,milliseconds,withCode} from './format.js?v=v43';
+import {badge} from './badges.js?v=v43';
+import {patchMarkup} from './rendering.js?v=v43';
+import {syncUrl} from '../router.js?v=v43';
+import {autoChip} from './remediation.js?v=v43';
+import {flowBlock,eventStages,FLOW_NOTE_EVENT} from '../pages/flow-map.js?v=v43';
+import {remediationSection,loadRemediation,stopRemediation} from './remediate.js?v=v43';
 let detailSerial=0;
 let historyCache={id:null,data:null};
 function flowSection(e){
