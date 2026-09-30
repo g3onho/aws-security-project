@@ -195,6 +195,7 @@ class StandardService:
         self.history = HistoryRepository(store)
         self.secret = str(cursor_secret).encode()
         self.writes_enabled = writes_enabled
+        self._vuln_rows_memo = None  # (binding, 원본 목록 객체, 정렬된 행) — 취약점 페이지 연속 요청용
         self.project_vpc_id = None  # 앱 조립 때 설정(기본 보안그룹 조치 가능 여부 판단용)
         self.remediations = None   # 앱 조립 때 RemediationService 를 붙인다(조치 이력에 대시보드 조치를 싣는다)
 
@@ -242,8 +243,9 @@ class StandardService:
             raise Problem(400, "커서의 필터 또는 사용자 범위가 달라졌습니다.", "INVALID_CURSOR")
         return q, binding, marker
 
-    def _page(self, rows, q, binding, marker):
-        rows = sorted(rows, key=lambda row: (-row["_sortAt"], row["id"]))
+    def _page(self, rows, q, binding, marker, presorted=False):
+        if not presorted:
+            rows = sorted(rows, key=lambda row: (-row["_sortAt"], row["id"]))
         if marker:
             rows = [row for row in rows if (-row["_sortAt"], row["id"]) > (-marker["at"], marker["id"])]
         page = rows[:q["limit"]]
@@ -333,7 +335,10 @@ class StandardService:
         self.provider.require_ready()
         principal = self.workflow.principal(actor)
         q, binding, marker = self._query(kind, raw, principal)
-        events = self._events(actor, principal)
+        # 취약점 조회는 이벤트 목록을 쓰지 않는다(공급자가 events 를 무시한다). 연결 모드에서는 페이지마다
+        # 이벤트 원장·상관분석을 다시 읽지 않는다. 연결 전 모드는 기존처럼 이벤트 권한 확인을 유지한다.
+        skip_events = kind == "vulnerabilities" and getattr(self.provider, "connected", False)
+        events = None if skip_events else self._events(actor, principal)
         if kind == "events":
             rows = [{**event_dto(event, self.workflow.allowed_actions(event, actor) if self.writes_enabled else [],
                                    dashboard_action(event, self.project_vpc_id)), "_sortAt": event["at"]}
@@ -355,8 +360,14 @@ class StandardService:
                     "automation": self._automation_summary(q, principal, events),
                     "alarms": self._alarm_summary(principal)}
         if kind == "vulnerabilities":
+            source_items = self.provider.vulnerabilities(q, events)["items"]
+            # 화면은 같은 조건으로 200건씩 여러 페이지를 연달아 받는다. 원본 목록 객체와 조건(binding: 필터·기간·
+            # 사용자 범위)이 같으면 가공·정렬 결과를 다음 페이지가 다시 쓴다. 캐시가 갱신되면 목록 객체가 바뀌어 자동 무효화된다.
+            memo = self._vuln_rows_memo
+            if memo and memo[0] == binding and memo[1] is source_items:
+                return self._page(memo[2], q, binding, marker, presorted=True)
             rows = []
-            for scan in self.provider.vulnerabilities(q, events)["items"]:
+            for scan in source_items:
                 # 기간 기준 = 가장 최근 탐지 시각(Inspector lastObservedAt). Inspector 는 같은 서버·CVE·패키지를
                 # 기록 1건으로 두고 다시 탐지될 때마다 이 시각만 갱신한다. 최초 발견 시각(firstObservedAt)으로
                 # 거르면 처음 발견 뒤 시간이 지나면 계속 탐지되는 CVE도 기간 보기에서 사라진다(v20.1).
@@ -376,7 +387,9 @@ class StandardService:
                              "installedVersion": scan.get("installedVersion"), "cvss": scan.get("cvss"),
                              **{key: scan.get(key) for key in VULNERABILITY_DETAIL},
                              "imageTags": list(scan.get("imageTags") or []), "dataMode": "live", "_sortAt": observed})
-            return self._page(rows, q, binding, marker)
+            rows.sort(key=lambda row: (-row["_sortAt"], row["id"]))
+            self._vuln_rows_memo = (binding, source_items, rows)
+            return self._page(rows, q, binding, marker, presorted=True)
         if kind == "history":
             return self._history(events, q, binding, marker, principal)
         if kind == "metrics":

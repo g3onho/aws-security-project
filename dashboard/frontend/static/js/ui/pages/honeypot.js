@@ -16,7 +16,9 @@ const CARD_LABEL={instance:'미끼 인스턴스',logs:'로그 수신',ai:'AI 응
 const CARD_COLOR={ok:MINT,info:SOFT,warn:AMBER,bad:RED,unknown:GRAY};
 const CARD_MARK={ok:'✓',info:'i',warn:'!',bad:'✕',unknown:'?'};
 const INTENT_KO={recon:'정찰','credential-access':'자격증명 접근','lateral-movement':'내부 이동',exfiltration:'유출',impact:'영향·파괴',unknown:'미상'};
-const INTENT_COLOR={recon:SOFT,'credential-access':AMBER,'lateral-movement':'#8f30cf',exfiltration:'#c4691c',impact:RED,unknown:GRAY};
+// 통계 차트·관계 그래프 전용 파스텔 팔레트: 다른 화면(위험도 색·자동 대응 카드)과 같은 톤으로 맞춘다.
+const CH={mint:'#5cbfae',blue:'#8aa6c8',amber:'#f2c766',orange:'#eba363',red:'#f28f96',violet:'#b8a1e3',gray:'#aab6b1',ink:'#8a9891'};
+const INTENT_COLOR={recon:CH.blue,'credential-access':CH.amber,'lateral-movement':CH.violet,exfiltration:CH.orange,impact:CH.red,unknown:CH.gray};
 const SEVERITY_KO={low:'낮음',medium:'보통',high:'높음',critical:'치명'};
 const SEVERITY_COLOR={low:severityColors.Low,medium:severityColors.Medium,high:severityColors.High,critical:severityColors.Critical};
 const STEP_STATE={done:['완료','✓',MINT],missing:['기록 없음','–',GRAY],failed:['실패','✕',RED],pending:['진행 중','…',AMBER],unknown:['읽지 못함','?',AMBER]};
@@ -123,20 +125,24 @@ function statsSection(){
    <div class="hp-chart"><h3>로그인 시도 사용자명 상위</h3><div class="hp-canvas">${label('hp-chart-users','로그인 시도 사용자명 상위')}</div></div>
   </div><p class="muted hp-note">의도·위험도는 AI 분석의 참고 값이며 차단·해제 판단에 쓰지 않습니다. 비밀번호는 집계하지 않습니다.</p></section>`;
 }
-const opts=(extra={})=>({...extra});
-const horizontal=(id,rows,color,label)=>drawChart(id,'bar',{labels:rows.map(r=>String(r.key??r.ip).slice(0,40)),datasets:[{label,data:rows.map(r=>r.count??r.sessions),backgroundColor:color}]},
- opts({indexAxis:'y',scales:{x:{beginAtZero:true,ticks:{precision:0}}}}));
+const TICK='#4f5b58',GRID='#dfe6e3';
+const TOOLTIP={backgroundColor:'#d8e6f3',titleColor:'#0f0f0f',bodyColor:'#0e1e2a',padding:10};  // charts.js 기본값과 같다(plugins 를 넘기면 통째로 바뀌므로 다시 지정)
+const opts=(extra={})=>({...extra,plugins:{legend:{display:false},tooltip:TOOLTIP,...(extra.plugins||{})}});
+const axis=(extra={})=>({beginAtZero:true,ticks:{precision:0,color:TICK},grid:{color:GRID},border:{color:GRID},...extra});
+const catAxis=(extra={})=>({ticks:{color:TICK},grid:{display:false},border:{color:GRID},...extra});
+const horizontal=(id,rows,color,label)=>drawChart(id,'bar',{labels:rows.map(r=>String(r.key??r.ip).slice(0,40)),datasets:[{label,data:rows.map(r=>r.count??r.sessions),backgroundColor:color,borderRadius:4,maxBarThickness:22}]},
+ opts({indexAxis:'y',scales:{x:axis(),y:catAxis()}}));
 function drawCharts(){
  if(!S.stats?.ok||!S.stats.data.totals.sessions)return;
  const d=S.stats.data,span=(Date.parse(d.to)-Date.parse(d.from))/3600000;
  drawChart('hp-chart-timeline','bar',{labels:d.timeline.map(b=>formatAt(b.at,span)),datasets:[
-  {label:'세션',data:d.timeline.map(b=>b.sessions),backgroundColor:MINT},{label:'명령',data:d.timeline.map(b=>b.commands),backgroundColor:SOFT}]},
-  opts({plugins:{legend:{display:true,labels:{color:'#28372d'}}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}));
- horizontal('hp-chart-ips',d.topIps.map(r=>({key:r.ip,count:r.sessions})),MINT,'세션');
- horizontal('hp-chart-commands',d.topCommands,SOFT,'횟수');
- horizontal('hp-chart-users',d.topUsers,AMBER,'시도');
- const donut=(id,rows,names,colors)=>drawChart(id,'doughnut',{labels:rows.map(r=>names[r.key]),datasets:[{data:rows.map(r=>r.count),backgroundColor:rows.map(r=>colors[r.key]),borderWidth:0}]},
-  opts({plugins:{legend:{display:true,position:'right',labels:{color:'#28372d'}}}}));
+  {label:'세션',data:d.timeline.map(b=>b.sessions),backgroundColor:CH.mint,borderRadius:4},{label:'명령',data:d.timeline.map(b=>b.commands),backgroundColor:CH.blue,borderRadius:4}]},
+  opts({plugins:{legend:{display:true,labels:{color:TICK,boxWidth:12}}},scales:{y:axis(),x:catAxis()}}));
+ horizontal('hp-chart-ips',d.topIps.map(r=>({key:r.ip,count:r.sessions})),CH.mint,'세션');
+ horizontal('hp-chart-commands',d.topCommands,CH.blue,'횟수');
+ horizontal('hp-chart-users',d.topUsers,CH.amber,'시도');
+ const donut=(id,rows,names,colors)=>drawChart(id,'doughnut',{labels:rows.map(r=>names[r.key]),datasets:[{data:rows.map(r=>r.count),backgroundColor:rows.map(r=>colors[r.key]),borderWidth:2,borderColor:'#ebefed'}]},
+  opts({cutout:'62%',plugins:{legend:{display:true,position:'right',labels:{color:TICK,boxWidth:10}}}}));
  donut('hp-chart-intents',d.intents,INTENT_KO,INTENT_COLOR);
  donut('hp-chart-severity',d.severities,SEVERITY_KO,SEVERITY_COLOR);
 }
@@ -166,7 +172,7 @@ function graphSection(){
  const lay=layout(g),at=Object.fromEntries(lay.nodes.map(n=>[n.id,n]));
  const lines=lay.links.map(l=>at[l.source]&&at[l.target]?`<line x1="${at[l.source].x.toFixed(1)}" y1="${at[l.source].y.toFixed(1)}" x2="${at[l.target].x.toFixed(1)}" y2="${at[l.target].y.toFixed(1)}"/>`:'').join('');
  const dots=lay.nodes.map(n=>{
-  const r=n.type==='ip'?13:n.type==='session'?8:5,fill=n.type==='ip'?MINT:n.type==='session'?(INTENT_COLOR[n.intent]||GRAY):'#28372d';
+  const r=n.type==='ip'?13:n.type==='session'?8:5,fill=n.type==='ip'?CH.mint:n.type==='session'?(INTENT_COLOR[n.intent]||CH.gray):CH.ink;
   const name=n.type==='ip'?n.label:n.type==='session'?`세션 ${n.label} · ${INTENT_KO[n.intent]||'미상'}`:n.label;
   const tip=`<title>${esc(name)}</title>`;
   const text=n.type==='session'?'':`<text x="${(n.x+r+3).toFixed(1)}" y="${(n.y+4).toFixed(1)}">${esc(n.label.slice(0,n.type==='ip'?20:18))}</text>`;
@@ -175,7 +181,7 @@ function graphSection(){
  const more=hidden.ips||hidden.sessions||hidden.commands?`<p class="muted hp-note">화면이 복잡해지지 않도록 일부만 그렸습니다: 외 IP ${hidden.ips}개 · 세션 ${hidden.sessions}개 · 명령 ${hidden.commands}종.</p>`:'';
  return `<section class="panel full-panel">${header('공격 관계 그래프 · IP → 세션 → 명령','RELATIONS')}${warnLines(part)}
   <svg class="hp-graph" viewBox="0 0 ${W} ${H}" role="group" aria-label="출발지 IP, 세션, 명령의 관계 그래프"><g class="hp-links">${lines}</g>${dots}</svg>
-  <div class="hp-legend"><span><i style="background:${MINT}"></i>출발지 IP</span>${Object.entries(INTENT_KO).map(([k,v])=>`<span><i style="background:${INTENT_COLOR[k]}"></i>세션 · ${esc(v)}</span>`).join('')}<span><i style="background:#28372d"></i>명령</span></div>
+  <div class="hp-legend"><span><i style="background:${CH.mint}"></i>출발지 IP</span>${Object.entries(INTENT_KO).map(([k,v])=>`<span><i style="background:${INTENT_COLOR[k]}"></i>세션 · ${esc(v)}</span>`).join('')}<span><i style="background:${CH.ink}"></i>명령</span></div>
   ${lay.plain?'<p class="muted hp-note">그래프 배치 라이브러리를 불러오지 못해 격자로 표시합니다.</p>':''}${more}
   <p class="muted hp-note">IP·세션 노드를 누르면 아래 타임라인·세션 상세로 이동합니다.</p></section>`;
 }

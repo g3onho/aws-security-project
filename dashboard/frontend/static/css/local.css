@@ -1256,3 +1256,42 @@ main{padding-bottom:24px}
 .response-overview-panel{position:relative}
 .response-overview-panel .response-body{padding-bottom:52px}
 .response-overview-panel .response-overview-footer{position:absolute;right:16px;bottom:12px;margin:0;padding:0;display:block;align-self:auto;border-top:0}
+
+/* (29) 10.01 화면 정리 */
+/* 통합 관제 자동 대응 현황: 세 카드를 파스텔 톤으로(자동=민트, 수동=살구, 직접=하늘). 숫자는 배경 대비를 위해 한 단계 진하게 */
+.response-overview-panel .response-summary>.response-summary-card{border-color:var(--pastel-line);background:linear-gradient(180deg,var(--pastel-top) 0%,var(--pastel-bottom) 100%);box-shadow:0 1px 2px rgba(20,40,32,.04)}
+.response-overview-panel .response-summary-card.automatic{--ring-color:#5cbfae;--ring-from:#8fdccd;--ring-to:#cdf1e9;--pastel-top:#f6fcfa;--pastel-bottom:#e0f4ee;--pastel-line:#cfe9e1;--num-color:#2f8576}
+.response-overview-panel .response-summary-card.manual{--ring-color:#eba363;--ring-from:#f6bf8b;--ring-to:#fce2c6;--pastel-top:#fffaf5;--pastel-bottom:#fdeddc;--pastel-line:#f4dfc9;--num-color:#b56a2a}
+.response-overview-panel .response-summary-card.direct{--ring-color:#8aa6c8;--ring-from:#a9c1e0;--ring-to:#d8e5f4;--pastel-top:#f8fafd;--pastel-bottom:#e8eff8;--pastel-line:#d8e3f0;--num-color:#5a789f}
+.response-overview-panel .response-summary-card>b{color:var(--num-color)}
+.response-overview-panel .response-share-ring b{color:#33413b}
+.rr-track{stroke:color-mix(in srgb,var(--ring-color) 18%,#fff)}
+.rr-arc{filter:none}
+
+/* 보안 이벤트: 기간 패널과 위험도 필터 사이를 다른 화면과 같은 기본 간격으로 */
+body.view-events .timeline{margin-bottom:var(--space)}
+
+/* 취약점 점검: 패키지 묶음 머리줄(발견 위치 · 설치된 패키지 · 발견된 취약점)의 세 칸을 같은 여백과 구분선으로 */
+.cve-group summary{grid-template-columns:minmax(220px,1.15fr) minmax(220px,1.25fr) minmax(130px,.5fr);gap:0;padding:14px 0;align-items:stretch}
+.cve-group summary>*{padding:0 22px;min-width:0}
+.cve-group summary>.vg-main,.cve-group summary>.vg-result{border-left:1px solid #d3ddd9}
+.cve-group summary>.vg-result{justify-items:center;text-align:center}
+@media(max-width:1100px){.cve-group summary{grid-template-columns:minmax(150px,1fr) minmax(170px,1.1fr) minmax(100px,.5fr)}.cve-group summary>*{padding:0 14px}}
+@media(max-width:720px){.cve-group summary{grid-template-columns:minmax(0,1fr) auto;gap:8px 0;padding:12px 0}.cve-group summary>.vg-main,.cve-group summary>.vg-result{border-left:0}.cve-group summary>.vg-result{justify-items:end;text-align:right}}
+
+/* 허니팟: 파이프라인 타임라인은 줄바꿈하지 않고 한 줄로 두고 가로로 스크롤 */
+.hp-steps{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(176px,1fr);overflow-x:auto;padding-bottom:14px;scrollbar-width:thin}
+
+/* 허니팟 통계·관계 그래프: 다른 화면의 카드(#ebefed·테두리 #d8e0dc·간격 --space)와 같은 모양으로 */
+.hp-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space);padding:var(--space)}
+.hp-totals>div{padding:11px 14px;border:1px solid #d8e0dc;border-radius:5px;background:#ebefed;color:#3f4f40;font-size:13px}
+.hp-totals b{font-size:26px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums;color:#161d1b}
+.hp-charts{gap:var(--space);padding:0 var(--space) var(--space)}
+.hp-chart{padding:12px 14px;border-color:#d8e0dc;background:#ebefed}
+.hp-chart h3{font-size:13.5px;font-weight:700;color:#1b2620;margin-bottom:10px}
+.hp-graph{width:calc(100% - 2 * var(--space));margin:var(--space) var(--space) 0;border:1px solid #d8e0dc;border-radius:5px;background:#f7faf9}
+.hp-graph line{stroke:#cfd9d5}
+.hp-graph circle{stroke:#fff;stroke-width:2}
+.hp-graph text{fill:#3f4f40;font-size:12.5px}
+.hp-node:hover circle,.hp-node:focus-visible circle{stroke:#3f4f40;stroke-width:2}
+.hp-legend{padding:12px var(--space) 0;gap:6px 16px;color:#3f4f40}
