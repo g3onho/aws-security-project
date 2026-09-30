@@ -18,6 +18,26 @@ SUPPORT_STATES = {"runnable", "prep-needed", "observe-only", "design-needed"}
 RUN_ALL_TERMINAL = {"Success", "Cancelled", "TimedOut", "Failed"}
 RUN_ALL_STALE_MS = 40 * 60 * 1000
 
+# [보고서 추출](SEC-08) 다운로드 파일 최상위에 담는 프롬프트. 파일을 통째로 AI 에 붙여넣으면
+# 이 지시만으로 리전을 넘나드는 종합 분석 보고서가 나오도록 한다(리전별 steps 안의 analysisPrompt
+# 는 리전 하나만 보고 쓰는 지시라 리전 수만큼 중복되고, 리전 간 비교는 못 한다).
+REPORT_ANALYSIS_PROMPT = (
+    "이 JSON은 격리된 팀 소유 실습 환경(DVWA)에서 여러 리전의 공격자 노드가 동시에 수행한 모의 공격"
+    "(SEC-08) 로그를 하나로 합친 파일이다. regions 아래 리전마다 steps 배열(nmap 포트 스캔·hydra SSH/"
+    "웹 무차별 대입·ZAP 베이스라인·sqlmap SQL 주입)이 들어 있다. 파일 전체를 근거로 종합 보안 분석 "
+    "보고서를 작성하라.\n"
+    "(1) 리전별로 (a) 무엇을 시도했는지 (b) 실제로 성공/발견된 것(열린 포트, 유효 자격증명, 취약점, "
+    "주입 지점, WAF 차단 여부)만 로그 근거로 정리하라.\n"
+    "(2) 리전 간 공통 결과와 차이를 구분하라(예: 일부 리전만 성공/실패했다면 그 사실과, 로그에 나온 "
+    "이유—연결 끊김 등—를 그대로 적고, 로그에 이유가 없으면 '원인 불명'이라고 써라. 방어가 더 강해서 "
+    "실패했다고 추측하지 마라).\n"
+    "(3) 도구 자체가 실행되지 않은 경우(파라미터 오류 등)와 실제 보안 결과(인증 성공/실패, 주입 성공/실패)"
+    "를 명확히 구분하라 — 도구 오류를 취약점 부재의 증거로 쓰지 마라.\n"
+    "(4) 항목별 위험도와 근거, (5) 권고 대응을 정리하라.\n"
+    "로그에 근거가 없는 내용은 추측·과장하지 말고 '근거 없음'으로 명시하라. 출력에 없는 자격증명·취약점을 "
+    "지어내지 마라."
+)
+
 # 실행 유형(도구 단위). CPU·메모리 상승 자체는 침해가 아니라 부하 시험으로 표기한다.
 DRILL_TYPES = [
     {"id": "web-scan", "name": "웹 보안 검사", "tool": "ZAP",
@@ -46,13 +66,13 @@ SCENARIOS = [
      "support": "runnable", "note": "SSH 구성 finding은 SSH 무차별 대입 탐지가 아니다. 전용 실습 SG에서 재현·즉시 회수(ASR-RevokeSecurityGroupIngress)."},
     {"id": "SEC-02", "purpose": "서비스 HTTP·보안 헤더 구성", "types": ["web-scan"],
      "sources": ["웹 응답", "curl/ZAP"], "response": "수동(Nginx 강화)",
-     "support": "prep-needed", "note": "수동 변경·검증. 설정 파일 존재만으로 TLS 완료로 보지 않는다."},
+     "support": "runnable", "note": "점검은 자동 실행(SCAN-PortAndWeb). 헤더 강화 자체는 수동. 설정 파일 존재만으로 TLS 완료로 보지 않는다."},
     {"id": "SEC-03", "purpose": "3306 노출과 자동/수동 SG 비교", "types": [],
      "sources": ["Config", "Security Hub"], "response": "SG 자동/수동",
      "support": "runnable", "note": "격리된 테스트 SG에서만. db-auto-sg(자동 회수)·db-manual-sg(알림만)에 같은 위반을 재현해 비교한다."},
     {"id": "SEC-04", "purpose": "컨테이너 이미지 CVE", "types": [],
      "sources": ["Inspector", "Trivy(S3)"], "response": "수동 교체",
-     "support": "prep-needed", "note": "Trivy 결과의 화면 통합은 별도 계약."},
+     "support": "runnable", "note": "스캔은 자동 실행(SCAN-ContainerImage). 이미지 교체 자체는 수동. Trivy 결과의 화면 통합은 별도 계약."},
     {"id": "SEC-05", "purpose": "노출 자격증명·과도 권한", "types": [],
      "sources": ["GuardDuty", "Access Analyzer", "CloudTrail"], "response": "Access Key 비활성화(자동)",
      "support": "observe-only", "note": "테스트 키만 사용. 최소권한 수정은 수동."},
@@ -61,19 +81,19 @@ SCENARIOS = [
      "support": "runnable", "note": "MySQL은 CloudWatch 경로(DEC-005). 파리 내부 공격자 EC2에서 ATK-MysqlBruteForce(hydra)로 실행."},
     {"id": "SEC-06B", "purpose": "SSH 무차별 대입 시도", "types": [],
      "sources": ["GuardDuty"], "response": "수동",
-     "support": "prep-needed", "note": "SSH는 GuardDuty 경로(DEC-005). 자동 조치 연결 없음."},
+     "support": "runnable", "note": "SEC-08 지리 공격 실행에 함께 들어 있다(hydra ssh). SSH는 GuardDuty 경로(DEC-005). 자동 조치 연결 없음."},
     {"id": "SEC-07", "purpose": "비밀값 노출·자격증명 분리", "types": [],
      "sources": ["코드 검토", "Secrets Manager"], "response": "수동 회전",
-     "support": "prep-needed", "note": "합성 테스트 비밀만 사용."},
+     "support": "runnable", "note": "스캔은 자동 실행(SCAN-Secrets). 회전 자체는 수동. 합성 테스트 비밀만 사용."},
     {"id": "SEC-08", "purpose": "DVWA 웹 공격 및 WAF 반응", "types": ["web-scan"],
      "sources": ["ZAP", "WAF 지표·로그", "Security Hub finding"], "response": "수동",
-     "support": "prep-needed", "note": "DVWA는 별도 시험 대상(DEC-004). ZAP 실행 경로는 신규."},
+     "support": "runnable", "note": "DVWA는 별도 시험 대상(DEC-004). 5개 리전 공격자 EC2가 nmap·hydra·ZAP·sqlmap을 자동 실행."},
     {"id": "SEC-09", "purpose": "감사·구성·서비스 로그", "types": [],
      "sources": ["CloudTrail", "Config", "VPC Flow Logs", "CloudWatch Logs"], "response": "없음",
      "support": "runnable", "note": "원본 로그 보관과 finding 통합을 분리한다. CloudTrail·Config·VPC Flow Logs 수집 상태를 즉시 조회한다(조회 전용, 조치 없음)."},
     {"id": "SEC-10", "purpose": "CPU·메모리 과부하와 운영 알림", "types": ["load"],
      "sources": ["EC2 CPU", "Agent 메모리", "CloudWatch Alarm", "SNS"], "response": "없음",
-     "support": "prep-needed", "note": "부하 실행의 대시보드 경로는 신규. 알람 임계값은 실제 설정에서 조회한다."},
+     "support": "runnable", "note": "부하 실행의 대시보드 경로는 신규. 알람 임계값은 실제 설정에서 조회한다."},
 ]
 
 
@@ -348,16 +368,18 @@ class DrillService:
 
     def report(self, run_id):
         """SEC-08(공격) 로그를 리전별로 읽어와 하나로 합친 JSON. '보안 시나리오' 페이지
-        [보고서 추출]이 부른다 — 프런트가 이 응답을 그대로 파일 하나로 내려받게 한다."""
+        [보고서 추출]이 부른다 — 프런트가 이 응답을 그대로 파일 하나로 내려받게 한다.
+        리전별 steps 안에도 analysisPrompt 가 하나씩 들어 있지만(리전 수만큼 중복), 파일 전체를
+        한 번에 AI 에 넣었을 때 리전을 넘나들며 종합하도록 최상위에도 별도 프롬프트를 담는다."""
         run = self.runs.get(run_id)
         if run is None:
             raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
         atk_cmds = [c for c in run.get("commands", []) if c.get("sec") == "SEC-08"]
         if not atk_cmds:
-            return {"runId": run_id, "regions": {}}
+            return {"runId": run_id, "analysisPrompt": REPORT_ANALYSIS_PROMPT, "regions": {}}
         bucket = self.attack_config.get("scanBucket", "")
         regions = self.provider.merged_report(atk_cmds, bucket)
-        return {"runId": run_id, "regions": regions}
+        return {"runId": run_id, "analysisPrompt": REPORT_ANALYSIS_PROMPT, "regions": regions}
 
     def environment(self):
         status = self.provider.status()

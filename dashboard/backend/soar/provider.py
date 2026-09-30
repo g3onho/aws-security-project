@@ -6,6 +6,7 @@ AwsProvider 는 조립만 한다(설계 2.3):
 표준 API 서비스(contracts.StandardService)가 부르는 메서드 이름과 반환 모양은 바꾸지 않는다.
 """
 import json
+import time
 import uuid
 
 from .errors import Problem
@@ -524,10 +525,18 @@ class AwsProvider:
         except Exception as error:
             return {"sec": sec, "regionLabel": region_label, "status": "Failed", "detail": _error_code(error)}
 
-        desc = ec2.describe_security_groups(GroupIds=[sg_id])["SecurityGroups"][0]
-        still_open = any(r.get("CidrIp") == "0.0.0.0/0"
-                         for perm in desc.get("IpPermissions", []) if perm.get("FromPort") == port
-                         for r in perm.get("IpRanges", []))
+        # asr_trigger 는 회수를 직접 하지 않고 SSM Automation(ASR-RevokeSecurityGroupIngress)을
+        # 시작만 시키고 바로 리턴한다 — 실제 회수는 몇 초 뒤 비동기로 일어난다(demo/trigger-auto-remediation.sh
+        # 의 sleep 6과 같은 이유). expect_revoked=False(대조군)는 애초에 안 바뀌므로 기다릴 필요 없다.
+        attempts = 6 if expect_revoked else 1
+        for i in range(attempts):
+            desc = ec2.describe_security_groups(GroupIds=[sg_id])["SecurityGroups"][0]
+            still_open = any(r.get("CidrIp") == "0.0.0.0/0"
+                             for perm in desc.get("IpPermissions", []) if perm.get("FromPort") == port
+                             for r in perm.get("IpRanges", []))
+            if not still_open or i == attempts - 1:
+                break
+            time.sleep(2)
         revoked = not still_open
         ok = revoked if expect_revoked else not revoked
         label = "자동 회수됨" if revoked else "회수 안 됨(알림만·대조군)"

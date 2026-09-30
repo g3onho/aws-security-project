@@ -4,10 +4,10 @@ import {$,api} from '../context.js?v=q6-ui-1-l1';
 import {esc,format,milliseconds} from '../components/format.js?v=q6-ui-1';
 import {loadPanel,header} from '../components/panel.js?v=q6-ui-1';
 import {flowBlock,scenarioStages,FLOW_NOTE_SCENARIO} from './flow-map.js?v=q6-ui-1-l1';
-// page-exports.js 와 같은 주소로 불러와야 같은 모듈(같은 대화상자 상태)을 쓴다.
-import {openReport} from '../components/report.js?v=v39-3';
 
-const SUPPORT_COLOR={runnable:'#bcfbf1','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#93a7b7'};
+// runnable 을 prep-needed 와 같은 색으로 통일한다 — 시나리오 표는 [전부 실행] 대상만 보여주므로(RUN_ALL_SECS 필터)
+// 전부 "실행 가능"이고, 이 표 밖에서는 이 색이 안 쓰인다.
+const SUPPORT_COLOR={runnable:'#9d5b22','prep-needed':'#9d5b22','observe-only':'#00579e','design-needed':'#93a7b7'};
 // 백엔드 DrillService.start_all 이 한 번에 실행하는 시나리오(SEC-06B 는 SEC-08 지리 공격 실행에 함께 들어 있다).
 const RUN_ALL_SECS=['SEC-01','SEC-02','SEC-03','SEC-04','SEC-06A','SEC-07','SEC-08','SEC-06B','SEC-09','SEC-10'];
 // [전부 실행] 카드에 보여줄 시나리오별 공격·점검 방법(백엔드 DrillService.start_all 이 쓰는 도구 기준).
@@ -130,7 +130,6 @@ function progressSection(){
  const skipped=run.skipped.length?`<p class="muted">건너뜀: ${run.skipped.map(esc).join(', ')}</p>`:'';
  return `<section class="panel full-panel">${header('실행 진행','RUN ALL')}
   ${run.runId?`<p class="muted">실행 ID: ${esc(run.runId)}${run.done?' · 모든 항목 종료':' · 진행 중(자동 갱신)'}</p>`:''}${skipped}
-  ${run.runId?`<div class="drill-actions"><button type="button" class="primary-button" ${run.done?'data-run-report':'disabled'} title="서버가 이번 실행의 결과를 직접 읽어 AI 가 요약합니다. 파일을 올릴 필요가 없습니다.">이번 실행 AI 요약 보고서</button>${run.done?'':'<small class="muted">모든 항목이 끝나면 누를 수 있습니다.</small>'}</div>`:''}
   <div class="table-scroll"><table><caption class="sr-only">실행 진행</caption>
   <thead><tr><th>항목</th><th>상태</th><th>결과</th></tr></thead>
   <tbody>${rows||'<tr><td colspan="3" class="muted">실행 항목을 기다리는 중입니다.</td></tr>'}</tbody></table></div></section>`;
@@ -206,7 +205,6 @@ async function extractReport(){
 function onClick(e){
  if(e.target.closest('[data-run-all-start]')){start();return;}
  if(e.target.closest('[data-report-extract]')){extractReport();return;}
- if(e.target.closest('[data-run-report]')){if(run.runId)openReport('drill-run',{runId:run.runId});return;}
  const toggle=e.target.closest('[data-flow-toggle]');
  if(toggle){flowId=toggle.dataset.flowToggle;paintFlowDialog();}
 }
