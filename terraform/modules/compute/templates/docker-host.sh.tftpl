@@ -155,4 +155,34 @@ server {
 }
 NGINX
 
-echo "docker-host user-data done. compose 는 팀이 ECR push 후 'docker compose up -d' 로 기동합니다."
+# 스택 기동을 systemd 에 맡긴다. 컨테이너는 restart: unless-stopped 라 재부팅은 docker 가
+# 알아서 복구하므로, 자동화가 필요한 건 "최초 up -d" 한 번뿐이다.
+# ECR 이미지(app-1.0.0)가 아직 없으면 이 유닛은 실패한다 — push 되면 저절로 올라오도록 재시도하되,
+# 이미지가 영영 안 오는 동안 journal 이 차지 않게 1시간에 5번으로 끊는다.
+cat > /etc/systemd/system/app.service <<'UNIT'
+[Unit]
+Description=3-tier service stack (docker compose)
+Requires=docker.service
+After=docker.service
+StartLimitIntervalSec=3600
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/app
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+# ECR 이미지가 없으면 여기서 실패하는 게 정상이다. user-data 를 죽이지 않는다.
+systemctl enable --now app.service || true
+
+echo "docker-host user-data done. app.service 가 compose 를 기동합니다."
+echo "  ECR push 전이면 60초 간격 5회 시도 후 멈춥니다 — push 후 'systemctl start app' 한 번."

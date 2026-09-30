@@ -206,7 +206,7 @@ document.addEventListener('click',e=>{
  const action=e.target.closest('[data-action]');if(action){dialogAction(action.dataset.action);return;}
  const hours=e.target.closest('[data-hours]');if(hours){if(state.hours===+hours.dataset.hours)return;setFilters({hours:+hours.dataset.hours,page:1});refresh();return;}
  const id=e.target.closest('button')?.id;
- if(id==='refresh'||id==='retry')refresh();
+ if(id==='refresh'||id==='retry'){storeApi.invalidateVulnerabilities();refresh();}
  if(id==='close-region')closeRegionPanel();
  if(id==='open-region')openRegionPanel();
  if(id==='zoom-in')zoomIn();
@@ -237,7 +237,7 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('keydown',e=>{
  if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.isComposing||$('#event-dialog').open||$('#report-dialog').open||e.target.closest('input,select,textarea,[contenteditable="true"]'))return;
- if(e.key==='r'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();refresh();}
+ if(e.key==='r'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();storeApi.invalidateVulnerabilities();refresh();}
  if(e.key==='/'){e.preventDefault();$('#search').focus();}
  const index='1234567'.indexOf(e.key);
  if(e.key.length===1&&index>=0){const button=$$('nav [data-view]')[index];if(button){e.preventDefault();navigateView(button.dataset.view);}}

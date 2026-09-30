@@ -302,6 +302,15 @@ class AwsProvider:
                              "runToken": run_token})
         return launched
 
+    @staticmethod
+    def _command_status(ssm, command_id):
+        """명령 레벨 상태(Command.Status). 조회 자체가 실패하면 None — 호출측 판정을 유지한다."""
+        try:
+            commands = ssm.list_commands(CommandId=command_id).get("Commands", [])
+        except Exception:
+            return None
+        return commands[0].get("Status") if commands else None
+
     def attack_command_status(self, commands):
         """commands: [{regionCode, instanceId, commandId, regionLabel}] -> 리전별 진행상태·출력 요약."""
         self.require_ready()
@@ -317,6 +326,11 @@ class AwsProvider:
                 # 리전 미활성화 등을 Pending 으로 삼키면 화면이 영영 "실행 중"에 묶인다.
                 code = _error_code(error)
                 status = "Pending" if code in PENDING_ERROR_CODES else "Failed"
+                if status == "Pending":
+                    # invocation 이 없는 게 "아직"인지 "영영 배달 안 됨"인지는 명령 레벨 상태가 안다.
+                    # 에이전트가 죽어 배달 실패한 명령은 Command.Status 가 Failed 다(2026-09-29 뭄바이·도쿄)
+                    # — 여기서 읽어야 40분 방치 판정을 기다리지 않고 바로 실패로 보인다.
+                    status = self._command_status(ssm, c["commandId"]) or status
                 out.append({"regionLabel": c["regionLabel"], "status": status, "detail": code})
         return out
 

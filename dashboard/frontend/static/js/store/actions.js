@@ -8,6 +8,13 @@ import {adaptHistory} from './adapters/history.js?v=q6-local-2';
 import {createPoller} from './polling.js?v=q6-local-2';
 import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=q6-local-2';
 
+// 취약점 4933건을 200건씩 25페이지 순차 요청하면 매번 수 초가 걸린다. 백엔드는 5분 캐시가
+// 있어 그동안 데이터가 안 바뀌니, 탭을 다시 열거나 자동 새로고침이 돌 때마다 25번을 처음부터
+// 다시 받지 않게 여기서도 짧게(60초, 백엔드 TTL보다 짧게) 캐시한다. 검색어(search)는 캐시된
+// 전체 목록에 매번 새로 걸러서 최신 검색 결과를 보장한다.
+let vulnCache={key:null,at:0,items:null,warnings:[]};
+const VULN_CACHE_MS=60000;
+
 const listeners=new Set();
 export function subscribe(listener){listeners.add(listener);return ()=>listeners.delete(listener);}
 function notify(change){for(const listener of [...listeners]){try{listener(change);}catch(error){console.error(error);}}}
@@ -178,14 +185,22 @@ export const actions={
   const q=query(),to=Date.now();q.delete('status');q.delete('severity');q.set('from',new Date(to-31*86400000).toISOString());q.set('to',new Date(to).toISOString());if(target)q.set('resource',target);
   if(filters.source&&!['Inspector','Trivy'].includes(filters.source))return {items:[],total:0,warnings:[]};
   if(filters.source)q.set('source',filters.source);
-  markRequest('vulnerabilities',{status:'loading'});
-  try{
-   const result=await pages(endpoints.vulnerabilities,q);const adapted=adaptVulnerabilities(result.items);
-   let items=adapted.rows;
-   if(filters.search){const term=filters.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
-   markRequest('vulnerabilities',{status:'success',lastUpdated:milliseconds(result.meta?.asOf),requestId:result.meta?.requestId||null,error:null});
-   return {items,total:items.length,warnings:unique([...result.warnings,...adapted.warnings])};
-  }catch(error){markRequest('vulnerabilities',{status:'error',error:error.message});throw error;}
+  const cacheKey=target+'|'+(filters.source||'');
+  let items,warnings;
+  if(vulnCache.key===cacheKey&&Date.now()-vulnCache.at<VULN_CACHE_MS){
+   items=vulnCache.items;warnings=vulnCache.warnings;
+   markRequest('vulnerabilities',{status:'success',lastUpdated:vulnCache.at,requestId:null,error:null});
+  }else{
+   markRequest('vulnerabilities',{status:'loading'});
+   try{
+    const result=await pages(endpoints.vulnerabilities,q);const adapted=adaptVulnerabilities(result.items);
+    items=adapted.rows;warnings=unique([...result.warnings,...adapted.warnings]);
+    vulnCache={key:cacheKey,at:Date.now(),items,warnings};
+    markRequest('vulnerabilities',{status:'success',lastUpdated:milliseconds(result.meta?.asOf),requestId:result.meta?.requestId||null,error:null});
+   }catch(error){markRequest('vulnerabilities',{status:'error',error:error.message});throw error;}
+  }
+  if(filters.search){const term=filters.search.toLocaleLowerCase();items=items.filter(item=>[item.cveId,item.package,item.resource].some(value=>String(value||'').toLocaleLowerCase().includes(term)));}
+  return {items,total:items.length,warnings};
  },
  async history(){
   // 기간 트랙(v20.5)이 1주일 조치 이력 수를 세므로 1주일을 받고, 표에는 선택 기간만 남긴다.
@@ -309,4 +324,6 @@ export const actions={
   notify('filters');
  },
  pollingState(){return {running:poller.running,armed:poller.armed};},
+ // 수동 [새로고침]은 60초 캐시를 무시하고 항상 새로 받아야 한다(그래야 "새로고침"이라는 이름값을 한다).
+ invalidateVulnerabilities(){vulnCache={key:null,at:0,items:null,warnings:[]};},
 };
