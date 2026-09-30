@@ -21,7 +21,54 @@ resource "aws_lb" "main" {
   enable_deletion_protection = false
   drop_invalid_header_fields = true
 
+  # 2026-09-30: 어느 계층(WAF/ALB/앱)이 403을 리턴했는지 사후 확인할 방법이 없어서 켠다
+  # (sqlmap이 403×1819 받았는데 WAF 샘플 요청 population이 0으로 나와 원인을 못 찾았던 사고).
+  access_logs {
+    bucket  = var.scan_results_bucket
+    prefix  = "alb-logs"
+    enabled = true
+  }
+
   tags = merge(var.tags, { Name = "${var.name_prefix}-alb" })
+
+  depends_on = [aws_s3_bucket_policy.alb_logs[0]]
+}
+
+# ALB 액세스 로그는 IAM 정책이 아니라 버킷 정책으로 ELB 리전별 서비스 계정에 PutObject 를 허용해야 한다.
+# 계정 ID는 리전마다 고정값(AWS 문서 "Enable access logging" 표). 여기서는 eu-west-3(파리) = 009996457667.
+data "aws_iam_policy_document" "alb_logs" {
+  count = var.enable_alb ? 1 : 0
+  statement {
+    sid       = "AllowElbLogDelivery"
+    actions   = ["s3:PutObject"]
+    resources = ["arn:${var.partition}:s3:::${var.scan_results_bucket}/alb-logs/AWSLogs/${var.account_id}/*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${var.partition}:iam::009996457667:root"]
+    }
+  }
+  # 2013년 10월 이후 리전은 서비스 프린시펄 방식도 함께 요구한다 — 계정 방식만으로 거부되는
+  # 사례가 있어 안전하게 둘 다 넣는다.
+  statement {
+    sid       = "AllowElbLogDeliveryServicePrincipal"
+    actions   = ["s3:PutObject"]
+    resources = ["arn:${var.partition}:s3:::${var.scan_results_bucket}/alb-logs/AWSLogs/${var.account_id}/*"]
+    principals {
+      type        = "Service"
+      identifiers = ["logdelivery.elasticloadbalancing.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "alb_logs" {
+  count  = var.enable_alb ? 1 : 0
+  bucket = var.scan_results_bucket
+  policy = data.aws_iam_policy_document.alb_logs[0].json
 }
 
 resource "aws_lb_target_group" "service" {

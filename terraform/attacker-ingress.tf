@@ -11,8 +11,10 @@
 # 교차 리전 SG 참조가 불가능하다. 공인 IP 를 /32 로 넣는다.
 # 공격 노드에 EIP 가 없어 재부팅 시 IP 가 바뀌면 terraform apply 가 재동기화한다.
 #
-# 범위: DVWA:80 직접(nmap·hydra)과 ALB:8081(WAF 경유 웹 공격)만 연다.
-# 취약 앱이므로 그 외 포트·전체공개(0.0.0.0/0)는 절대 열지 않는다.
+# 범위: DVWA:80·22 직접(nmap·hydra)과 ALB:8081(WAF 경유 웹 공격)만 연다.
+# 취약 앱이므로 전체공개(0.0.0.0/0)는 절대 열지 않는다 — 공격자 노드 /32 로만 한정.
+# 2026-09-30: SSH(22)도 공격자 IP 에 추가로 열었다. hydra SSH 브루트포스가 SG 에서 막혀
+# GuardDuty SSHBruteForce 탐지·지도 공격선이 전혀 안 뜨고 있었다(nmap 결과 22 filtered).
 ############################################
 
 locals {
@@ -35,6 +37,17 @@ resource "aws_vpc_security_group_ingress_rule" "dvwa_from_attackers" {
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
+  cidr_ipv4         = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "dvwa_ssh_from_attackers" {
+  for_each = toset(local.attacker_ingress_cidrs)
+
+  security_group_id = module.network.sg_web_dvwa_id
+  description       = "SSH from geo attacker node (SEC-06B/08 direct) - 2026-09-30 added for GuardDuty SSHBruteForce demo"
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
   cidr_ipv4         = each.value
 }
 
