@@ -1,8 +1,8 @@
 // 대시보드 도우미(챗봇, v27) — 조회 전용. 화면 어디서나 오른쪽 아래 버튼으로 연다.
 // UI 는 Store action(api.assistant*)만 부른다. 답변·도구 이름은 서버·모델이 만든 문자열이므로 전부 esc() 를 거쳐 텍스트로만 그린다
 // (마크다운·HTML 해석 없음). 도우미는 변경 도구가 없다 — 조치는 화면의 기존 버튼(권한·CSRF·멱등키 검증)으로만 한다.
-import {$,api,state} from '../context.js?v=v45';
-import {esc} from './format.js?v=v45';
+import {$,api,state} from '../context.js?v=v46';
+import {esc} from './format.js?v=v46';
 
 const SUGGEST={
  overview:['지금 가장 심각한 보안 이벤트가 뭐야?','자동 조치는 얼마나 됐어?','열린 취약점 요약해줘'],

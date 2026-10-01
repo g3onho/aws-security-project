@@ -1,9 +1,9 @@
 // 인프라 모니터링: 호스트 카드·CPU/메모리 차트·임계치 초과 구간·CloudWatch 경보·서버 가동 상태·3계층(확인 불가).
-import {state,metricsFor,servicesOf} from '../context.js?v=v45';
-import {esc,format,formatAt,milliseconds} from '../components/format.js?v=v45';
-import {header,empty,canvas} from '../components/panel.js?v=v45';
-import {drawChart} from '../charts/charts.js?v=v45';
-import {periodStops} from '../constants.js?v=v45';
+import {state,metricsFor,servicesOf} from '../context.js?v=v46';
+import {esc,format,formatAt,milliseconds} from '../components/format.js?v=v46';
+import {header,empty,canvas} from '../components/panel.js?v=v46';
+import {drawChart} from '../charts/charts.js?v=v46';
+import {periodStops} from '../constants.js?v=v46';
 // ── 인프라 모니터링 ────────────────────────────────────────
 // 7934104(v17) 화면 — 호스트 카드 · CPU/메모리 차트 · 임계치 초과 구간 · 3계층 상태 — 을
 // 표준 API(/api/metrics 시계열, /api/infra/status 구성요소)에 맞춰 되살린 것.

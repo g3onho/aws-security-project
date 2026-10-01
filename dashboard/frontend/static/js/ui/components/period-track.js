@@ -2,7 +2,7 @@
 // 곡선 = 지금부터 그 시점까지 쌓인 수(누적). 그래서 각 지점의 높이·숫자가 곧 그 기간 버튼을 눌렀을 때의 수다.
 // 무엇을 세는지는 화면이 정한다: 탐지(통합 관제·보안 이벤트) · 임계 초과 구간(인프라) · 조치 이력(조치 이력).
 // 선택한 기간까지는 밝게, 그 너머는 흐리게. 지점을 누르면 기간 버튼과 같은 동작(data-hours)을 한다.
-import {esc} from './format.js?v=v45';
+import {esc} from './format.js?v=v46';
 
 const HOUR=3600000;
 export const PERIOD_STOPS=Object.freeze([{hours:0,label:'지금'},{hours:.25,label:'15분'},{hours:1,label:'1시간'},{hours:24,label:'1일'},{hours:168,label:'1주일'}]);

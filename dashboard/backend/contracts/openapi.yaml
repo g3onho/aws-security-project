@@ -901,6 +901,12 @@ components:
                     region: {type: [string, 'null']}
                     isolationVerified: {type: string}
                     executionMode: {type: string}
+                    activeRun:
+                      description: 아직 끝나지 않은 전부 실행(다른 서버 포함). 없으면 null
+                      type: [object, 'null']
+                      properties:
+                        runId: {type: string}
+                        startedAt: {type: [integer, 'null']}
                 supportLegend: {type: object, additionalProperties: {type: string}}
     DrillListEnvelope:
       allOf:

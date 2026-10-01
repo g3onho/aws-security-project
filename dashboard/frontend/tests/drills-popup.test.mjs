@@ -40,6 +40,10 @@ test('run popup can be closed and reopened, and history rows open a report popup
 
  click('#drills [data-run-report="old-1"]');
  await new Promise(r=>setTimeout(r,500));await until(()=>$('#run-dialog').open&&$('#run-dialog-content').textContent.includes('SEC-08 · 시드니'),'past run popup did not open');
- assert($('#run-dialog-content').textContent.includes('실행 보고서')&&$('#run-dialog-content').textContent.includes('old-1'));
+ assert($('#run-dialog-content').textContent.includes('실행 ID 보고서')&&$('#run-dialog-content').textContent.includes('old-1'));
+ const labels=[...$('#run-dialog .dialog-actions').querySelectorAll('button')].map(b=>b.textContent.trim());
+ assert.deepEqual(labels,['.json','.pdf'],'아래 버튼은 .json, .pdf 두 개뿐이다(새로고침·AI 요약·닫기·설명 삭제)');
+ assert.equal($('#run-dialog [data-run-refresh]'),null);assert.equal($('#run-dialog [data-run-ai]'),null);
+ assert(!$('#drills .drill-actions').textContent.includes('최근 실행 보기'),'최근 실행 보기 버튼은 없다');
  assert.deepEqual(errors,[]);
 });

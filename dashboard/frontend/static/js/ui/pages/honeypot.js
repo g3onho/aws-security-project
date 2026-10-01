@@ -2,13 +2,13 @@
 // 세션의 명령·사용자명·비밀번호·미끼 응답·AI 요약은 모두 공격자가 조종할 수 있는 값이다 — 이 파일은 그 값을
 // 항상 esc() 를 거쳐 텍스트로만 그린다(innerHTML 에 원문을 넣지 않는다). 그래프도 SVG 문자열을 esc() 로 만든다.
 // 원천을 읽지 못한 구역은 그 구역에만 "읽지 못함"을 표시하고, 빈 표나 0 으로 바꾸지 않는다.
-import {$,$$,api,config,state,ui} from '../context.js?v=v45';
-import {esc,format,formatAt} from '../components/format.js?v=v45';
-import {header,canvas,toast} from '../components/panel.js?v=v45';
-import {drawChart} from '../charts/charts.js?v=v45';
-import {severityColors} from '../constants.js?v=v45';
-import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=v45';
-import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=v45';
+import {$,$$,api,config,state,ui} from '../context.js?v=v46';
+import {esc,format,formatAt} from '../components/format.js?v=v46';
+import {header,canvas,toast} from '../components/panel.js?v=v46';
+import {drawChart} from '../charts/charts.js?v=v46';
+import {severityColors} from '../constants.js?v=v46';
+import {blocklistCsv,downloadCsv,downloadFile} from '../components/downloads.js?v=v46';
+import {mapSvg,stageList,replayMap} from './honeypot-map.js?v=v46';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const VERDICT={ok:['정상 동작',MINT],waiting:['동작 확인 중',AMBER],partial:['일부 동작',AMBER],unknown:['확인 불가',GRAY],not_deployed:['허니팟 미배포',GRAY]};

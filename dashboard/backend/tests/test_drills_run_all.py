@@ -239,6 +239,25 @@ def test_start_all_rejects_while_previous_run_still_in_progress():
         assert exc.value.code == "RUN_ALREADY_ACTIVE"
 
 
+class _ConnectedProvider(FakeProvider):
+    def status(self):
+        return {"connected": True, "state": "connected", "region": self.region}
+
+
+def test_environment_reports_active_run_for_other_servers():
+    """다른 서버에서 시작한 실행이 안 끝났으면 화면이 [전부 실행]을 미리 잠글 수 있게 environment 에 싣는다."""
+    with tempfile.TemporaryDirectory() as d:
+        provider = _ConnectedProvider()
+        svc = _service(Store(os.path.join(d, "t.sqlite3")), provider=provider)
+        assert svc.environment()["activeRun"] is None
+        provider.status_override = "InProgress"
+        run = svc.start_all({}, actor="tester")
+        active = svc.environment()["activeRun"]
+        assert active["runId"] == run["runId"]
+        provider.status_override = "Success"
+        assert svc.environment()["activeRun"] is None
+
+
 def test_start_all_allows_new_run_once_previous_one_terminates():
     with tempfile.TemporaryDirectory() as d:
         provider = FakeProvider()

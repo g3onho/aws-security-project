@@ -1,8 +1,8 @@
 // 패널 공통: 빈 상태·제목·캔버스 틀, 본문 교체, 비동기 패널 불러오기, 알림(toast).
-import {$,state,ui} from '../context.js?v=v45';
-import {esc} from './format.js?v=v45';
-import {patchMarkup} from './rendering.js?v=v45';
-import {animateLayout} from './layout-motion.js?v=v45';
+import {$,state,ui} from '../context.js?v=v46';
+import {esc} from './format.js?v=v46';
+import {patchMarkup} from './rendering.js?v=v46';
+import {animateLayout} from './layout-motion.js?v=v46';
 let toastTimer,renderedView='';
 export function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,3500);}
 export function empty(message='선택한 조건에 맞는 이벤트가 없습니다.'){return `<div class="empty"><strong>데이터 없음</strong>${message}</div>`;}
