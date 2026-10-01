@@ -2,7 +2,7 @@
 import {$,api,ui} from '../context.js?v=v46';
 import {esc,cmdBlock} from '../components/format.js?v=v46';
 import {header,empty,loadPanel,patchAnimated,panelScope,resetTableScroll,toast} from '../components/panel.js?v=v46';
-import {vulnerabilityCsv,downloadCsv} from '../components/downloads.js?v=v46';
+import {vulnerabilityCsv,vulnerabilityTable,tableJson,downloadCsv,downloadFile} from '../components/downloads.js?v=v46';
 // ── 취약점 점검 ────────────────────────────────────────────
 let vulnTarget='',vulnPage=1,vulnSize=50,vulnFilter='',vulnData=null,vulnDataKey='';
 const vulnKey=()=>panelScope()+JSON.stringify([vulnTarget,ui.refreshSerial]);
@@ -139,7 +139,9 @@ export function stepVulnPage(control,direction){vulnPage+=direction==='next'?1:-
 export function setVulnSize(control,size){vulnSize=size;vulnPage=1;resetTableScroll(control);renderVulnerabilities({reuse:true});}
 export function selectVulnFilter(filter){vulnFilter=vulnFilter===filter?'':filter;vulnPage=1;renderVulnerabilities({reuse:true});}
 export function resetVulnerabilityView({clearFilter=false}={}){vulnTarget='';vulnPage=1;if(clearFilter)vulnFilter='';}
-export function exportVulnerabilities(filename='vulnerabilities.csv'){
+export function exportVulnerabilities(filename='vulnerabilities.csv',format='csv'){
  if(!vulnData||vulnDataKey!==vulnKey()||$('#vulns').hasAttribute('aria-busy')){toast('목록 갱신이 완료된 후 다시 내보내주세요.');return;}
- downloadCsv(filename,vulnerabilityCsv({...vulnData,items:filteredRows(vulnData.items)},vulnTarget));
+ const data={...vulnData,items:filteredRows(vulnData.items)};
+ if(format==='json')downloadFile(filename,tableJson('vulnerabilities',vulnerabilityTable(data,vulnTarget)));
+ else downloadCsv(filename,vulnerabilityCsv(data,vulnTarget));
 }
