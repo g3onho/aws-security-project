@@ -61,10 +61,13 @@ function environmentStrip(env){
 }
 
 // 시나리오별 실행 결과: 이번 [전부 실행]에서 해당 SEC 항목들의 상태를 하나로 요약한다.
-function resultOf(id){
- const sec=RUN_SEC_OF[id]||id;
+function resultOf(s){
+ const id=s.id,sec=RUN_SEC_OF[id]||id;
  const mine=run.items.filter(item=>item.sec===sec);
  if(!mine.length){
+  // 조회 전용(SEC-01/03/09 등)은 '실행'이라는 개념이 없다 — 상시 관측이 곧 완료 상태라
+  // '건너뜀/대상 없음'이 아니라 완료로 보여주고, 이유는 경로 지도(상세보기) ①단계에 적는다.
+  if(s.support==='observe-only')return '<strong>완료</strong> <small class="muted">조회 전용</small>';
   if(run.skipped.some(text=>text.includes(id)||text.includes(sec)))return '<span class="muted">건너뜀</span>';
   return `<span class="muted">${run.runId?'대상 없음':'실행 전'}</span>`;
  }
@@ -79,7 +82,7 @@ function scenarioRow(s){
   <button type="button" class="flow-toggle" data-flow-toggle="${esc(s.id)}" aria-haspopup="dialog">경로 지도 보기</button></td>
   <td class="drill-scenario-evidence"><span><b>관측</b> ${s.sources.map(esc).join(' · ')}</span><span><b>대응</b> ${esc(s.response)}</span></td>
   <td class="drill-scenario-status"><div>${supportPill(s.support,s.supportLabel)}</div><small>관측 ${obs}</small></td>
-  <td class="drill-scenario-result">${resultOf(s.id)}</td></tr>`;
+  <td class="drill-scenario-result">${resultOf(s)}</td></tr>`;
 }
 // 경로 지도 팝업: 시나리오마다 다른 경로를 허니팟 지도와 같은 그림·재생 방식으로 그린다.
 // ① 실행은 실제 기록, ②~⑦ 은 실행 이후 같은 탐지 원천의 이벤트로 채운 '추정'(없으면 '기록 없음'/점선 설계 경로).

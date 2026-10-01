@@ -86,6 +86,9 @@ export function scenarioStages(s,items=null){
  const label=x=>({Success:'완료',Failed:'실패',TimedOut:'시간초과',Cancelled:'취소',InProgress:'실행 중',Pending:'대기',Delayed:'지연'}[x]||x);
  let origin;
  if(!items)origin=st('unknown','이 화면에서 실행 이력을 읽지 못했다');
+ // 조회 전용(SEC-01/03/09 등)은 [전부 실행]이 건드리지 않는다 — 자동/수동 조치 대상이 아니라
+ // 상시 관측만 하는 설계라, '기록 없음'이 아니라 완료로 보여주고 왜 그런지 여기에 적는다.
+ else if(s.support==='observe-only')origin=done('조회 전용 — [전부 실행] 대상 아님. 탐지·관측만 상시 수행하고 자동/수동 조치는 하지 않는 설계(카탈로그 기준)');
  else if(!mine.length)origin=st('missing','이번 실행 기록 없음(전부 실행 전이거나 이 시나리오는 실행 대상 아님)');
  else if(mine.some(i=>['Failed','TimedOut'].includes(i.status)))origin=st('failed',`실행 ${mine.map(i=>label(i.status)).join('·')}`);
  else if(mine.every(i=>i.status==='Success'))origin=done(`실행 ${mine.length}건 완료`);
