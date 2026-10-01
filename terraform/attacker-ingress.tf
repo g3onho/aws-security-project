@@ -17,47 +17,49 @@
 # GuardDuty SSHBruteForce 탐지·지도 공격선이 전혀 안 뜨고 있었다(nmap 결과 22 filtered).
 ############################################
 
+# for_each 키는 plan 시점에 알 수 있어야 한다. 공격 노드 공인 IP 는 인스턴스를 새로 만들거나 교체할 때 apply 전까지 모르는 값이라,
+# IP(또는 "<IP>/32")를 키로 쓰면 "Invalid for_each argument ... known only after apply" 로 plan 이 실패한다.
+# → 키는 리전 이름(정적)으로 두고, 알 수 없는 IP 는 값(cidr_ipv4)으로만 쓴다.
+# 공격 노드가 꺼져 있으면(geo_attackers_on=false) 빈 map 이라 규칙이 없다. 켜져 있으면 5개 노드의 공인 IP 가 모두 있어야 한다(없으면 apply 가 실패해 알려 준다).
 locals {
-  attacker_ingress_cidrs = local.geo_attackers_on ? [
-    for a in [
-      module.attacker_us_virginia.public_ip,
-      module.attacker_singapore.public_ip,
-      module.attacker_sydney.public_ip,
-      module.attacker_mumbai.public_ip,
-      module.attacker_tokyo.public_ip,
-    ] : "${a}/32" if a != null && a != ""
-  ] : []
+  attacker_public_ips = local.geo_attackers_on ? {
+    us-virginia = module.attacker_us_virginia.public_ip
+    singapore   = module.attacker_singapore.public_ip
+    sydney      = module.attacker_sydney.public_ip
+    mumbai      = module.attacker_mumbai.public_ip
+    tokyo       = module.attacker_tokyo.public_ip
+  } : {}
 }
 
 resource "aws_vpc_security_group_ingress_rule" "dvwa_from_attackers" {
-  for_each = toset(local.attacker_ingress_cidrs)
+  for_each = local.attacker_public_ips
 
   security_group_id = module.network.sg_web_dvwa_id
   description       = "HTTP from geo attacker node (SEC-08 direct)"
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
-  cidr_ipv4         = each.value
+  cidr_ipv4         = "${each.value}/32"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "dvwa_ssh_from_attackers" {
-  for_each = toset(local.attacker_ingress_cidrs)
+  for_each = local.attacker_public_ips
 
   security_group_id = module.network.sg_web_dvwa_id
   description       = "SSH from geo attacker node (SEC-06B/08 direct) - 2026-09-30 added for GuardDuty SSHBruteForce demo"
   ip_protocol       = "tcp"
   from_port         = 22
   to_port           = 22
-  cidr_ipv4         = each.value
+  cidr_ipv4         = "${each.value}/32"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_dvwa_from_attackers" {
-  for_each = var.enable_alb ? toset(local.attacker_ingress_cidrs) : toset([])
+  for_each = var.enable_alb ? local.attacker_public_ips : {}
 
   security_group_id = module.network.sg_alb_id
   description       = "DVWA via ALB from geo attacker node (SEC-08 web)"
   ip_protocol       = "tcp"
   from_port         = 8081
   to_port           = 8081
-  cidr_ipv4         = each.value
+  cidr_ipv4         = "${each.value}/32"
 }
