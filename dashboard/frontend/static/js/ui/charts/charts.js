@@ -1,5 +1,5 @@
 // Chart.js 수명주기: 같은 캔버스면 갱신, 캔버스가 바뀌면 이전 차트 destroy, 화면에서 빠진 차트 정리(설계 2.1-6).
-import {$} from '../context.js?v=v45';
+import {$} from '../context.js?v=v46';
 const charts=new Map();
 export function drawChart(id,type,data,options={}){
  const el=$(`#${id}`);if(!el)return;

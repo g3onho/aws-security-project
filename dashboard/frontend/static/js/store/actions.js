@@ -1,12 +1,12 @@
 // UI 가 Store 에 요청하는 유일한 경로(설계 2.1-1·4). 통신은 api/client, 변환은 adapters 가 맡는다.
-import {request as send} from './api/client.js?v=v45';
-import {endpoints} from './api/endpoints.js?v=v45';
-import {envelope,listEnvelope,requireContract,isObject,warningsOf} from './api/validators.js?v=v45';
-import {adaptEvents,ACTION_LABELS} from './adapters/events.js?v=v45';
-import {adaptVulnerabilities} from './adapters/vulnerabilities.js?v=v45';
-import {adaptHistory} from './adapters/history.js?v=v45';
-import {createPoller} from './polling.js?v=v45';
-import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=v45';
+import {request as send} from './api/client.js?v=v46';
+import {endpoints} from './api/endpoints.js?v=v46';
+import {envelope,listEnvelope,requireContract,isObject,warningsOf} from './api/validators.js?v=v46';
+import {adaptEvents,ACTION_LABELS} from './adapters/events.js?v=v46';
+import {adaptVulnerabilities} from './adapters/vulnerabilities.js?v=v46';
+import {adaptHistory} from './adapters/history.js?v=v46';
+import {createPoller} from './polling.js?v=v46';
+import {filters,config,data,details,summary,session,setConfig,setAsOf,markRequest,resetState} from './state.js?v=v46';
 
 // 취약점 4933건을 200건씩 25페이지 순차 요청하면 매번 수 초가 걸린다. 백엔드는 5분 캐시가
 // 있어 그동안 데이터가 안 바뀌니, 탭을 다시 열거나 자동 새로고침이 돌 때마다 25번을 처음부터

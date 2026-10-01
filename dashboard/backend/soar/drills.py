@@ -409,7 +409,22 @@ class DrillService:
             "isolationVerified": "unknown",
             "executionMode": "live",
             "webScanReady": self.attack_ready(),
+            "activeRun": self._active_run_summary(),
         }
+
+    def _active_run_summary(self):
+        """아직 끝나지 않은 [전부 실행]이 있으면 {runId, startedAt}, 없으면 None.
+        다른 서버에서 시작한 실행도 공유 이력으로 보이므로, 화면이 시작 버튼을 미리 잠그는 데 쓴다.
+        조회가 실패하면 None 으로 두되(화면 보조 정보일 뿐) 시작 API(start_all)가 같은 검사로 409 를 돌려 막는다."""
+        if not self.provider.status().get("connected"):
+            return None
+        try:
+            active = self._active_run_all()
+        except Exception:
+            return None
+        if not active:
+            return None
+        return {"runId": active.get("runId"), "startedAt": active.get("startedAt")}
 
     def catalog(self):
         connected = bool(self.provider.status().get("connected"))

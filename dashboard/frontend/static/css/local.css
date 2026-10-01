@@ -1510,3 +1510,22 @@ body.view-events .timeline{margin-bottom:var(--space)}
 .run-history td.run-when small{display:block;font-size:11.5px;margin-top:2px;letter-spacing:.02em}
 .run-history td.run-summary{min-width:260px;white-space:normal;line-height:1.5}
 .run-history .run-sum{color:#161d1b}
+
+/* v46: 통합 관제 자동 대응 현황 — 건수·퍼센트 글씨를 옆 인프라 카드와 같은 굵기·크기로, 카드 배경도 같은 색으로(링 색은 그대로) */
+.response-overview-panel .response-summary>.response-summary-card{border:1px solid #d6dfd9;border-radius:5px;background:#e9efec;box-shadow:none}
+.response-overview-panel .response-summary-card>b,.response-overview-panel .response-share-ring b{font-size:22px;font-weight:600;letter-spacing:normal;line-height:1.1;color:#161d1b}
+.rr-track{stroke:color-mix(in srgb,var(--ring-color) 16%,#d2dbd6)}
+
+/* v46: 허니팟 동작 상태 카드 — 글씨를 두껍게 하지 않는다 */
+.hp-verdict>div>strong,.hp-card>strong.hp-card-text{font-weight:500}
+.hp-card .hp-card-label,.hp-mark,.hp-card-foot small{font-weight:400}
+
+/* v46: 보안 시나리오 — 시나리오 표 칸 아래 끝을 패널(.drill-workspace) 아래 끝에 맞춘다(높이 상한을 풀어 카드와 같은 높이로) */
+@media(min-width:1000px){
+ .drill-workspace>.table-scroll{max-height:none}
+}
+/* v46: 실행 ID 보고서 PDF(인쇄) 본문 */
+#report-print .run-pdf table{width:100%;border-collapse:collapse;font-size:9.5pt}
+#report-print .run-pdf th,#report-print .run-pdf td{padding:5px 8px;border:1px solid #d3dfdb;text-align:left;white-space:normal}
+#report-print .run-pdf h5{margin:10px 0 4px;font-size:10pt}
+#report-print .run-pdf pre{margin:0;padding:8px 10px;border:1px solid #d3dfdb;background:#fff;font-size:8pt;line-height:1.4;white-space:pre-wrap;word-break:break-all}

@@ -2,9 +2,9 @@
 // 새 API·AI 가 없다 — 시나리오 카탈로그(sources·response)와 [전부 실행] 항목 상태만 쓴다.
 // 관측한 것은 ① 실행 단계뿐이다. 탐지→통합→저장→판정→조치→재검증은 '설계 경로'(점선·파랑)로만 그리고 성공으로 칠하지 않는다.
 // 상태 문구·기록 없음 처리는 flow-map.js 의 scenarioStages 를 그대로 쓴다(이벤트 상세 지도와 같은 규칙).
-import {esc} from '../components/format.js?v=v45';
-import {icon,node,setFont} from './honeypot-map.js?v=v45';
-import {FLOW_STATE,FLOW_STAGES,scenarioStages,eventStages,detectorOf} from './flow-map.js?v=v45';
+import {esc} from '../components/format.js?v=v46';
+import {icon,node,setFont} from './honeypot-map.js?v=v46';
+import {FLOW_STATE,FLOW_STAGES,scenarioStages,eventStages,detectorOf} from './flow-map.js?v=v46';
 
 const MINT='#0e8f80',SOFT='#4186be',AMBER='#a88a0d',RED='#d63a44',GRAY='#57665c';
 const ROLE={attack:RED,observe:SOFT,respond:MINT};
