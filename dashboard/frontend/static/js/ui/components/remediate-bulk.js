@@ -36,8 +36,15 @@ function render(){
  const selected=pending.filter(i=>i.checked&&runnable(i)).length,loading=pending.some(i=>i.loading);
  const rows=pending.map(i=>`<li class="bulk-item${runnable(i)?'':' off'}" data-key="bulk-${esc(i.e.id)}"><label><input type="checkbox" data-bulk-check="${esc(i.e.id)}"${i.checked&&runnable(i)?' checked':''}${runnable(i)&&!bulk.running?'':' disabled'}>
   <span class="rem-sev">${badge(i.e)}</span><span class="rem-what"><strong>${esc(i.e.guidance?.title||i.e.title)}</strong><small><span class="resource-id" title="${esc(i.e.resource)}">${esc(shortResource(i.e.resource))}</span> · ${esc(i.e.dashboardAction.title)}</small><span class="auto-chip ${REASON[i.reason]?.[1]||'muted'}">${esc(REASON[i.reason]?.[0]||'')}</span></span></label><div class="bulk-state">${planNote(i)}</div></li>`).join('');
- const compliantRows=compliant.map(i=>`<li class="bulk-item off" data-key="bulk-${esc(i.e.id)}"><span class="rem-sev">${badge(i.e)}</span><span class="rem-what"><strong>${esc(i.e.guidance?.title||i.e.title)}</strong><small><span class="resource-id" title="${esc(i.e.resource)}">${esc(shortResource(i.e.resource))}</span> · ${esc(i.e.dashboardAction.title)}</small><small class="bulk-note">${esc(i.plan.alreadyCompliant?'실행할 필요 없음':(i.plan.blockedReason||'대시보드로는 조치하지 않음'))}</small></span><span class="auto-chip ok">양호</span></li>`).join('');
- const compliantSection=compliant.length?`<details class="bulk-compliant"><summary>양호 ${compliant.length}건(대응 불필요 또는 대시보드 조치 제외)</summary><ul class="bulk-list">${compliantRows}</ul></details>`:'';
+ // '양호'는 진짜 기준 충족(alreadyCompliant)인 것만 — 태그 없어서 정책상 안 건드리는 Critical SG 같은
+ // 건 위험이 사라진 게 아니므로 '양호'라고 부르면 안 된다(2026-10-01 사용자 피드백). '조치 제외'로 구분한다.
+ const compliantRows=compliant.map(i=>{
+  const already=i.plan.alreadyCompliant;
+  return `<li class="bulk-item off" data-key="bulk-${esc(i.e.id)}"><span class="rem-sev">${badge(i.e)}</span><span class="rem-what"><strong>${esc(i.e.guidance?.title||i.e.title)}</strong><small><span class="resource-id" title="${esc(i.e.resource)}">${esc(shortResource(i.e.resource))}</span> · ${esc(i.e.dashboardAction.title)}</small><small class="bulk-note">${esc(already?'실행할 필요 없음':(i.plan.blockedReason||'대시보드로는 조치하지 않음'))}</small></span><span class="auto-chip ${already?'ok':'muted'}">${already?'양호':'조치 제외'}</span></li>`;
+ }).join('');
+ const alreadyCount=compliant.filter(i=>i.plan.alreadyCompliant).length,excludedCount=compliant.length-alreadyCount;
+ const compliantSummary=[alreadyCount?`양호 ${alreadyCount}건`:'',excludedCount?`조치 제외 ${excludedCount}건`:''].filter(Boolean).join(' · ');
+ const compliantSection=compliant.length?`<details class="bulk-compliant"><summary>${compliantSummary}</summary><ul class="bulk-list">${compliantRows}</ul></details>`:'';
  const done=pending.filter(i=>i.result);
  const ok=done.filter(i=>['accepted','already'].includes(i.result.kind)).length,bad=done.filter(i=>i.result.kind==='failed').length;
  const summary=done.length&&!bulk.running?`<p class="rem-note ${bad?'warn':'ok'}">${ok}건 처리(접수 또는 이미 충족)${bad?` · ${bad}건 실패`:''}. 접수는 해결이 아닙니다 — 재검증 결과는 조치 이력에서 확인하세요.${bad?' 실패한 건은 사유를 그대로 두고 다시 실행하면 이미 접수된 건은 중복 실행되지 않습니다.':''}</p>`:'';
