@@ -74,8 +74,9 @@ resource "aws_lambda_function" "finding_sync" {
   runtime       = "python3.12"
   handler       = "handler.handler"
   # 대조는 Inspector 수천 건(ListFindings 100건/페이지 순차, 실측 약 22초) + 변경분 쓰기.
+  # 취약점이 3만 건을 넘으면서 256MB 로는 대조 중 OOM 급 타임아웃(2026-10-02 실측 255/256MB). 1024 로 상향.
   timeout     = 300
-  memory_size = 256
+  memory_size = 1024
 
   filename         = data.archive_file.finding_sync.output_path
   source_code_hash = data.archive_file.finding_sync.output_base64sha256

@@ -8,7 +8,10 @@ SSM SendCommand 로 실제 공격·부하를 일으키며, 호출하는 라우�
 - 실습 실행 이력은 어댑터 경계(DrillRuns)로 읽는다. 목표 저장소는 DynamoDB이며(DEC-003)
   현재 로컬 구현은 기존 SQLite Store 를 쓴다. web-scan·run-all 실행 기록이 여기에 저장된다.
 """
+import re
+
 from .errors import Problem
+from .run_report import build_run_facts
 
 SUPPORT_STATES = {"runnable", "prep-needed", "observe-only", "design-needed"}
 
@@ -18,18 +21,38 @@ SUPPORT_STATES = {"runnable", "prep-needed", "observe-only", "design-needed"}
 RUN_ALL_TERMINAL = {"Success", "Cancelled", "TimedOut", "Failed"}
 RUN_ALL_STALE_MS = 40 * 60 * 1000
 
-# [보고서 추출](SEC-08) 다운로드 파일 최상위에 담는 프롬프트. 파일을 통째로 AI 에 붙여넣으면
-# 이 지시만으로 리전을 넘나드는 종합 분석 보고서가 나오도록 한다(리전별 steps 안의 analysisPrompt
-# 는 리전 하나만 보고 쓰는 지시라 리전 수만큼 중복되고, 리전 간 비교는 못 한다).
+_SEC_NUM = re.compile(r"^SEC-(\d+)([A-Z]?)")
+
+
+def _sec_sort_key(sec):
+    """SEC-01 < SEC-02 < ... < SEC-06A < SEC-06B < ... < SEC-10 < HONEYPOT 순으로 정렬."""
+    m = _SEC_NUM.match(sec or "")
+    return (int(m.group(1)), m.group(2)) if m else (99, sec or "")
+
+
+# [보고서 추출] 다운로드 파일 최상위에 담는 프롬프트. 파일을 통째로 AI 에 붙여넣으면
+# 이 지시만으로 리전·시나리오를 넘나드는 종합 분석 보고서가 나오도록 한다(리전별 steps 안의
+# analysisPrompt 는 리전 하나만 보고 쓰는 지시라 리전 수만큼 중복되고, 리전 간·시나리오 간
+# 비교는 못 한다). 2026-10-02: SEC-08 만 보던 것을 같은 실행의 나머지 시나리오(otherScenarios)
+# 까지 포함하도록 넓히고, 시나리오 번호 순서대로 훑으라는 지시를 추가했다.
+# 2026-10-02 추가: 사람이 이 파일을 통째로 채팅창에 붙여넣었을 때, AI 가 "이 JSON은 ~~ 구조를
+# 담고 있습니다" 식으로 파일을 설명만 하고 끝내거나 추가 지시를 기다리는 경우가 있어 — 무조건
+# 바로 보고서 본문으로 응답하라는 지시를 맨 앞에 못박아 둔다.
 REPORT_ANALYSIS_PROMPT = (
-    "이 JSON은 격리된 팀 소유 실습 환경(DVWA)에서 여러 리전의 공격자 노드가 동시에 수행한 모의 공격"
-    "(SEC-08) 로그를 하나로 합친 파일이다. regions 아래 리전마다 steps 배열(nmap 포트 스캔·hydra SSH/"
-    "웹 무차별 대입·ZAP 베이스라인·sqlmap SQL 주입)이 들어 있다. 파일 전체를 근거로 종합 보안 분석 "
-    "보고서를 작성하라.\n"
-    "(1) 리전별로 (a) 무엇을 시도했는지 (b) 실제로 성공/발견된 것(열린 포트, 유효 자격증명, 취약점, "
-    "주입 지점, WAF 차단 여부)만 로그 근거로 정리하라.\n"
-    "(2) 리전 간 공통 결과와 차이를 구분하라(예: 일부 리전만 성공/실패했다면 그 사실과, 로그에 나온 "
-    "이유—연결 끊김 등—를 그대로 적고, 로그에 이유가 없으면 '원인 불명'이라고 써라. 방어가 더 강해서 "
+    "이 메시지를 읽는 즉시, 파일 구조 설명이나 요약·확인 질문 없이 아래 지시에 따른 보고서 "
+    "본문만 바로 작성하라. 이 JSON을 읽었다는 것 자체가 보고서 작성 요청이다 — 추가 지시를 "
+    "기다리지 마라.\n\n"
+    "이 JSON은 격리된 팀 소유 실습 환경에서 '전부 실행' 1회로 수행한 보안 시나리오 결과를 담고 있다. "
+    "regions 는 SEC-08(여러 리전의 지리별 웹 공격: nmap 포트 스캔·hydra SSH/웹 무차별 대입·ZAP 베이스라인·"
+    "sqlmap SQL 주입) 로그이고, otherScenarios 는 같은 실행에서 함께 돈 나머지 시나리오(SEC-01~SEC-10, "
+    "HONEYPOT)의 요약 결과(상태·출력 끝부분)다. 파일 전체를 근거로 종합 보안 분석 보고서를 작성하라.\n"
+    "(0) SEC-01 → SEC-02 → … → SEC-10 → HONEYPOT 순서로, regions 와 otherScenarios 를 합쳐 시나리오 "
+    "번호 순서대로 하나도 빠짐없이 항목별로 다뤄라. 이번 실행에 없는 번호는 '이번 실행에 포함되지 않음'"
+    "이라고 명시하고 건너뛰지 마라.\n"
+    "(1) 시나리오별로 (a) 무엇을 시도/점검했는지 (b) 실제로 성공/발견된 것(열린 포트, 유효 자격증명, "
+    "취약점, 주입 지점, WAF·NACL 차단 여부 등)만 로그 근거로 정리하라.\n"
+    "(2) SEC-08 은 리전 간 공통 결과와 차이도 구분하라(예: 일부 리전만 성공/실패했다면 그 사실과, 로그에 "
+    "나온 이유—연결 끊김 등—를 그대로 적고, 로그에 이유가 없으면 '원인 불명'이라고 써라. 방어가 더 강해서 "
     "실패했다고 추측하지 마라).\n"
     "(3) 도구 자체가 실행되지 않은 경우(파라미터 오류 등)와 실제 보안 결과(인증 성공/실패, 주입 성공/실패)"
     "를 명확히 구분하라 — 도구 오류를 취약점 부재의 증거로 쓰지 마라.\n"
@@ -385,19 +408,31 @@ class DrillService:
                 "targetIp": run.get("targetIp"), "skipped": run.get("skipped", []), "items": rows}
 
     def report(self, run_id):
-        """SEC-08(공격) 로그를 리전별로 읽어와 하나로 합친 JSON. '보안 시나리오' 페이지
-        [보고서 추출]이 부른다 — 프런트가 이 응답을 그대로 파일 하나로 내려받게 한다.
-        리전별 steps 안에도 analysisPrompt 가 하나씩 들어 있지만(리전 수만큼 중복), 파일 전체를
-        한 번에 AI 에 넣었을 때 리전을 넘나들며 종합하도록 최상위에도 별도 프롬프트를 담는다."""
+        """SEC-08(공격) 로그를 리전별로 읽어와 하나로 합친 JSON + 같은 실행의 나머지 시나리오
+        (SEC-01~10·HONEYPOT) 요약. '보안 시나리오' 페이지 [보고서 추출]이 부른다 — 프런트가 이
+        응답을 그대로 파일 하나로 내려받게 한다. 리전별 steps 안에도 analysisPrompt 가 하나씩
+        들어 있지만(리전 수만큼 중복), 파일 전체를 한 번에 AI 에 넣었을 때 리전·시나리오를
+        넘나들며 종합하도록 최상위에도 별도 프롬프트를 담는다(2026-10-02: otherScenarios 추가).
+        otherScenarios 는 시나리오 번호 순서(SEC-01→…→SEC-10→HONEYPOT)로 정렬해서 담는다 —
+        AI 가 번호를 빼먹거나 뒤섞어 쓰지 않도록 순서 자체를 데이터로도 보장한다."""
         run = self.runs.get(run_id)
         if run is None:
             raise Problem(404, "실습 실행을 찾을 수 없습니다.", "DRILL_NOT_FOUND")
         atk_cmds = [c for c in run.get("commands", []) if c.get("sec") == "SEC-08"]
-        if not atk_cmds:
-            return {"runId": run_id, "analysisPrompt": REPORT_ANALYSIS_PROMPT, "regions": {}}
         bucket = self.attack_config.get("scanBucket", "")
-        regions = self.provider.merged_report(atk_cmds, bucket)
-        return {"runId": run_id, "analysisPrompt": REPORT_ANALYSIS_PROMPT, "regions": regions}
+        regions = self.provider.merged_report(atk_cmds, bucket) if atk_cmds else {}
+
+        status = self.all_status(run_id)
+        facts = build_run_facts(run, status, None)
+        other = [
+            {**row, "sec": item.get("sec") or "?"}
+            for row, item in zip(facts.get("항목별 결과") or [], status.get("items") or [])
+            if item.get("sec") != "SEC-08"
+        ]
+        other.sort(key=lambda r: _sec_sort_key(r["sec"]))
+
+        return {"runId": run_id, "analysisPrompt": REPORT_ANALYSIS_PROMPT, "regions": regions,
+                "otherScenarios": other}
 
     def environment(self):
         status = self.provider.status()
