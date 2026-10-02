@@ -1,15 +1,16 @@
 // 화면 우측 상단 [로그 저장] · [AI 요약 보고서] (v28). 보안 이벤트·취약점 점검·인프라 모니터링·보안 시나리오·허니팟에서만 보인다.
-// 두 버튼은 서로 독립이다(로그 저장은 AI 를 쓰지 않는다). 기존 패널 안의 CSV 버튼도 그대로 두고, 같은 함수를 다시 쓴다.
+// 두 버튼은 서로 독립이다(로그 저장은 AI 를 쓰지 않는다). [로그 저장]은 JSON 으로 저장하고, 기존 패널 안의 CSV 버튼은 그대로 CSV 를 쓴다.
 import {$,api,state,metricsFor,servicesOf} from '../context.js?v=v46';
 import {toast} from './panel.js?v=v46';
-import {eventCsv,downloadCsv,stampedName,infrastructureCsv,drillsCsv,honeypotSessionsCsv} from './downloads.js?v=v46';
+import {eventTable,infrastructureTable,drillsTable,honeypotSessionsTable,tableJson,downloadFile,stampedName} from './downloads.js?v=v46';
 import {hostViews} from '../pages/infrastructure.js?v=v46';
 import {exportVulnerabilities} from '../pages/vulnerabilities.js?v=v46';
 import {openReport,initReportDialog} from './report.js?v=v46';
 
 export const EXPORT_VIEWS=new Set(['events','vulnerabilities','infrastructure','drills','honeypot']);
 const iso=ms=>ms?new Date(ms).toISOString():'';
-const SESSION_PAGE=200,SESSION_PAGES=5;          // 세션 CSV 는 최대 1000개까지(그 이상이면 알린다)
+const SESSION_PAGE=200,SESSION_PAGES=5;          // 세션 JSON 은 최대 1000개까지(그 이상이면 알린다)
+const saveJson=(prefix,view,table,extra)=>downloadFile(stampedName(prefix,'json'),tableJson(view,table,extra));
 let saving=false;
 
 export function syncPageExports(){
@@ -45,19 +46,19 @@ export async function saveLog(){
   try{
     if(view==='events'){
       const {items}=await api.exportEvents();
-      downloadCsv(stampedName('events'),eventCsv(items));
+      saveJson('events','events',eventTable(items));
     }else if(view==='vulnerabilities'){
-      exportVulnerabilities(stampedName('vulnerabilities'));
+      exportVulnerabilities(stampedName('vulnerabilities','json'),'json');
     }else if(view==='infrastructure'){
       const hosts=hostViews(metricsFor());
       if(!hosts.length){toast('CPU·메모리 지표를 읽지 못했거나 대상이 없어 저장하지 않았습니다.');return;}
-      downloadCsv(stampedName('infrastructure'),infrastructureCsv(hosts,servicesOf()));
+      saveJson('infrastructure','infrastructure',infrastructureTable(hosts,servicesOf()));
     }else if(view==='drills'){
       const runs=await api.drills();
-      downloadCsv(stampedName('drills'),drillsCsv(runs));
+      saveJson('drills','drills',drillsTable(runs));
     }else if(view==='honeypot'){
       const {items,note}=await honeypotSessions();
-      downloadCsv(stampedName('honeypot-sessions'),honeypotSessionsCsv(items,iso));
+      saveJson('honeypot-sessions','honeypot',honeypotSessionsTable(items,iso));
       if(note)toast(note);
     }
   }catch(error){

@@ -1465,7 +1465,7 @@ body.view-events .timeline{margin-bottom:var(--space)}
 .cve-groups .cve-group>summary>.vg-meta{flex-direction:row;flex-wrap:wrap;align-items:center;gap:5px 6px}
 .cve-groups .vg-meta .vg-score{flex:1 0 100%}
 /* v44: 조치 이력 — 실행 칩 열은 칩 크기만큼만 */
-.hist-list col:nth-child(1){width:10%}.hist-list col:nth-child(2){width:8%}.hist-list col:nth-child(3){width:27%}.hist-list col:nth-child(4){width:47%}.hist-list col:nth-child(5){width:8%}
+.hist-list col:nth-child(1){width:7%}.hist-list col:nth-child(2){width:15%}.hist-list col:nth-child(3){width:26%}.hist-list col:nth-child(4){width:44%}.hist-list col:nth-child(5){width:8%}
 .hist-list td.hist-run{white-space:nowrap}
 /* v44: 통합 관제 자동 대응 현황 — 건수·퍼센트 숫자는 모두 검정 */
 .response-overview-panel .response-summary-card>b,.response-overview-panel .response-share-ring b{color:#161d1b}
@@ -1529,3 +1529,5 @@ body.view-events .timeline{margin-bottom:var(--space)}
 #report-print .run-pdf th,#report-print .run-pdf td{padding:5px 8px;border:1px solid #d3dfdb;text-align:left;white-space:normal}
 #report-print .run-pdf h5{margin:10px 0 4px;font-size:10pt}
 #report-print .run-pdf pre{margin:0;padding:8px 10px;border:1px solid #d3dfdb;background:#fff;font-size:8pt;line-height:1.4;white-space:pre-wrap;word-break:break-all}
+.hist-list td.hist-time{padding-left:8px;padding-right:6px;font-size:12.5px;line-height:1.35}
+.hist-list td.hist-chips{white-space:nowrap;overflow-wrap:normal}.hist-list td.hist-chips .hist-chip{white-space:nowrap}
